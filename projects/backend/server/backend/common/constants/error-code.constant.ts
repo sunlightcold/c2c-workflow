@@ -1,0 +1,30 @@
+export enum ErrorEnum {
+  INVALID_LOGIN = '1101:登录无效，请重新登录',
+  INVALID_LOGIN_PARAMS = '1102:用户名或密码错误',
+  UN_UNIQUE_USERNAME = '1103:用户名已存在',
+  INVALID_LOGIN_CODE = '1104:验证码错误',
+  INVALID_MCH_USER_DELETE = '1105:总部商户无法删除',
+  INVALID_MCH_USER = '1106:商户不存在',
+  INVALID_NEW_PWD = '1107:原密码与新密码不能一致',
+  INVALID_USER = '1108:用户不存在',
+  INVALID_SUPER_ADMIN_DELETE = '1109:超级管理员账号不允许删除',
+  NOT_FOUND = '1110:资源不存在',
+  INVALID_REQUEST = '1111:请求已提交，禁止重复提交',
+  FORBIDDEN = '1112:无访问资源权限',
+
+  ROLE_NOT_UNIQUE = '1004:角色标识已存在',
+  PERMISSION_REQUIRES_PARENT = '1005:权限必须包含父节点',
+  ILLEGAL_OPERATION_DIRECTORY_PARENT = '1006:非法操作：该节点仅支持目录类型父节点',
+  ILLEGAL_OPERATION_CANNOT_CONVERT_NODE_TYPE = '1007:非法操作：节点类型无法直接转换',
+  PARENT_MENU_NOT_FOUND = '1014:父级菜单不存在',
+  NOT_REMOVE_MENU_LINK_ROLE = '1015:该菜单存在关联角色，无法删除',
+  NOT_REMOVE_ROLE_LINK_USER = '1016:该角色存在关联用户，无法删除',
+  MENU_SYSTEM_LOCKED = '1017:系统菜单不允许手动修改结构',
+
+  INSECURE_TASK = '1301:不安全的任务，确保执行的加入@ScheduleTask注解',
+  TASK_NOT_FOUND = '1302:任务不存在',
+  TASK_SYSTEM_LOCKED = '1303:系统任务不允许手动配置',
+  PARAM_SYSTEM_LOCKED = '1401:系统参数不允许手动修改结构',
+
+  UN_KNOW = '9999:未知错误',
+}

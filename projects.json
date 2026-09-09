@@ -1,0 +1,97 @@
+{
+  "$schema": "./docs/projects.schema.json",
+  "workspace": {
+    "name": "C2C Workflow",
+    "rootType": "single-repository-workspace",
+    "defaultLanguage": "zh-CN",
+    "gitStrategy": "single-repository"
+  },
+  "projects": [
+    {
+      "id": "backend",
+      "name": "C2C Platform Backend",
+      "path": "projects/backend",
+      "repoType": "workspace-directory",
+      "domain": "c2c-platform-api",
+      "role": "backend-api",
+      "writePolicy": "development",
+      "skills": [
+        "nestjs-best-practices",
+        "domain-modeling",
+        "code-review",
+        "diagnose",
+        "tdd",
+        "improve-codebase-architecture",
+        "grill-with-docs",
+        "handoff"
+      ],
+      "stack": ["NestJS", "TypeORM", "PostgreSQL", "Redis", "BullMQ", "pnpm workspace", "TypeScript"],
+      "packageManager": "pnpm@10.5.2",
+      "ports": {
+        "api": null
+      },
+      "commands": {
+        "install": ["pnpm", "install", "--frozen-lockfile"],
+        "dev": ["pnpm", "run", "dev"],
+        "lint": ["pnpm", "run", "lint:server"],
+        "typecheck": ["pnpm", "run", "typecheck:server"],
+        "test": ["pnpm", "run", "test:server"],
+        "testIntegration": ["pnpm", "--filter", "./server/backend", "run", "test:integration"],
+        "build": ["pnpm", "run", "build"],
+        "workspaceCheck": ["pnpm", "run", "monorepo:check"]
+      },
+      "dependsOn": [],
+      "contracts": {
+        "apiDocs": ["doc"],
+        "migrations": ["server/backend/apps/admin/database/migrations"],
+        "workspacePackages": ["libs/*", "server/*"],
+        "sourceTemplate": {
+          "repository": "sunlightcold/tpl-backend",
+          "commit": "a8ec0a9dd84eea1f521a631343825544dbc42731"
+        }
+      }
+    },
+    {
+      "id": "admin-web",
+      "name": "C2C Admin Frontend",
+      "path": "projects/admin-web",
+      "repoType": "workspace-directory",
+      "domain": "c2c-admin-web",
+      "role": "frontend-admin-web",
+      "writePolicy": "development",
+      "skills": [
+        "diagnose",
+        "code-review",
+        "tdd",
+        "improve-codebase-architecture",
+        "grill-with-docs",
+        "handoff",
+        "ui-ux-pro-max"
+      ],
+      "stack": ["Vue 3", "Vite", "TypeScript", "Vben Admin", "Ant Design Vue", "pnpm workspace", "Turbo"],
+      "packageManager": "pnpm@9.15.9",
+      "ports": {
+        "webDev": 5666
+      },
+      "commands": {
+        "install": ["pnpm", "install", "--frozen-lockfile"],
+        "dev": ["pnpm", "run", "dev:frontend"],
+        "lint": ["pnpm", "run", "lint"],
+        "typecheck": ["pnpm", "-F", "@vben/frontend", "run", "typecheck"],
+        "test": ["pnpm", "run", "test:unit"],
+        "testE2e": ["pnpm", "run", "test:e2e"],
+        "build": ["pnpm", "run", "build:frontend"],
+        "workspaceCheck": ["pnpm", "run", "check"]
+      },
+      "dependsOn": ["backend"],
+      "contracts": {
+        "apiClient": ["apps/frontend/src/api"],
+        "envFiles": ["apps/frontend/.env", "apps/frontend/.env.development", "apps/frontend/.env.production"],
+        "sourceTemplate": {
+          "repository": "sunlightcold/tpl-frontend",
+          "commit": "9c54d39a6b67be30129655734ee7a3d840e13712"
+        }
+      }
+    }
+  ]
+}

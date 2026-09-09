@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "apps/admin",
+  "compilerOptions": {
+    "webpack": false,
+    "deleteOutDir": true,
+    "webpack": true,
+    "tsConfigPath": "apps/admin/tsconfig.app.json",
+    "assets": ["assets/**/*"],
+    "watchAssets": true
+  },
+  "monorepo": true,
+  "root": "apps/admin",
+  "projects": {
+    "admin": {
+      "type": "application",
+      "root": "apps/admin",
+      "entryFile": "main",
+      "sourceRoot": "apps/admin",
+      "compilerOptions": {
+        "tsConfigPath": "apps/admin/tsconfig.app.json"
+      }
+    },
+    "migrate": {
+      "type": "application",
+      "root": "apps/migrate",
+      "entryFile": "main",
+      "sourceRoot": "apps/migrate",
+      "compilerOptions": {
+        "deleteOutDir": false,
+        "tsConfigPath": "apps/migrate/tsconfig.app.json"
+      }
+    }
+  }
+}

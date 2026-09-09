@@ -1,0 +1,33 @@
+{
+  "folders": [
+    {
+      "name": "C2C Workflow Control Plane",
+      "path": "."
+    },
+    {
+      "name": "C2C Backend",
+      "path": "projects/backend"
+    },
+    {
+      "name": "C2C Admin Frontend",
+      "path": "projects/admin-web"
+    }
+  ],
+  "settings": {
+    "files.encoding": "utf8",
+    "files.exclude": {
+      "**/node_modules": true,
+      "**/dist": true,
+      "**/build": true,
+      "**/.turbo": true,
+      "**/coverage": true
+    },
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/dist": true,
+      "**/build": true,
+      "**/.turbo": true,
+      "**/coverage": true
+    }
+  }
+}

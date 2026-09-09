@@ -1,0 +1,38 @@
+{
+  "auth": {
+    "login": "Login",
+    "register": "Register",
+    "codeLogin": "Code Login",
+    "qrcodeLogin": "Qr Code Login",
+    "forgetPassword": "Forget Password",
+    "profile": "Profile"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "workspace": "Workspace"
+  },
+  "user": {
+    "filterUsername": "Username",
+    "filterUsernameTip": "Please enter username",
+    "filterRemark": "Remark",
+    "filterRemarkTip": "Please enter remark"
+  },
+  "role": {
+    "filterRolename": "Rolename",
+    "filterRolenameTip": "Please enter Rolename",
+    "filterRole": "Role",
+    "filterRoleTip": "Please enter Role",
+    "filterRemark": "Remark",
+    "filterRemarkTip": "Please enter remark"
+  },
+  "menu": {
+    "filterMenu": "Menu",
+    "filterMenuTip": "Please enter Menu",
+    "filterRemark": "Remark",
+    "filterRemarkTip": "Please enter remark"
+  },
+  "log": {
+    "filterTitle": "Logname",
+    "filterTitleTip": "Please enter logname"
+  }
+}

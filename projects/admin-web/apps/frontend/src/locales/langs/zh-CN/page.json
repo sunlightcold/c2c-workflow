@@ -1,0 +1,38 @@
+{
+  "auth": {
+    "login": "登录",
+    "register": "注册",
+    "codeLogin": "验证码登录",
+    "qrcodeLogin": "二维码登录",
+    "forgetPassword": "忘记密码",
+    "profile": "个人中心"
+  },
+  "dashboard": {
+    "title": "概览",
+    "workspace": "工作台"
+  },
+  "user": {
+    "filterUsername": "用户名",
+    "filterUsernameTip": "请输入用户名",
+    "filterRemark": "备注",
+    "filterRemarkTip": "请输入备注"
+  },
+  "role": {
+    "filterRolename": "角色名",
+    "filterRolenameTip": "请输入角色名",
+    "filterRole": "角色标识",
+    "filterRoleTip": "请输入角色标识",
+    "filterRemark": "备注",
+    "filterRemarkTip": "请输入备注"
+  },
+  "menu": {
+    "filterMenu": "菜单名",
+    "filterMenuTip": "请输入菜单名",
+    "filterRemark": "备注",
+    "filterRemarkTip": "请输入备注"
+  },
+  "log": {
+    "filterTitle": "日志名称",
+    "filterTitleTip": "请输入日志名称"
+  }
+}

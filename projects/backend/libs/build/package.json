@@ -1,0 +1,21 @@
+{
+  "name": "@tpl-backend/build",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.ts",
+  "scripts": {
+    "build": "tsx ./index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.5.2",
+  "dependencies": {
+    "adm-zip": "catalog:",
+    "shelljs": "catalog:"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "catalog:",
+    "@types/shelljs": "catalog:"
+  }
+}

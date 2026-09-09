@@ -1,0 +1,132 @@
+{
+  "$schema": "./docs/skills.schema.json",
+  "skillsRoot": ".codex/skills",
+  "skills": [
+    {
+      "id": "nestjs-best-practices",
+      "name": "nestjs-best-practices",
+      "path": ".codex/skills/nestjs-best-practices",
+      "entry": "SKILL.md",
+      "source": {
+        "type": "github",
+        "repo": "Kadajett/agent-nestjs-skills",
+        "path": "skills/nestjs-best-practices",
+        "ref": "main"
+      },
+      "appliesTo": ["backend"],
+      "usage": "NestJS 模块边界、依赖注入、API、安全、数据库、队列、性能和测试"
+    },
+    {
+      "id": "diagnose",
+      "name": "diagnose",
+      "path": ".codex/skills/diagnose",
+      "entry": "SKILL.md",
+      "source": {
+        "type": "github",
+        "repo": "mattpocock/skills",
+        "path": "skills/engineering/diagnosing-bugs",
+        "ref": "main"
+      },
+      "appliesTo": ["backend", "admin-web"],
+      "usage": "复现、最小化、假设验证、插桩、修复和回归测试"
+    },
+    {
+      "id": "domain-modeling",
+      "name": "domain-modeling",
+      "path": ".codex/skills/domain-modeling",
+      "entry": "SKILL.md",
+      "source": {
+        "type": "github",
+        "repo": "mattpocock/skills",
+        "path": "skills/engineering/domain-modeling",
+        "ref": "main"
+      },
+      "appliesTo": ["workflow", "backend"],
+      "usage": "商家、订单、支付、批次、租户权限和外部平台状态的领域建模"
+    },
+    {
+      "id": "code-review",
+      "name": "code-review",
+      "path": ".codex/skills/code-review",
+      "entry": "SKILL.md",
+      "source": {
+        "type": "github",
+        "repo": "mattpocock/skills",
+        "path": "skills/engineering/code-review",
+        "ref": "main"
+      },
+      "appliesTo": ["backend", "admin-web"],
+      "usage": "按风险优先审查安全、资金正确性、回归和测试缺口"
+    },
+    {
+      "id": "tdd",
+      "name": "tdd",
+      "path": ".codex/skills/tdd",
+      "entry": "SKILL.md",
+      "source": {
+        "type": "github",
+        "repo": "mattpocock/skills",
+        "path": "skills/engineering/tdd",
+        "ref": "main"
+      },
+      "appliesTo": ["backend", "admin-web"],
+      "usage": "按 red-green-refactor 实施功能和缺陷修复"
+    },
+    {
+      "id": "improve-codebase-architecture",
+      "name": "improve-codebase-architecture",
+      "path": ".codex/skills/improve-codebase-architecture",
+      "entry": "SKILL.md",
+      "source": {
+        "type": "github",
+        "repo": "mattpocock/skills",
+        "path": "skills/engineering/improve-codebase-architecture",
+        "ref": "main"
+      },
+      "appliesTo": ["backend", "admin-web"],
+      "usage": "架构体检、领域边界、耦合治理和可测试性改造"
+    },
+    {
+      "id": "grill-with-docs",
+      "name": "grill-with-docs",
+      "path": ".codex/skills/grill-with-docs",
+      "entry": "SKILL.md",
+      "source": {
+        "type": "github",
+        "repo": "mattpocock/skills",
+        "path": "skills/engineering/grill-with-docs",
+        "ref": "main"
+      },
+      "appliesTo": ["workflow", "backend", "admin-web"],
+      "usage": "需求澄清、方案审查、术语统一、上下文和 ADR 沉淀"
+    },
+    {
+      "id": "handoff",
+      "name": "handoff",
+      "path": ".codex/skills/handoff",
+      "entry": "SKILL.md",
+      "source": {
+        "type": "github",
+        "repo": "mattpocock/skills",
+        "path": "skills/productivity/handoff",
+        "ref": "main"
+      },
+      "appliesTo": ["workflow", "backend", "admin-web"],
+      "usage": "生成跨任务、跨项目可继续执行的交接记录"
+    },
+    {
+      "id": "ui-ux-pro-max",
+      "name": "ui-ux-pro-max",
+      "path": ".codex/skills/ui-ux-pro-max",
+      "entry": "SKILL.md",
+      "source": {
+        "type": "github",
+        "repo": "nextlevelbuilder/ui-ux-pro-max-skill",
+        "path": ".claude/skills/ui-ux-pro-max",
+        "ref": "main"
+      },
+      "appliesTo": ["admin-web"],
+      "usage": "运营后台的表格、表单、状态、响应式、可访问性和视觉质量"
+    }
+  ]
+}

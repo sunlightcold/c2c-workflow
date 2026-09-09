@@ -1,0 +1,10 @@
+node_modules
+**/node_modules/
+dist
+**/dist/
+output
+output.zip
+.artifacts/
+doc/oauth/*.json
+doc/**/client_secret_*.json
+doc/**/model-key.b64

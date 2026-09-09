@@ -1,0 +1,87 @@
+{
+  "$schema": "./docs/skills-lock.schema.json",
+  "generatedAt": "2026-09-09T13:57:05.4720061Z",
+  "skills": [
+    {
+      "id": "nestjs-best-practices",
+      "repo": "Kadajett/agent-nestjs-skills",
+      "path": "skills/nestjs-best-practices",
+      "ref": "main",
+      "resolved": "3986e0cede33958e000f959031cbee0cd83c2941",
+      "installedPath": ".codex/skills/nestjs-best-practices",
+      "managedBy": "scripts/Sync-Skills.ps1"
+    },
+    {
+      "id": "diagnose",
+      "repo": "mattpocock/skills",
+      "path": "skills/engineering/diagnosing-bugs",
+      "ref": "main",
+      "resolved": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "installedPath": ".codex/skills/diagnose",
+      "managedBy": "scripts/Sync-Skills.ps1"
+    },
+    {
+      "id": "domain-modeling",
+      "repo": "mattpocock/skills",
+      "path": "skills/engineering/domain-modeling",
+      "ref": "main",
+      "resolved": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "installedPath": ".codex/skills/domain-modeling",
+      "managedBy": "scripts/Sync-Skills.ps1"
+    },
+    {
+      "id": "code-review",
+      "repo": "mattpocock/skills",
+      "path": "skills/engineering/code-review",
+      "ref": "main",
+      "resolved": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "installedPath": ".codex/skills/code-review",
+      "managedBy": "scripts/Sync-Skills.ps1"
+    },
+    {
+      "id": "tdd",
+      "repo": "mattpocock/skills",
+      "path": "skills/engineering/tdd",
+      "ref": "main",
+      "resolved": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "installedPath": ".codex/skills/tdd",
+      "managedBy": "scripts/Sync-Skills.ps1"
+    },
+    {
+      "id": "improve-codebase-architecture",
+      "repo": "mattpocock/skills",
+      "path": "skills/engineering/improve-codebase-architecture",
+      "ref": "main",
+      "resolved": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "installedPath": ".codex/skills/improve-codebase-architecture",
+      "managedBy": "scripts/Sync-Skills.ps1"
+    },
+    {
+      "id": "grill-with-docs",
+      "repo": "mattpocock/skills",
+      "path": "skills/engineering/grill-with-docs",
+      "ref": "main",
+      "resolved": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "installedPath": ".codex/skills/grill-with-docs",
+      "managedBy": "scripts/Sync-Skills.ps1"
+    },
+    {
+      "id": "handoff",
+      "repo": "mattpocock/skills",
+      "path": "skills/productivity/handoff",
+      "ref": "main",
+      "resolved": "3cca18b368ae95cdbdebbff572ccafa662551015",
+      "installedPath": ".codex/skills/handoff",
+      "managedBy": "scripts/Sync-Skills.ps1"
+    },
+    {
+      "id": "ui-ux-pro-max",
+      "repo": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "path": ".claude/skills/ui-ux-pro-max",
+      "ref": "main",
+      "resolved": "4aad0584d92131626b16d4ff4d77f0455385013c",
+      "installedPath": ".codex/skills/ui-ux-pro-max",
+      "managedBy": "scripts/Sync-Skills.ps1"
+    }
+  ]
+}

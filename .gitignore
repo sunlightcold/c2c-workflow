@@ -1,0 +1,24 @@
+# Reference repositories are temporary and never part of the product repository.
+/templates/*
+
+# Transient skill synchronization data.
+/.codex/.skill-sync/
+/.codex/.skill-backup/
+/.codex/.skill-inspect-*/
+/.codex/*-export-*.zip
+
+# Root tooling and editor outputs.
+/node_modules/
+/dist/
+/build/
+/.turbo/
+/.cache/
+/coverage/
+__pycache__/
+*.py[cod]
+*.log
+*.local
+.DS_Store
+Thumbs.db
+/.idea/
+/.vscode/

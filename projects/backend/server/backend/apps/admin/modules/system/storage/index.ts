@@ -1,0 +1,5 @@
+export * from './legacy-object-storage-import.service'
+export * from './storage.module'
+export * from './storage-purpose.registry'
+export * from './storage.service'
+export * from './storage.types'

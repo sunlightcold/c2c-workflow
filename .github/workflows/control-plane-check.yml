@@ -1,0 +1,57 @@
+name: Repository Check
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - "AGENTS.md"
+      - "projects.json"
+      - "skills.json"
+      - "skills.lock.json"
+      - "C2C-Workflow.code-workspace"
+      - "docs/**"
+      - "scripts/**"
+      - "projects/**"
+      - ".github/workflows/control-plane-check.yml"
+  push:
+    branches: [main]
+    paths:
+      - "AGENTS.md"
+      - "projects.json"
+      - "skills.json"
+      - "skills.lock.json"
+      - "C2C-Workflow.code-workspace"
+      - "docs/**"
+      - "scripts/**"
+      - "projects/**"
+      - ".github/workflows/control-plane-check.yml"
+
+jobs:
+  validate-json:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Parse repository JSON
+        shell: bash
+        run: |
+          node -e "for (const file of ['projects.json','skills.json','skills.lock.json','C2C-Workflow.code-workspace']) JSON.parse(require('fs').readFileSync(file, 'utf8'))"
+      - name: Validate repository layout
+        shell: pwsh
+        run: ./scripts/Test-Workflow.ps1
+      - name: Check Markdown fences
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem -Recurse -Filter *.md | Where-Object { $_.FullName -notmatch '[\\/]templates[\\/]' } | ForEach-Object {
+            $count = (Select-String -LiteralPath $_.FullName -Pattern '^```').Count
+            if ($count % 2 -ne 0) {
+              Write-Error "Unbalanced Markdown fences: $($_.FullName)"
+              $failed = $true
+            }
+          }
+          if ($failed) { exit 1 }

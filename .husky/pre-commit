@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+set -eu
+
+repository_root="$(git rev-parse --show-toplevel)"
+
+if git diff --cached --name-only --diff-filter=ACMR | grep -q '^projects/admin-web/'; then
+  cd "$repository_root/projects/admin-web"
+  pnpm exec lint-staged --cwd .
+fi

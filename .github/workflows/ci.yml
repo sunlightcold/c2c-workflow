@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  pull_request:
+    paths:
+      - "projects/backend/**"
+      - "projects/admin-web/**"
+      - "projects.json"
+      - ".github/workflows/ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "projects/backend/**"
+      - "projects/admin-web/**"
+      - "projects.json"
+      - ".github/workflows/ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.5.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: projects/backend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run lint:server
+      - run: pnpm run typecheck:server
+      - run: pnpm run test:server
+      - run: pnpm run build
+      - run: pnpm run monorepo:check
+
+  admin-web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/admin-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: projects/admin-web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run lint
+      - run: pnpm -F @vben/frontend run typecheck
+      - run: pnpm run test:unit
+      - run: pnpm run build:frontend
+      - run: pnpm run check

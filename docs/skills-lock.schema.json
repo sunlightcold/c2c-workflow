@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "C2C skills lock",
+  "type": "object",
+  "required": ["generatedAt", "skills"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "repo", "path", "ref", "resolved", "installedPath", "managedBy"],
+        "properties": {
+          "id": { "type": "string" },
+          "repo": { "type": "string" },
+          "path": { "type": "string" },
+          "ref": { "type": "string" },
+          "resolved": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+          "installedPath": { "type": "string" },
+          "managedBy": { "const": "scripts/Sync-Skills.ps1" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,69 @@
+name: mongo
+services:
+  #主节点
+  mongo1:
+    image: 'bitnami/mongodb:latest'
+    container_name: mongo1
+    restart: always
+    ports:
+      - 27017:27017
+    environment:
+      - MONGODB_ROOT_USER=root
+      - MONGODB_ROOT_PASSWORD=mongo1@alice
+      - MONGODB_USERNAME=pay_database
+      - MONGODB_PASSWORD=Z6Rh1aQ7Khkb
+      - MONGODB_DATABASE=pay_database
+      - MONGODB_REPLICA_SET_MODE=primary
+      - MONGODB_REPLICA_SET_NAME=rs0
+      - MONGODB_REPLICA_SET_KEY=${MONGODB_REPLICA_SET_KEY}
+    volumes:
+      - ./mongo1:/bitnami/mongodb
+    networks:
+      - mongo-net
+  # 副节点
+  mongo2:
+    image: 'bitnami/mongodb:latest'
+    container_name: mongo2
+    restart: always
+    ports:
+      - 27018:27017
+    environment:
+      - MONGODB_ROOT_USER=root
+      - MONGODB_REPLICA_SET_MODE=secondary
+      - MONGODB_REPLICA_SET_NAME=rs0
+      - MONGODB_REPLICA_SET_KEY=${MONGODB_REPLICA_SET_KEY}
+      - MONGODB_INITIAL_PRIMARY_HOST=mongo1
+      - MONGODB_INITIAL_PRIMARY_PORT_NUMBER=27017
+      - MONGODB_INITIAL_PRIMARY_ROOT_PASSWORD=mongo1@alice
+      - MONGODB_INITIAL_PRIMARY_ROOT_USER=root
+    volumes:
+      - ./mongo2:/bitnami/mongodb
+    networks:
+      - mongo-net
+    depends_on:
+      - mongo1
+  # 副节点
+  mongo3:
+    image: 'bitnami/mongodb:latest'
+    container_name: mongo3
+    restart: always
+    ports:
+      - 27019:27017
+    environment:
+      - MONGODB_ROOT_USER=root
+      - MONGODB_REPLICA_SET_MODE=secondary
+      - MONGODB_REPLICA_SET_NAME=rs0
+      - MONGODB_REPLICA_SET_KEY=${MONGODB_REPLICA_SET_KEY}
+      - MONGODB_INITIAL_PRIMARY_HOST=mongo1
+      - MONGODB_INITIAL_PRIMARY_PORT_NUMBER=27017
+      - MONGODB_INITIAL_PRIMARY_ROOT_PASSWORD=mongo1@alice
+      - MONGODB_INITIAL_PRIMARY_ROOT_USER=root
+    volumes:
+      - ./mongo3:/bitnami/mongodb
+    networks:
+      - mongo-net
+    depends_on:
+      - mongo1
+networks:
+  mongo-net:
+    driver: bridge

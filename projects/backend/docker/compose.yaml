@@ -1,0 +1,107 @@
+x-backend-image: &backend-image
+  image: ${C2C_BACKEND_IMAGE:-ghcr.io/your-org/c2c-backend:latest}
+  pull_policy: always
+
+x-backend-volumes: &backend-volumes
+  - ${C2C_BACKEND_CONFIG_DIR:-./volumes/config}:/app/config:ro
+
+x-backend-environment: &backend-environment
+  NODE_ENV: production
+  C2C_BACKEND_PORT: 3000
+  C2C_SUPER_ADMIN_PASSWORD: ${C2C_SUPER_ADMIN_PASSWORD:?C2C_SUPER_ADMIN_PASSWORD is required}
+  C2C_CREDENTIAL_MASTER_KEY: ${C2C_CREDENTIAL_MASTER_KEY:?C2C_CREDENTIAL_MASTER_KEY is required}
+  C2C_POSTGRES_HOST: postgres
+  C2C_POSTGRES_PORT: 5432
+  C2C_POSTGRES_USER: ${C2C_POSTGRES_USER:-c2c_backend}
+  C2C_POSTGRES_PASSWORD: ${C2C_POSTGRES_PASSWORD:?C2C_POSTGRES_PASSWORD is required}
+  C2C_POSTGRES_DB: ${C2C_POSTGRES_DB:-c2c_backend}
+  C2C_REDIS_URL: redis://:${C2C_REDIS_PASSWORD:?C2C_REDIS_PASSWORD is required}@redis:6379
+
+services:
+  migrate:
+    <<: *backend-image
+    command: node dist/apps/migrate/main.js
+    environment: *backend-environment
+    restart: 'no'
+    volumes: *backend-volumes
+    networks:
+      - app-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    <<: *backend-image
+    container_name: c2c-backend
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${C2C_BACKEND_PORT:-3000}:3000'
+    environment: *backend-environment
+    volumes:
+      - ${C2C_BACKEND_CONFIG_DIR:-./volumes/config}:/app/config:ro
+      - ${C2C_BACKEND_LOG_DIR:-./volumes/logs}:/app/logs
+    networks:
+      - app-network
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/').then((response) => process.exit(response.status < 500 ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  postgres:
+    image: postgres:16.10-alpine
+    container_name: c2c-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${C2C_POSTGRES_USER:-c2c_backend}
+      POSTGRES_PASSWORD: ${C2C_POSTGRES_PASSWORD:?C2C_POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${C2C_POSTGRES_DB:-c2c_backend}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - ./volumes/postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    # Production persistence uses RDB format 14; do not downgrade below Redis 8.8.
+    image: redis:8.8.1-alpine
+    container_name: c2c-redis
+    restart: unless-stopped
+    command:
+      [
+        'redis-server',
+        '--appendonly',
+        'yes',
+        '--requirepass',
+        '${C2C_REDIS_PASSWORD:?C2C_REDIS_PASSWORD is required}',
+      ]
+    environment:
+      REDIS_PASSWORD: ${C2C_REDIS_PASSWORD:?C2C_REDIS_PASSWORD is required}
+    volumes:
+      - ./volumes/redis_data:/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -a "$${REDIS_PASSWORD}" ping | grep PONG']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+networks:
+  app-network:
+    driver: bridge
