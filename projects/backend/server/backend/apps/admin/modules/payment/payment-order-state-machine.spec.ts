@@ -1,4 +1,8 @@
-import { PaymentOrderState, PaymentOrderStateMachine } from './payment-order-state-machine'
+import {
+  assertPaymentOrderTransition,
+  PaymentOrderState,
+  PaymentOrderStateMachine,
+} from './payment-order-state-machine'
 
 describe('PaymentOrderStateMachine', () => {
   const machine = new PaymentOrderStateMachine()
@@ -34,5 +38,11 @@ describe('PaymentOrderStateMachine', () => {
     expect(() =>
       machine.transition(PaymentOrderState.SUCCESS, PaymentOrderState.SUBMITTING),
     ).toThrow('非法支付状态迁移')
+  })
+
+  it('exposes the same transition guard to persistence adapters', () => {
+    expect(() =>
+      assertPaymentOrderTransition(PaymentOrderState.READY, PaymentOrderState.COMPLETED),
+    ).toThrow('非法支付状态迁移: READY -> COMPLETED')
   })
 })

@@ -1,18 +1,8 @@
 import { Injectable } from '@nestjs/common'
+import { PaymentOrderStatus } from '@admin/database'
 
-export enum PaymentOrderState {
-  CREATED = 'CREATED',
-  READY = 'READY',
-  SUBMITTING = 'SUBMITTING',
-  PROCESSING = 'PROCESSING',
-  UNKNOWN = 'UNKNOWN',
-  SUCCESS = 'SUCCESS',
-  FAILED = 'FAILED',
-  CANCELLED = 'CANCELLED',
-  PLATFORM_CONFIRM_PENDING = 'PLATFORM_CONFIRM_PENDING',
-  COMPLETED = 'COMPLETED',
-  FUND_EXCEPTION = 'FUND_EXCEPTION',
-}
+export const PaymentOrderState = PaymentOrderStatus
+export type PaymentOrderState = PaymentOrderStatus
 
 const transitions: Record<PaymentOrderState, readonly PaymentOrderState[]> = {
   [PaymentOrderState.CREATED]: [PaymentOrderState.READY, PaymentOrderState.CANCELLED],
@@ -50,11 +40,18 @@ const transitions: Record<PaymentOrderState, readonly PaymentOrderState[]> = {
   [PaymentOrderState.FUND_EXCEPTION]: [],
 }
 
+export function assertPaymentOrderTransition(
+  current: PaymentOrderState,
+  next: PaymentOrderState,
+): void {
+  if (!transitions[current].includes(next))
+    throw new Error(`非法支付状态迁移: ${current} -> ${next}`)
+}
+
 @Injectable()
 export class PaymentOrderStateMachine {
   transition(current: PaymentOrderState, next: PaymentOrderState): PaymentOrderState {
-    if (!transitions[current].includes(next))
-      throw new Error(`非法支付状态迁移: ${current} -> ${next}`)
+    assertPaymentOrderTransition(current, next)
     return next
   }
 }
