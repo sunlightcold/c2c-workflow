@@ -1,0 +1,38 @@
+import { PaymentOrderState, PaymentOrderStateMachine } from './payment-order-state-machine'
+
+describe('PaymentOrderStateMachine', () => {
+  const machine = new PaymentOrderStateMachine()
+
+  it('moves a submitted order through payment success and platform confirmation', () => {
+    expect(machine.transition(PaymentOrderState.READY, PaymentOrderState.SUBMITTING)).toBe(
+      PaymentOrderState.SUBMITTING,
+    )
+    expect(machine.transition(PaymentOrderState.SUBMITTING, PaymentOrderState.SUCCESS)).toBe(
+      PaymentOrderState.SUCCESS,
+    )
+    expect(
+      machine.transition(PaymentOrderState.SUCCESS, PaymentOrderState.PLATFORM_CONFIRM_PENDING),
+    ).toBe(PaymentOrderState.PLATFORM_CONFIRM_PENDING)
+    expect(
+      machine.transition(PaymentOrderState.PLATFORM_CONFIRM_PENDING, PaymentOrderState.COMPLETED),
+    ).toBe(PaymentOrderState.COMPLETED)
+  })
+
+  it('allows UNKNOWN to be resolved by query but never resubmitted', () => {
+    expect(machine.transition(PaymentOrderState.SUBMITTING, PaymentOrderState.UNKNOWN)).toBe(
+      PaymentOrderState.UNKNOWN,
+    )
+    expect(() =>
+      machine.transition(PaymentOrderState.UNKNOWN, PaymentOrderState.SUBMITTING),
+    ).toThrow('非法支付状态迁移')
+    expect(machine.transition(PaymentOrderState.UNKNOWN, PaymentOrderState.SUCCESS)).toBe(
+      PaymentOrderState.SUCCESS,
+    )
+  })
+
+  it('does not allow a successful payment to return to submission', () => {
+    expect(() =>
+      machine.transition(PaymentOrderState.SUCCESS, PaymentOrderState.SUBMITTING),
+    ).toThrow('非法支付状态迁移')
+  })
+})

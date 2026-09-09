@@ -12,6 +12,7 @@ describe('admin migration registry', () => {
       'ClientErrorEvents1785008000000',
       'AiCallLogs1787001000000',
       'C2cBusinessFoundation1789000000000',
+      'C2cPaymentOrders1789001000000',
     ])
   })
 })

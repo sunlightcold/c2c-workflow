@@ -6,6 +6,7 @@ const LOCALE_ENUM = 'sys_tutorial_locale_enum'
 
 export async function migrateTutorialCenter(manager: EntityManager): Promise<void> {
   await manager.query('SELECT pg_advisory_xact_lock(804216734)')
+  await manager.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
   await manager.query(`
     DO $$ BEGIN
       CREATE TYPE "${LOCALE_ENUM}" AS ENUM ('zh', 'en', 'ja', 'zh-Hant');

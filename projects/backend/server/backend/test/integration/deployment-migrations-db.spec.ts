@@ -67,6 +67,7 @@ describe('Deployment migrations database integration', () => {
       'ClientErrorEvents1785008000000',
       'AiCallLogs1787001000000',
       'C2cBusinessFoundation1789000000000',
+      'C2cPaymentOrders1789001000000',
     ])
     expect(repeated).toEqual([])
     await expect(
@@ -81,6 +82,7 @@ describe('Deployment migrations database integration', () => {
       { name: 'ClientErrorEvents1785008000000' },
       { name: 'AiCallLogs1787001000000' },
       { name: 'C2cBusinessFoundation1789000000000' },
+      { name: 'C2cPaymentOrders1789001000000' },
     ])
   })
 })

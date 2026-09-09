@@ -8,6 +8,7 @@ import { ObjectStoragePurposePrefix1785002000000 } from './object-storage-purpos
 import { ClientErrorEvents1785008000000 } from './client-error-events.migration'
 import { AiCallLogs1787001000000 } from './ai-call-logs.migration'
 import { C2cBusinessFoundation1789000000000 } from './c2c-business-foundation.migration'
+import { C2cPaymentOrders1789001000000 } from './c2c-payment-orders.migration'
 
 export type AdminMigrationConstructor = new () => MigrationInterface
 
@@ -21,4 +22,5 @@ export const adminMigrations: AdminMigrationConstructor[] = [
   ClientErrorEvents1785008000000,
   AiCallLogs1787001000000,
   C2cBusinessFoundation1789000000000,
+  C2cPaymentOrders1789001000000,
 ]
