@@ -48,6 +48,7 @@ catalog:
   "@types/source-map-support": ^0.5.10
   "@types/supertest": ^6.0.2
   "adm-zip": ^0.5.16
+  "alipay-sdk": ^4.14.0
   "archiver": ^7.0.1
   "axios": ^1.7.9
   "bullmq": ^5.47.2

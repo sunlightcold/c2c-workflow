@@ -47,6 +47,7 @@
     "@nestjs/websockets": "catalog:",
     "@types/passport-jwt": "catalog:",
     "archiver": "catalog:",
+    "alipay-sdk": "catalog:",
     "axios": "catalog:",
     "bullmq": "catalog:",
     "cache-manager": "catalog:",
