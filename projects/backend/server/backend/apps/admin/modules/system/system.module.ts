@@ -13,6 +13,7 @@ import { StorageModule } from './storage'
 import { TutorialAdminModule } from './tutorial/tutorial-admin.module'
 import { CredentialModule } from './credential'
 import { AiModule } from './ai'
+import { BusinessModule } from '../business'
 
 const modules = [
   CredentialModule,
@@ -26,6 +27,7 @@ const modules = [
   ParamsModule,
   StorageModule,
   TutorialAdminModule,
+  BusinessModule,
 ]
 
 @Module({

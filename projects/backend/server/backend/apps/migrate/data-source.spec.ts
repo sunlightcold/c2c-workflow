@@ -16,6 +16,7 @@ describe('migration data source', () => {
         'AiGatewayChannelCapacity1785005600000',
         'ClientErrorEvents1785008000000',
         'AiCallLogs1787001000000',
+        'C2cBusinessFoundation1789000000000',
       ])
     } finally {
       if (originalNodeEnv === undefined) delete process.env.NODE_ENV

@@ -7,6 +7,7 @@ import { ObjectStorageCenter1785001000000 } from './object-storage-center.migrat
 import { ObjectStoragePurposePrefix1785002000000 } from './object-storage-purpose-prefix.migration'
 import { ClientErrorEvents1785008000000 } from './client-error-events.migration'
 import { AiCallLogs1787001000000 } from './ai-call-logs.migration'
+import { C2cBusinessFoundation1789000000000 } from './c2c-business-foundation.migration'
 
 export type AdminMigrationConstructor = new () => MigrationInterface
 
@@ -19,4 +20,5 @@ export const adminMigrations: AdminMigrationConstructor[] = [
   AiGatewayChannelCapacity1785005600000,
   ClientErrorEvents1785008000000,
   AiCallLogs1787001000000,
+  C2cBusinessFoundation1789000000000,
 ]

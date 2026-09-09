@@ -1,6 +1,11 @@
 import type { Request } from 'express'
 import type { UserType } from '../constants'
 
+export enum ActorType {
+  PLATFORM = 'PLATFORM',
+  TENANT = 'TENANT',
+}
+
 export interface AuthUser<T = number> {
   // 用户id (Admin为number, App为string/UUID)
   uid: T
@@ -14,6 +19,9 @@ export interface AuthUser<T = number> {
   nickname?: string
   type?: string
   sessionId?: string
+  actorType?: ActorType
+  tenantId?: string
+  authzVersion?: number
 }
 
 export interface VerifyAuthUser<T = number> extends AuthUser<T> {

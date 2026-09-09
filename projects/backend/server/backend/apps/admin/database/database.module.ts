@@ -22,6 +22,15 @@ import {
   SysAiCallLogEntity,
   SysClientErrorEventEntity,
 } from './system'
+import {
+  MerchantEntity,
+  MerchantPaymentPlanEntity,
+  PaymentAccountChannelEntity,
+  PaymentAccountEntity,
+  PaymentChannelEntity,
+  PaymentPlatformEntity,
+  TenantEntity,
+} from './business'
 
 const sysEntities = [
   SysUserEntity,
@@ -45,7 +54,16 @@ const sysEntities = [
   SysClientErrorEventEntity,
 ]
 
-const entities = [...sysEntities]
+const entities = [
+  ...sysEntities,
+  TenantEntity,
+  MerchantEntity,
+  PaymentPlatformEntity,
+  PaymentChannelEntity,
+  PaymentAccountEntity,
+  PaymentAccountChannelEntity,
+  MerchantPaymentPlanEntity,
+]
 
 /**
  * 数据base 全局模块

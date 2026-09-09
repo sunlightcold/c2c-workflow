@@ -34,8 +34,8 @@ export class AuthService {
   @Inject(forwardRef(() => OnlineService)) private readonly onlineService: OnlineService
 
   getAuthUserByUser(user: SysUserEntity): AuthUser {
-    const { username, id } = user
-    const payload = { username, uid: id }
+    const { username, id, actorType, tenantId, authzVersion } = user
+    const payload = { username, uid: id, actorType, tenantId: tenantId ?? undefined, authzVersion }
     return payload
   }
 

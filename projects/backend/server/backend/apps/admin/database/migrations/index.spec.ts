@@ -11,6 +11,7 @@ describe('admin migration registry', () => {
       'AiGatewayChannelCapacity1785005600000',
       'ClientErrorEvents1785008000000',
       'AiCallLogs1787001000000',
+      'C2cBusinessFoundation1789000000000',
     ])
   })
 })

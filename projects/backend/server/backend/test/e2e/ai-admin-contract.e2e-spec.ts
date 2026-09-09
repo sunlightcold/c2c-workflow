@@ -12,6 +12,7 @@ import { AiChannelService } from '@/apps/admin/modules/system/ai/ai-channel.serv
 import { AiController } from '@/apps/admin/modules/system/ai/ai.controller'
 import { AiFeatureRouteService } from '@/apps/admin/modules/system/ai/ai-feature-route.service'
 import { AiModelService } from '@/apps/admin/modules/system/ai/ai-model.service'
+import { AiCallLogService } from '@/apps/admin/modules/system/ai/ai-call-log.service'
 import {
   createAdminContractTestApp,
   expectWrappedError,
@@ -27,6 +28,7 @@ describe('AI administration API contract (e2e)', () => {
   }
   const modelService = { create: jest.fn(), list: jest.fn() }
   const routeService = { create: jest.fn(), list: jest.fn() }
+  const callLogService = { filter: jest.fn(), stats: jest.fn() }
 
   beforeAll(async () => {
     app = await createAdminContractTestApp({
@@ -36,6 +38,7 @@ describe('AI administration API contract (e2e)', () => {
         { provide: AiChannelService, useValue: channelService },
         { provide: AiModelService, useValue: modelService },
         { provide: AiFeatureRouteService, useValue: routeService },
+        { provide: AiCallLogService, useValue: callLogService },
       ],
     })
   })

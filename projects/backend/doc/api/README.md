@@ -50,6 +50,7 @@
 ## 文档目录
 
 - [main](main/README.md)：当前管理端和平台契约。
+- [C2C 业务配置](main/c2c-business-config.md)：所属单位、商家、支付账号、账号通道和支付方案。
 - [registry.md](registry.md)：API 路由注册表。
 
 ## Contract Test

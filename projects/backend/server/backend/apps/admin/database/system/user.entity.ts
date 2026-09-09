@@ -1,5 +1,5 @@
 import { TraceableEntity } from '@/common/entities'
-import { StatusEnum } from '@/common/interfaces'
+import { ActorType, StatusEnum } from '@/common/interfaces'
 import { BeforeInsert, Column, Entity, JoinTable, ManyToMany } from 'typeorm'
 import { SysRoleEntity } from './role.entity'
 
@@ -7,6 +7,20 @@ export const SysUserTableName = 'sys_user'
 
 @Entity(SysUserTableName)
 export class SysUserEntity extends TraceableEntity {
+  @Column({
+    type: 'enum',
+    enum: ActorType,
+    enumName: 'actor_type_enum',
+    default: ActorType.PLATFORM,
+  })
+  actorType: ActorType
+
+  @Column({ type: 'uuid', nullable: true })
+  tenantId: string | null
+
+  @Column({ type: 'integer', default: 1 })
+  authzVersion: number
+
   @Column({ type: 'varchar' })
   salt: string
 
