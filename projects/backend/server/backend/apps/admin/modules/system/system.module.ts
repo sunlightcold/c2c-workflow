@@ -14,6 +14,7 @@ import { TutorialAdminModule } from './tutorial/tutorial-admin.module'
 import { CredentialModule } from './credential'
 import { AiModule } from './ai'
 import { BusinessModule } from '../business'
+import { C2cPlatformModule } from '../c2c-platform'
 
 const modules = [
   CredentialModule,
@@ -28,6 +29,7 @@ const modules = [
   StorageModule,
   TutorialAdminModule,
   BusinessModule,
+  C2cPlatformModule,
 ]
 
 @Module({
