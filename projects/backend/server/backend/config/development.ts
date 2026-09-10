@@ -6,8 +6,8 @@ export default {
     timeZone: env.C2C_TIME_ZONE ?? 'Asia/Shanghai',
     dbTimeZone: 'UTC',
     superAdminUid: Number(env.C2C_SUPER_ADMIN_UID ?? '1'),
-    superAdminName: env.C2C_SUPER_ADMIN_NAME ?? 'superAdmin',
-    superAdminPassword: env.C2C_SUPER_ADMIN_PASSWORD ?? 'change-me-before-use',
+    superAdminName: env.C2C_SUPER_ADMIN_NAME ?? '老伍',
+    superAdminPassword: env.C2C_SUPER_ADMIN_PASSWORD ?? '123456',
   },
   admin: {
     sysPrefix: env.C2C_REDIS_PREFIX ?? 'c2c',
