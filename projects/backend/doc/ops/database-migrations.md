@@ -60,3 +60,9 @@ Compose 会等待 PostgreSQL 健康检查通过，启动一次性 `migrate` 服�
 5. TypeORM 迁移链测试验证 `schema_migrations` 记录版本且第二次执行返回零项。
 6. `lint:server`、`typecheck:server`、`test:server`、`test:integration` 和 `build` 通过。
 7. `output/volumes/apps/migrate/main.js` 与 `output/compose.yaml` 已检查。
+
+## C2C 迁移顺序
+
+1. `C2cBusinessFoundation1789000000000`：所属单位、商家和支付配置。
+2. `C2cPaymentOrders1789001000000`：支付订单、支付尝试和状态历史。
+3. `C2cPaymentRouting1789002000000`：待配置状态、可空路由快照、支付方式和执行方式。

@@ -1,0 +1,161 @@
+import {
+  MerchantEntity,
+  PaymentExecutionMode,
+  PaymentOrderEntity,
+  PaymentOrderStatus,
+  PaymentSourceType,
+} from '@admin/database'
+import { BadRequestException, ConflictException } from '@nestjs/common'
+import { getRepositoryToken } from '@nestjs/typeorm'
+import { Test } from '@nestjs/testing'
+import { DataSource } from 'typeorm'
+import { PAYMENT_PLAN_RESOLVER } from './payment-plan-resolver'
+import { PaymentOrderService } from './payment-order.service'
+
+describe('PaymentOrderService', () => {
+  const tenantId = '00000000-0000-4000-8000-000000000010'
+  const merchantId = '00000000-0000-4000-8000-000000000020'
+  const input = {
+    merchantId,
+    sourceType: PaymentSourceType.BOT_MANUAL,
+    sourceBusinessNo: 'manual-1',
+    amount: '100.00',
+    currency: 'CNY',
+    paymentMethod: 'ALIPAY',
+    executionMode: PaymentExecutionMode.BATCH,
+    payeeIdentity: 'payee@example.com',
+    payeeName: 'Payee',
+  }
+  const orders = {
+    create: jest.fn((value) => value),
+    findOne: jest.fn(),
+  }
+  const manager = {
+    findOne: jest.fn((_entity: unknown, options: unknown) => orders.findOne(options)),
+    save: jest.fn(async (_entity: unknown, value: object) => ({ id: 'order-1', ...value })),
+    insert: jest.fn(),
+  }
+  const dataSource = {
+    transaction: jest.fn((callback: (value: typeof manager) => unknown) => callback(manager)),
+  }
+  const merchants = { findOne: jest.fn() }
+  const resolver = { resolve: jest.fn() }
+  let service: PaymentOrderService
+
+  beforeEach(async () => {
+    jest.clearAllMocks()
+    dataSource.transaction.mockImplementation((callback) => callback(manager))
+    merchants.findOne.mockResolvedValue({ id: merchantId, tenantId, status: 'active' })
+    orders.findOne.mockResolvedValue(null)
+    const module = await Test.createTestingModule({
+      providers: [
+        PaymentOrderService,
+        { provide: getRepositoryToken(PaymentOrderEntity), useValue: orders },
+        { provide: getRepositoryToken(MerchantEntity), useValue: merchants },
+        { provide: PAYMENT_PLAN_RESOLVER, useValue: resolver },
+        { provide: DataSource, useValue: dataSource },
+      ],
+    }).compile()
+    service = module.get(PaymentOrderService)
+  })
+
+  it('creates a ready order with one locked account-channel route', async () => {
+    resolver.resolve.mockResolvedValue({
+      planId: 'plan-1',
+      paymentAccountId: 'account-1',
+      paymentAccountChannelId: 'account-channel-1',
+      adapterCode: 'ALIPAY_BATCH',
+      executionMode: PaymentExecutionMode.BATCH,
+    })
+
+    await expect(service.create(tenantId, input)).resolves.toMatchObject({
+      status: PaymentOrderStatus.READY,
+      paymentPlanId: 'plan-1',
+      paymentAccountId: 'account-1',
+      paymentAccountChannelId: 'account-channel-1',
+    })
+  })
+
+  it('creates a pending-config order when no complete route is available', async () => {
+    resolver.resolve.mockResolvedValue(null)
+
+    await expect(service.create(tenantId, input)).resolves.toMatchObject({
+      status: PaymentOrderStatus.PENDING_CONFIG,
+      paymentPlanId: null,
+      paymentAccountId: null,
+      paymentAccountChannelId: null,
+    })
+  })
+
+  it('returns the existing order for the same tenant merchant source and business number', async () => {
+    orders.findOne.mockResolvedValue({ id: 'existing', status: PaymentOrderStatus.READY, ...input })
+
+    await expect(service.create(tenantId, input)).resolves.toMatchObject({ id: 'existing' })
+    expect(resolver.resolve).not.toHaveBeenCalled()
+    expect(manager.save).not.toHaveBeenCalled()
+  })
+
+  it('normalizes equivalent CNY amount strings before idempotency comparison', async () => {
+    orders.findOne.mockResolvedValue({
+      id: 'existing',
+      status: PaymentOrderStatus.READY,
+      ...input,
+      amount: '100.00',
+    })
+
+    await expect(service.create(tenantId, { ...input, amount: '100' })).resolves.toMatchObject({
+      id: 'existing',
+    })
+  })
+
+  it('rejects reuse of a source business number with different payment details', async () => {
+    orders.findOne.mockResolvedValue({
+      id: 'existing',
+      status: PaymentOrderStatus.READY,
+      ...input,
+      amount: '99.00',
+    })
+
+    await expect(service.create(tenantId, input)).rejects.toBeInstanceOf(ConflictException)
+  })
+
+  it('rejects currencies not supported by the current Alipay channels', async () => {
+    await expect(service.create(tenantId, { ...input, currency: 'USD' })).rejects.toBeInstanceOf(
+      BadRequestException,
+    )
+    expect(resolver.resolve).not.toHaveBeenCalled()
+  })
+
+  it('rejects a merchant outside the current tenant', async () => {
+    merchants.findOne.mockResolvedValue(null)
+
+    await expect(service.create(tenantId, input)).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  it('rematches only pending-config orders and locks the newly available route', async () => {
+    orders.findOne.mockResolvedValue({
+      id: 'order-1',
+      tenantId,
+      merchantId,
+      sourceType: input.sourceType,
+      sourceBusinessNo: input.sourceBusinessNo,
+      amount: input.amount,
+      currency: input.currency,
+      paymentMethod: input.paymentMethod,
+      executionMode: input.executionMode,
+      status: PaymentOrderStatus.PENDING_CONFIG,
+    })
+    resolver.resolve.mockResolvedValue({
+      planId: 'plan-1',
+      paymentAccountId: 'account-1',
+      paymentAccountChannelId: 'account-channel-1',
+      adapterCode: 'ALIPAY_BATCH',
+      executionMode: PaymentExecutionMode.BATCH,
+    })
+
+    await expect(service.rematch(tenantId, 'order-1')).resolves.toMatchObject({
+      status: PaymentOrderStatus.READY,
+      paymentPlanId: 'plan-1',
+    })
+  })
+})

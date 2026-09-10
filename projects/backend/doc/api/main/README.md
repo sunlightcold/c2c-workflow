@@ -8,5 +8,7 @@
 | [system-ops-api.md](system-ops-api.md) | 日志、在线会话、任务、静态文件、OSS | `/v1/sys`、`/v1/static`、`/v1/oss` |
 | [system-ai-api.md](system-ai-api.md) | AI 渠道、模型、功能路由 | `/v1/sys/ai` |
 | [client-error-api.md](client-error-api.md) | 客户端错误采集与管理 | `/v1/client-errors`、`/v1/sys/client-errors` |
+| [c2c-business-config.md](c2c-business-config.md) | 所属单位、商家、支付账号、通道和方案 | `/v1/sys` |
+| [c2c-payment-orders.md](c2c-payment-orders.md) | 支付订单创建与重新匹配 | `/v1/sys/payment-orders` |
 
-接口文档必须与 Controller、DTO、权限码、响应包装和 contract test 同步。C2C 业务模块实现后按商家、订单、支付、Telegram 和代理商边界新增文档。
+接口文档必须与 Controller、DTO、权限码、响应包装和 contract test 同步。

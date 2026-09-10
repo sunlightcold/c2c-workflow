@@ -1,5 +1,6 @@
 import { CommonUuidEntity } from '@/common/entities'
 import { Column, Entity, Index, VersionColumn } from 'typeorm'
+import { PaymentExecutionMode } from './business.enums'
 
 export enum PaymentSourceType {
   C2C_BUY = 'C2C_BUY',
@@ -8,6 +9,7 @@ export enum PaymentSourceType {
 }
 
 export enum PaymentOrderStatus {
+  PENDING_CONFIG = 'PENDING_CONFIG',
   CREATED = 'CREATED',
   READY = 'READY',
   SUBMITTING = 'SUBMITTING',
@@ -40,11 +42,19 @@ export class PaymentOrderEntity extends CommonUuidEntity {
   @Column({ type: 'varchar', length: 64, update: false }) paymentNo: string
   @Column({ type: 'decimal', precision: 20, scale: 2, update: false }) amount: string
   @Column({ type: 'varchar', length: 16, update: false }) currency: string
+  @Column({ type: 'varchar', length: 32, update: false }) paymentMethod: string
+  @Column({
+    type: 'enum',
+    enum: PaymentExecutionMode,
+    enumName: 'payment_execution_mode_enum',
+    update: false,
+  })
+  executionMode: PaymentExecutionMode
   @Column({ type: 'varchar', length: 255, update: false }) payeeIdentity: string
   @Column({ type: 'varchar', length: 128, update: false }) payeeName: string
-  @Column({ type: 'uuid', update: false }) paymentPlanId: string
-  @Column({ type: 'uuid', update: false }) paymentAccountId: string
-  @Column({ type: 'uuid', update: false }) paymentAccountChannelId: string
+  @Column({ type: 'uuid', nullable: true }) paymentPlanId: string | null
+  @Column({ type: 'uuid', nullable: true }) paymentAccountId: string | null
+  @Column({ type: 'uuid', nullable: true }) paymentAccountChannelId: string | null
   @Column({ type: 'enum', enum: PaymentOrderStatus, enumName: 'payment_order_status_enum' })
   status: PaymentOrderStatus
   @Column({ type: 'varchar', length: 128, nullable: true }) upstreamId: string | null
@@ -72,8 +82,13 @@ export class PaymentOrderStatusHistoryEntity extends CommonUuidEntity {
   @Column({ type: 'uuid', update: false }) tenantId: string
   @Column({ type: 'uuid', update: false }) merchantId: string
   @Column({ type: 'uuid', update: false }) paymentOrderId: string
-  @Column({ type: 'enum', enum: PaymentOrderStatus, enumName: 'payment_order_status_enum' })
-  fromStatus: PaymentOrderStatus
+  @Column({
+    type: 'enum',
+    enum: PaymentOrderStatus,
+    enumName: 'payment_order_status_enum',
+    nullable: true,
+  })
+  fromStatus: PaymentOrderStatus | null
   @Column({ type: 'enum', enum: PaymentOrderStatus, enumName: 'payment_order_status_enum' })
   toStatus: PaymentOrderStatus
   @Column({ type: 'varchar', length: 64 }) source: string

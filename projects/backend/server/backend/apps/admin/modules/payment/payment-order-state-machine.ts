@@ -5,6 +5,7 @@ export const PaymentOrderState = PaymentOrderStatus
 export type PaymentOrderState = PaymentOrderStatus
 
 const transitions: Record<PaymentOrderState, readonly PaymentOrderState[]> = {
+  [PaymentOrderState.PENDING_CONFIG]: [PaymentOrderState.READY, PaymentOrderState.CANCELLED],
   [PaymentOrderState.CREATED]: [PaymentOrderState.READY, PaymentOrderState.CANCELLED],
   [PaymentOrderState.READY]: [PaymentOrderState.SUBMITTING, PaymentOrderState.CANCELLED],
   [PaymentOrderState.SUBMITTING]: [
