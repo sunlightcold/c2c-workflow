@@ -103,6 +103,34 @@ export class CreatePaymentAccountDto extends TenantContextDto {
   credentialRef: string
 }
 
+export class RotateMerchantPlatformCredentialDto extends TenantContextDto {
+  @ApiProperty({ description: 'Secret Manager/KMS 凭据引用' })
+  @Transform(trim)
+  @Matches(/^[a-zA-Z][a-zA-Z0-9+._:/-]{7,254}$/)
+  credentialRef: string
+
+  @ApiPropertyOptional({ description: '币安客户端类型' })
+  @Transform(trim)
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  clientType?: string
+
+  @ApiPropertyOptional({ description: '币安用户标识' })
+  @Transform(trim)
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  xUserId?: string
+
+  @ApiPropertyOptional({ default: 5000, minimum: 1000, maximum: 60000 })
+  @IsOptional()
+  @IsInt()
+  @Min(1000)
+  @Max(60000)
+  requestTimeoutMs = 5000
+}
+
 export class OpenPaymentAccountChannelDto extends TenantContextDto {
   @ApiProperty()
   @IsUUID()

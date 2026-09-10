@@ -9,15 +9,21 @@ import {
   CreatePaymentPlanDto,
   CreateTenantDto,
   OpenPaymentAccountChannelDto,
+  RotateMerchantPlatformCredentialDto,
   SetTenantStatusDto,
   TenantContextDto,
 } from './business.dto'
 import { MerchantService } from './merchant.service'
 import { PaymentConfigService } from './payment-config.service'
 import { TenantService } from './tenant.service'
+import { MerchantPlatformCredentialService } from './merchant-platform-credential.service'
 
 const TenantPermissions = definePermission('agency:tenant', ['read', 'create', 'update'] as const)
-const MerchantPermissions = definePermission('merchant:account', ['read', 'create'] as const)
+const MerchantPermissions = definePermission('merchant:account', [
+  'read',
+  'create',
+  'credential',
+] as const)
 const PaymentPermissions = definePermission('payment:account', ['create', 'bind'] as const)
 
 @ApiTags('C2C-业务配置')
@@ -29,6 +35,7 @@ export class BusinessController {
     private readonly tenants: TenantService,
     private readonly merchants: MerchantService,
     private readonly payments: PaymentConfigService,
+    private readonly platformCredentials: MerchantPlatformCredentialService,
   ) {}
 
   @Get('tenants')
@@ -60,6 +67,27 @@ export class BusinessController {
   createMerchant(@Body() dto: CreateMerchantDto, @User() actor: AuthUser) {
     const { tenantId, ...input } = dto
     return this.merchants.create(this.scope.resolveTenantId(actor, tenantId), input)
+  }
+
+  @Get('merchants/:id/platform-credentials')
+  @Permission(MerchantPermissions.READ)
+  listMerchantPlatformCredentials(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() dto: TenantContextDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.platformCredentials.list(this.scope.resolveTenantId(actor, dto.tenantId), id)
+  }
+
+  @Post('merchants/:id/platform-credentials')
+  @Permission(MerchantPermissions.CREDENTIAL)
+  rotateMerchantPlatformCredential(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RotateMerchantPlatformCredentialDto,
+    @User() actor: AuthUser,
+  ) {
+    const { tenantId, ...input } = dto
+    return this.platformCredentials.rotate(this.scope.resolveTenantId(actor, tenantId), id, input)
   }
 
   @Post('payment-accounts')

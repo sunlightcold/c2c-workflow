@@ -19,9 +19,15 @@ Controller：`BusinessController`。基础路径：`/v1/sys`。所有接口均�
 | --- | --- | --- | --- | --- |
 | GET | `/merchants` | `merchant:account:read` | Query `{ tenantId? }` | `MerchantEntity[]` |
 | POST | `/merchants` | `merchant:account:create` | `{ tenantId?, code, name, platform, externalMerchantId? }` | `MerchantEntity` |
+| GET | `/merchants/{id}/platform-credentials` | `merchant:account:read` | Query `{ tenantId? }` | 凭据版本元数据数组 |
+| POST | `/merchants/{id}/platform-credentials` | `merchant:account:credential` | `{ tenantId?, credentialRef, clientType?, xUserId?, requestTimeoutMs? }` | 新凭据版本元数据 |
 
 `platform` 只能是 `BINANCE` 或 `OKX`，创建后不可修改。代理商用户的 `tenantId` 从 JWT
 取得，即使提交其他值也会被拒绝；平台用户必须显式提交当前经营的 `tenantId`。
+
+新增平台凭据会停用该商家的旧版本并创建递增版本。同一商家仅一个版本生效。币安要求
+`clientType`；欧易不接受 `clientType` 和 `xUserId`。接口只返回是否已配置和版本元数据，
+不返回 `credentialRef` 或 Secret 内容。
 
 ## 支付账号、通道和方案
 
@@ -44,4 +50,3 @@ Controller：`BusinessController`。基础路径：`/v1/sys`。所有接口均�
 | 401 | 未登录或令牌失效 |
 | 403 | 缺少动作权限、所属单位范围不匹配、平台人员未选择经营所属单位 |
 | 404 | 路径资源不存在 |
-

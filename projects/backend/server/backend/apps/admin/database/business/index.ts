@@ -1,5 +1,6 @@
 export * from './business.enums'
 export * from './merchant.entity'
+export * from './merchant-platform-credential.entity'
 export * from './payment.entity'
 export * from './payment-order.entity'
 export * from './tenant.entity'

@@ -4,6 +4,7 @@ import { BusinessController } from '@/apps/admin/modules/business/business.contr
 import { BusinessScopeService } from '@/apps/admin/modules/business/business-scope.service'
 import { MerchantService } from '@/apps/admin/modules/business/merchant.service'
 import { PaymentConfigService } from '@/apps/admin/modules/business/payment-config.service'
+import { MerchantPlatformCredentialService } from '@/apps/admin/modules/business/merchant-platform-credential.service'
 import { TenantService } from '@/apps/admin/modules/business/tenant.service'
 import {
   createAdminContractTestApp,
@@ -24,6 +25,7 @@ describe('Business configuration API contract (e2e)', () => {
   const tenants = { create: jest.fn(), list: jest.fn() }
   const merchants = { create: jest.fn(), list: jest.fn() }
   const payments = { createAccount: jest.fn(), openAccountChannel: jest.fn(), createPlan: jest.fn() }
+  const credentials = { list: jest.fn(), rotate: jest.fn() }
 
   beforeAll(async () => {
     app = await createAdminContractTestApp({
@@ -34,6 +36,7 @@ describe('Business configuration API contract (e2e)', () => {
         { provide: TenantService, useValue: tenants },
         { provide: MerchantService, useValue: merchants },
         { provide: PaymentConfigService, useValue: payments },
+        { provide: MerchantPlatformCredentialService, useValue: credentials },
       ],
     })
   })
@@ -74,5 +77,30 @@ describe('Business configuration API contract (e2e)', () => {
       .expect(201)
     expectWrappedSuccess(response.body)
     expect(payments.createPlan).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ currency: 'CNY' }))
+  })
+
+  it('rotates merchant platform credentials without returning a secret reference', async () => {
+    credentials.rotate.mockResolvedValue({
+      id: 'credential-1',
+      version: 1,
+      platform: 'BINANCE',
+      credentialConfigured: true,
+    })
+    const response = await request(app.getHttpServer())
+      .post('/v1/sys/merchants/00000000-0000-4000-8000-000000000020/platform-credentials')
+      .send({
+        tenantId: '00000000-0000-4000-8000-000000000010',
+        credentialRef: 'vault://c2c/binance/merchant-1/v1',
+        clientType: 'WEB',
+        requestTimeoutMs: 5000,
+      })
+      .expect(201)
+    expectWrappedSuccess(response.body)
+    expect(response.body.data).not.toHaveProperty('credentialRef')
+    expect(credentials.rotate).toHaveBeenCalledWith(
+      'tenant-1',
+      '00000000-0000-4000-8000-000000000020',
+      expect.objectContaining({ clientType: 'WEB' }),
+    )
   })
 })

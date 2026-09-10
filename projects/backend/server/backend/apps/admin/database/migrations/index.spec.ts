@@ -14,6 +14,7 @@ describe('admin migration registry', () => {
       'C2cBusinessFoundation1789000000000',
       'C2cPaymentOrders1789001000000',
       'C2cPaymentRouting1789002000000',
+      'C2cMerchantPlatformCredentials1789003000000',
     ])
   })
 })

@@ -19,6 +19,7 @@ describe('migration data source', () => {
         'C2cBusinessFoundation1789000000000',
         'C2cPaymentOrders1789001000000',
         'C2cPaymentRouting1789002000000',
+        'C2cMerchantPlatformCredentials1789003000000',
       ])
     } finally {
       if (originalNodeEnv === undefined) delete process.env.NODE_ENV
