@@ -51,6 +51,8 @@ C2C 买币支付订单进入实际付款前，系统按所属单位和商家重�
 
 任一条件不成立时，支付宝资金请求不会发出，支付订单进入明确失败并记录原因。支付宝资金请求已经发出但无法确认结果时才进入 `UNKNOWN`，后续必须使用原支付单号回查。
 
+复核通过后，系统使用锁定支付账号的内部 Secret 引用创建独立支付宝客户端，以支付订单 `paymentNo` 作为 `out_biz_no` 调用 `alipay.fund.trans.uni.transfer`。支付宝明确返回失败时支付订单进入 `FAILED`；调用超时或响应结果无法确认时进入 `UNKNOWN`，不得生成新业务单号再次付款。回查调用 `alipay.fund.trans.common.query`，并继续使用原 `paymentNo`。
+
 ## 错误
 
 | HTTP | 场景 |

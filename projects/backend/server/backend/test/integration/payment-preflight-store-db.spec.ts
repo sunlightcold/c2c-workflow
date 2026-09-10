@@ -155,10 +155,18 @@ describe('Payment preflight store database integration', () => {
         platformOrderId: 'BIN-PREFLIGHT-1',
       },
       credential: { credentialRef: 'env://BINANCE_PREFLIGHT' },
-      account: { id: accountId, tenantId },
+      account: { id: accountId, tenantId, credentialRef: 'env://ALIPAY_PREFLIGHT' },
       accountChannel: { id: accountChannelId, paymentAccountId: accountId },
       channel: { id: C2C_FOUNDATION_IDS.alipayMerchantTransferChannel },
     })
+  })
+
+  it('keeps the payment account Secret reference out of ordinary repository reads', async () => {
+    const account = await dataSource
+      .getRepository(PaymentAccountEntity)
+      .findOneByOrFail({ id: accountId, tenantId })
+
+    expect(account.credentialRef).toBeUndefined()
   })
 
   it('does not load a payment order through another tenant scope', async () => {

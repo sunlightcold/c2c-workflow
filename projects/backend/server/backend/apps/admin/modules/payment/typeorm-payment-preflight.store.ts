@@ -54,7 +54,11 @@ export class TypeOrmPaymentPreflightStore implements PaymentPreflightStore {
       order.paymentAccountId
         ? this.dataSource
             .getRepository(PaymentAccountEntity)
-            .findOne({ where: { id: order.paymentAccountId, tenantId } })
+            .createQueryBuilder('account')
+            .addSelect('account.credentialRef')
+            .where('account.id = :accountId', { accountId: order.paymentAccountId })
+            .andWhere('account."tenantId" = :tenantId', { tenantId })
+            .getOne()
         : null,
       order.paymentAccountChannelId
         ? this.dataSource

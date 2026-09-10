@@ -2,6 +2,11 @@ import { Injectable } from '@nestjs/common'
 import { AlipaySdk, type AlipaySdkConfig } from 'alipay-sdk'
 import type { AlipayGateway } from './payment-adapter.types'
 
+const ALIPAY_GATEWAYS = new Set([
+  'https://openapi.alipay.com/gateway.do',
+  'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+])
+
 export interface AlipayCredential {
   authMode: 'KEY' | 'CERT'
   appId: string
@@ -16,12 +21,16 @@ export interface AlipayCredential {
 @Injectable()
 export class AlipayGatewayFactory {
   create(credential: AlipayCredential): AlipayGateway {
+    if (credential.authMode !== 'KEY' && credential.authMode !== 'CERT')
+      throw new Error('支付宝认证模式必须是 KEY 或 CERT')
     const appId = this.requireValue(credential.appId, '支付宝应用 ID 未配置')
     const privateKey = this.requireValue(credential.privateKey, '支付宝应用私钥未配置')
+    const gateway = credential.gateway?.trim()
+    if (gateway && !ALIPAY_GATEWAYS.has(gateway)) throw new Error('支付宝网关地址不在允许范围内')
     const config: AlipaySdkConfig = {
       appId,
       privateKey,
-      gateway: credential.gateway,
+      gateway,
       keyType: 'PKCS8',
       signType: 'RSA2',
     }

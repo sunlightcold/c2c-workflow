@@ -38,7 +38,7 @@ Controller：`BusinessController`。基础路径：`/v1/sys`。所有接口均�
 | POST | `/payment-plans` | `payment:account:bind` | `{ tenantId?, merchantId, paymentAccountId, paymentAccountChannelId, scene, currency, priority, weight }` | `MerchantPaymentPlanEntity` |
 
 支付方案中的 `paymentAccountChannelId` 必须属于 `paymentAccountId` 且已启用；商家和支付账号
-必须属于同一所属单位。账号只提交 Secret Manager/KMS 的 `credentialRef`，不通过本接口保存明文秘钥。
+必须属于同一所属单位。账号只提交 Secret Manager/KMS 的 `credentialRef`，不通过本接口保存明文秘钥；创建响应、后续查询和导出均不返回 `credentialRef` 或 Secret 内容。
 
 ## 响应与错误
 

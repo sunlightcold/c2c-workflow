@@ -52,9 +52,11 @@ export class PaymentConfigService {
       where: { id: input.platformId, status: BusinessStatus.ACTIVE },
     })
     if (!platform) throw new BadRequestException('支付平台不可用')
-    return this.accountRepository.save(
+    const account = await this.accountRepository.save(
       this.accountRepository.create({ ...input, tenantId, status: BusinessStatus.ACTIVE }),
     )
+    const { credentialRef: _credentialRef, ...response } = account
+    return response
   }
 
   async openAccountChannel(

@@ -24,7 +24,11 @@ describe('Business configuration API contract (e2e)', () => {
   const scope = { resolveTenantId: jest.fn().mockReturnValue('tenant-1') }
   const tenants = { create: jest.fn(), list: jest.fn() }
   const merchants = { create: jest.fn(), list: jest.fn() }
-  const payments = { createAccount: jest.fn(), openAccountChannel: jest.fn(), createPlan: jest.fn() }
+  const payments = {
+    createAccount: jest.fn(),
+    openAccountChannel: jest.fn(),
+    createPlan: jest.fn(),
+  }
   const credentials = { list: jest.fn(), rotate: jest.fn() }
 
   beforeAll(async () => {
@@ -48,16 +52,29 @@ describe('Business configuration API contract (e2e)', () => {
     merchants.create.mockResolvedValue({ id: 'merchant-1', platform: 'BINANCE' })
     const response = await request(app.getHttpServer())
       .post('/v1/sys/merchants')
-      .send({ tenantId: '00000000-0000-4000-8000-000000000010', code: 'm-1', name: 'M1', platform: 'BINANCE' })
+      .send({
+        tenantId: '00000000-0000-4000-8000-000000000010',
+        code: 'm-1',
+        name: 'M1',
+        platform: 'BINANCE',
+      })
       .expect(201)
     expectWrappedSuccess(response.body)
-    expect(merchants.create).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ platform: 'BINANCE' }))
+    expect(merchants.create).toHaveBeenCalledWith(
+      'tenant-1',
+      expect.objectContaining({ platform: 'BINANCE' }),
+    )
   })
 
   it('rejects unsupported merchant platforms before invoking the service', async () => {
     const response = await request(app.getHttpServer())
       .post('/v1/sys/merchants')
-      .send({ tenantId: '00000000-0000-4000-8000-000000000010', code: 'm-1', name: 'M1', platform: 'WECHAT' })
+      .send({
+        tenantId: '00000000-0000-4000-8000-000000000010',
+        code: 'm-1',
+        name: 'M1',
+        platform: 'WECHAT',
+      })
       .expect(400)
     expectWrappedError(response.body, 400)
     expect(merchants.create).not.toHaveBeenCalled()
@@ -72,11 +89,43 @@ describe('Business configuration API contract (e2e)', () => {
         merchantId: '00000000-0000-4000-8000-000000000020',
         paymentAccountId: '00000000-0000-4000-8000-000000000030',
         paymentAccountChannelId: '00000000-0000-4000-8000-000000000040',
-        scene: 'C2C_BUY', currency: 'CNY', priority: 10, weight: 100,
+        scene: 'C2C_BUY',
+        currency: 'CNY',
+        priority: 10,
+        weight: 100,
       })
       .expect(201)
     expectWrappedSuccess(response.body)
-    expect(payments.createPlan).toHaveBeenCalledWith('tenant-1', expect.objectContaining({ currency: 'CNY' }))
+    expect(payments.createPlan).toHaveBeenCalledWith(
+      'tenant-1',
+      expect.objectContaining({ currency: 'CNY' }),
+    )
+  })
+
+  it('creates a payment account without returning its Secret reference', async () => {
+    payments.createAccount.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000030',
+      code: 'alipay-1',
+      name: 'Alipay 1',
+    })
+    const response = await request(app.getHttpServer())
+      .post('/v1/sys/payment-accounts')
+      .send({
+        tenantId: '00000000-0000-4000-8000-000000000010',
+        platformId: '00000000-0000-4000-8000-000000000011',
+        code: 'alipay-1',
+        name: 'Alipay 1',
+        externalAccountId: '2088',
+        credentialRef: 'env://ALIPAY_ACCOUNT_1',
+      })
+      .expect(201)
+
+    expectWrappedSuccess(response.body)
+    expect(response.body.data).not.toHaveProperty('credentialRef')
+    expect(payments.createAccount).toHaveBeenCalledWith(
+      'tenant-1',
+      expect.objectContaining({ credentialRef: 'env://ALIPAY_ACCOUNT_1' }),
+    )
   })
 
   it('rotates merchant platform credentials without returning a secret reference', async () => {

@@ -18,7 +18,11 @@ describe('PaymentConfigService', () => {
   const accountChannelId = '00000000-0000-4000-8000-000000000040'
   const repositories = {
     merchant: { findOne: jest.fn() },
-    account: { findOne: jest.fn() },
+    account: {
+      create: jest.fn((value) => value),
+      findOne: jest.fn(),
+      save: jest.fn(async (value) => value),
+    },
     accountChannel: { findOne: jest.fn() },
     plan: { create: jest.fn((value) => value), save: jest.fn(async (value) => value) },
     platform: { findOne: jest.fn() },
@@ -73,6 +77,23 @@ describe('PaymentConfigService', () => {
         paymentAccountId: accountId,
         paymentAccountChannelId: accountChannelId,
       }),
+    )
+  })
+
+  it('does not return a payment account Secret reference after creation', async () => {
+    repositories.platform.findOne.mockResolvedValue({ id: 'platform-1', status: 'active' })
+
+    const result = await service.createAccount(tenantId, {
+      platformId: 'platform-1',
+      code: 'alipay-1',
+      name: 'Alipay 1',
+      externalAccountId: '2088',
+      credentialRef: 'env://ALIPAY_ACCOUNT_1',
+    })
+
+    expect(result).not.toHaveProperty('credentialRef')
+    expect(repositories.account.save).toHaveBeenCalledWith(
+      expect.objectContaining({ credentialRef: 'env://ALIPAY_ACCOUNT_1' }),
     )
   })
 

@@ -80,6 +80,7 @@ export interface PaymentPreflightConfiguration {
     id: string
     tenantId: string
     platformId: string
+    credentialRef: string
     status: BusinessStatus
   }
   accountChannel: {
@@ -109,6 +110,7 @@ export interface PaymentPreflightStore {
 export interface VerifiedC2cPayment {
   order: PaymentPreflightConfiguration['order']
   platformOrder: C2cBuyOrderDetail
+  paymentAccountCredentialRef: string
 }
 
 export const PAYMENT_PREFLIGHT_STORE = Symbol('PAYMENT_PREFLIGHT_STORE')
@@ -133,7 +135,15 @@ export class C2cPaymentPreflightVerifier {
       throw this.notSubmitted(error)
     }
     this.verifyPlatform(context, platformOrder, now)
-    return { order: context.order, platformOrder }
+    return {
+      order: context.order,
+      platformOrder,
+      paymentAccountCredentialRef: context.account.credentialRef,
+    }
+  }
+
+  loadContext(tenantId: string, orderId: string): Promise<PaymentPreflightConfiguration> {
+    return this.store.load(tenantId, orderId)
   }
 
   private verifyLocal(context: PaymentPreflightConfiguration, now: Date): void {

@@ -56,7 +56,7 @@ export class PaymentAccountEntity extends CommonUuidEntity {
   @Column({ type: 'varchar', length: 128 })
   externalAccountId: string
 
-  @Column({ type: 'varchar', length: 255 })
+  @Column({ type: 'varchar', length: 255, select: false })
   credentialRef: string
 
   @Column({ type: 'enum', enum: BusinessStatus, enumName: 'business_status_enum' })

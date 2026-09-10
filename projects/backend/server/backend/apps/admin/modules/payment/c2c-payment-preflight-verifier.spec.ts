@@ -76,6 +76,7 @@ describe('C2cPaymentPreflightVerifier', () => {
       id: 'account-1',
       tenantId: 'tenant-1',
       platformId: 'payment-platform-1',
+      credentialRef: 'env://ALIPAY_ACCOUNT_1',
       status: BusinessStatus.ACTIVE,
     },
     accountChannel: {
