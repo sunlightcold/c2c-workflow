@@ -9,7 +9,7 @@ import {
 } from '@admin/database'
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
+import { In, Repository } from 'typeorm'
 
 export interface CreatePaymentPlanInput {
   merchantId: string
@@ -37,6 +37,86 @@ export class PaymentConfigService {
     @InjectRepository(PaymentChannelEntity)
     private readonly channelRepository: Repository<PaymentChannelEntity>,
   ) {}
+
+  async listCatalog() {
+    const [platforms, channels] = await Promise.all([
+      this.platformRepository.find({ order: { code: 'ASC' } }),
+      this.channelRepository.find({ order: { platformId: 'ASC', code: 'ASC' } }),
+    ])
+    return platforms.map((platform) => ({
+      id: platform.id,
+      code: platform.code,
+      name: platform.name,
+      status: platform.status,
+      channels: channels
+        .filter(({ platformId }) => platformId === platform.id)
+        .map((channel) => ({
+          id: channel.id,
+          code: channel.code,
+          name: channel.name,
+          executionMode: channel.executionMode,
+          adapterCode: channel.adapterCode,
+          status: channel.status,
+        })),
+    }))
+  }
+
+  async listAccounts(tenantId: string) {
+    const accounts = await this.accountRepository.find({
+      where: { tenantId },
+      order: { createdAt: 'DESC' },
+    })
+    if (!accounts.length) return []
+    const accountIds = accounts.map(({ id }) => id)
+    const accountChannels = await this.accountChannelRepository
+      .createQueryBuilder('account_channel')
+      .innerJoin(PaymentAccountEntity, 'account', 'account.id = account_channel."paymentAccountId"')
+      .where('account."tenantId" = :tenantId', { tenantId })
+      .andWhere('account_channel."paymentAccountId" IN (:...accountIds)', { accountIds })
+      .orderBy('account_channel."createdAt"', 'ASC')
+      .getMany()
+    const channelIds = [...new Set(accountChannels.map(({ channelId }) => channelId))]
+    const channels = channelIds.length
+      ? await this.channelRepository.find({ where: { id: In(channelIds) } })
+      : []
+    const channelById = new Map(channels.map((channel) => [channel.id, channel]))
+    return accounts.map((account) => ({
+      id: account.id,
+      tenantId: account.tenantId,
+      platformId: account.platformId,
+      code: account.code,
+      name: account.name,
+      externalAccountId: account.externalAccountId,
+      credentialConfigured: true,
+      status: account.status,
+      createdAt: account.createdAt,
+      updatedAt: account.updatedAt,
+      channels: accountChannels
+        .filter(({ paymentAccountId }) => paymentAccountId === account.id)
+        .map((binding) => {
+          const channel = channelById.get(binding.channelId)
+          return {
+            id: binding.id,
+            channelId: binding.channelId,
+            channelCode: channel?.code ?? null,
+            channelName: channel?.name ?? null,
+            executionMode: channel?.executionMode ?? null,
+            adapterCode: channel?.adapterCode ?? null,
+            minimumAmount: binding.minimumAmount,
+            maximumAmount: binding.maximumAmount,
+            concurrencyLimit: binding.concurrencyLimit,
+            status: binding.status,
+          }
+        }),
+    }))
+  }
+
+  listPlans(tenantId: string, merchantId?: string) {
+    return this.planRepository.find({
+      where: { tenantId, ...(merchantId ? { merchantId } : {}) },
+      order: { merchantId: 'ASC', priority: 'ASC', createdAt: 'ASC' },
+    })
+  }
 
   async createAccount(
     tenantId: string,

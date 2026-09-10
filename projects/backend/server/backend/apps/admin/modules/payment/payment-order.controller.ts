@@ -1,14 +1,22 @@
 import { definePermission, Permission, User } from '@/common/decorators'
 import type { AuthUser } from '@/common/interfaces'
 import { PaymentSourceType } from '@admin/database'
-import { Body, Controller, Param, ParseUUIDPipe, Post } from '@nestjs/common'
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { BusinessScopeService } from '../business/business-scope.service'
-import { CreateManualPaymentOrderDto, PaymentTenantContextDto } from './payment-order.dto'
+import {
+  CreateManualPaymentOrderDto,
+  PaymentOrderListDto,
+  PaymentTenantContextDto,
+} from './payment-order.dto'
 import { PaymentOrderService } from './payment-order.service'
 import { PaymentExecutionCoordinator } from './payment-execution-coordinator'
 
-const PaymentOrderPermissions = definePermission('payment:order', ['create', 'retry'] as const)
+const PaymentOrderPermissions = definePermission('payment:order', [
+  'read',
+  'create',
+  'retry',
+] as const)
 
 @ApiTags('C2C-支付订单')
 @ApiBearerAuth()
@@ -19,6 +27,22 @@ export class PaymentOrderController {
     private readonly orders: PaymentOrderService,
     private readonly execution: PaymentExecutionCoordinator,
   ) {}
+
+  @Get()
+  @Permission(PaymentOrderPermissions.READ)
+  list(@Query() dto: PaymentOrderListDto, @User() actor: AuthUser) {
+    return this.orders.list(this.scope.resolveTenantId(actor, dto.tenantId), dto)
+  }
+
+  @Get(':id')
+  @Permission(PaymentOrderPermissions.READ)
+  detail(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() dto: PaymentTenantContextDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.orders.detail(this.scope.resolveTenantId(actor, dto.tenantId), id)
+  }
 
   @Post()
   @Permission(PaymentOrderPermissions.CREATE)

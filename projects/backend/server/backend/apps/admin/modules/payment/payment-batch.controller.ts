@@ -1,14 +1,15 @@
 import { Permission, User, definePermission } from '@/common/decorators'
 import type { AuthUser } from '@/common/interfaces'
-import { Body, Controller, Param, ParseUUIDPipe, Post } from '@nestjs/common'
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { BusinessScopeService } from '../business/business-scope.service'
-import { CreatePaymentBatchDto } from './payment-batch.dto'
+import { CreatePaymentBatchDto, PaymentBatchListDto } from './payment-batch.dto'
 import { PaymentBatchService } from './payment-batch.service'
 import { PaymentBatchExecutionCoordinator } from './payment-batch-execution-coordinator'
 import { PaymentTenantContextDto } from './payment-order.dto'
 
 const PaymentBatchPermissions = definePermission('payment:batch', [
+  'read',
   'create',
   'submit',
   'retry',
@@ -23,6 +24,22 @@ export class PaymentBatchController {
     private readonly batches: PaymentBatchService,
     private readonly execution: PaymentBatchExecutionCoordinator,
   ) {}
+
+  @Get()
+  @Permission(PaymentBatchPermissions.READ)
+  list(@Query() dto: PaymentBatchListDto, @User() actor: AuthUser) {
+    return this.batches.list(this.scope.resolveTenantId(actor, dto.tenantId), dto)
+  }
+
+  @Get(':id')
+  @Permission(PaymentBatchPermissions.READ)
+  detail(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() dto: PaymentTenantContextDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.batches.detail(this.scope.resolveTenantId(actor, dto.tenantId), id)
+  }
 
   @Post()
   @Permission(PaymentBatchPermissions.CREATE)

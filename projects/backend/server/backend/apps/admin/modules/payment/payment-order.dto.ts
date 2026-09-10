@@ -1,14 +1,18 @@
-import { PaymentExecutionMode } from '@admin/database'
+import { PaymentExecutionMode, PaymentOrderStatus, PaymentSourceType } from '@admin/database'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { Transform } from 'class-transformer'
+import { Type } from 'class-transformer'
 import {
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
   Matches,
+  Max,
   MaxLength,
+  Min,
 } from 'class-validator'
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value)
@@ -20,6 +24,36 @@ export class PaymentTenantContextDto {
   @IsOptional()
   @IsUUID()
   tenantId?: string
+}
+
+export class PaymentOrderListDto extends PaymentTenantContextDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  merchantId?: string
+
+  @ApiPropertyOptional({ enum: PaymentSourceType })
+  @IsOptional()
+  @IsEnum(PaymentSourceType)
+  sourceType?: PaymentSourceType
+
+  @ApiPropertyOptional({ enum: PaymentOrderStatus })
+  @IsOptional()
+  @IsEnum(PaymentOrderStatus)
+  status?: PaymentOrderStatus
+
+  @ApiPropertyOptional({ default: 1 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page = 1
+
+  @ApiPropertyOptional({ default: 20, maximum: 100 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize = 20
 }
 
 export class CreateManualPaymentOrderDto extends PaymentTenantContextDto {

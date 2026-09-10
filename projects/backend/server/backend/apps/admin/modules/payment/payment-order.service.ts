@@ -2,13 +2,20 @@ import { randomUUID } from 'node:crypto'
 import {
   BusinessStatus,
   MerchantEntity,
+  PaymentBatchItemEntity,
   PaymentExecutionMode,
   PaymentOrderEntity,
   PaymentOrderStatus,
   PaymentOrderStatusHistoryEntity,
   PaymentSourceType,
 } from '@admin/database'
-import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, QueryFailedError, Repository } from 'typeorm'
 import {
@@ -17,6 +24,7 @@ import {
   type ResolvedPaymentPlan,
 } from './payment-plan-resolver'
 import { normalizeCnyAmount } from './payment-adapter.types'
+import type { PaymentOrderListDto } from './payment-order.dto'
 
 export interface CreatePaymentOrderInput {
   merchantId: string
@@ -41,6 +49,37 @@ export class PaymentOrderService {
     private readonly plans: PaymentPlanResolverPort,
     private readonly dataSource: DataSource,
   ) {}
+
+  async list(tenantId: string, input: PaymentOrderListDto) {
+    const [items, total] = await this.orders.findAndCount({
+      where: {
+        tenantId,
+        ...(input.merchantId ? { merchantId: input.merchantId } : {}),
+        ...(input.sourceType ? { sourceType: input.sourceType } : {}),
+        ...(input.status ? { status: input.status } : {}),
+      },
+      order: { createdAt: 'DESC' },
+      skip: (input.page - 1) * input.pageSize,
+      take: input.pageSize,
+    })
+    return { items, total, page: input.page, pageSize: input.pageSize }
+  }
+
+  async detail(tenantId: string, orderId: string) {
+    const order = await this.orders.findOne({ where: { id: orderId, tenantId } })
+    if (!order) throw new NotFoundException('支付订单不存在')
+    const [history, batchItems] = await Promise.all([
+      this.dataSource.getRepository(PaymentOrderStatusHistoryEntity).find({
+        where: { tenantId, merchantId: order.merchantId, paymentOrderId: order.id },
+        order: { createdAt: 'ASC' },
+      }),
+      this.dataSource.getRepository(PaymentBatchItemEntity).find({
+        where: { tenantId, merchantId: order.merchantId, paymentOrderId: order.id },
+        order: { createdAt: 'ASC' },
+      }),
+    ])
+    return { ...order, history, batchItems }
+  }
 
   async create(tenantId: string, input: CreatePaymentOrderInput): Promise<PaymentOrderEntity> {
     if (input.sourceType === PaymentSourceType.REFUND)

@@ -23,9 +23,9 @@ jest.mock('@/common/decorators', () => ({
 describe('Payment order API contract (e2e)', () => {
   let app: INestApplication
   const scope = { resolveTenantId: jest.fn().mockReturnValue('tenant-1') }
-  const orders = { create: jest.fn(), rematch: jest.fn() }
+  const orders = { create: jest.fn(), rematch: jest.fn(), list: jest.fn(), detail: jest.fn() }
   const execution = { reconcile: jest.fn() }
-  const batches = { create: jest.fn() }
+  const batches = { create: jest.fn(), list: jest.fn(), detail: jest.fn() }
   const batchExecution = { submit: jest.fn(), reconcile: jest.fn() }
 
   beforeAll(async () => {
@@ -67,6 +67,38 @@ describe('Payment order API contract (e2e)', () => {
       'tenant-1',
       expect.objectContaining({ sourceType: 'BOT_MANUAL', amount: '100.00' }),
     )
+  })
+
+  it('lists and reads payment orders in the resolved tenant', async () => {
+    const orderId = '00000000-0000-4000-8000-000000000030'
+    orders.list.mockResolvedValue({ items: [{ id: orderId }], total: 1, page: 1, pageSize: 20 })
+    orders.detail.mockResolvedValue({ id: orderId, history: [] })
+
+    const listed = await request(app.getHttpServer())
+      .get('/v1/sys/payment-orders')
+      .query({ status: 'READY', page: 1, pageSize: 20 })
+      .expect(200)
+    const detail = await request(app.getHttpServer())
+      .get(`/v1/sys/payment-orders/${orderId}`)
+      .expect(200)
+
+    expectWrappedSuccess(listed.body)
+    expectWrappedSuccess(detail.body)
+    expect(orders.list).toHaveBeenCalledWith(
+      'tenant-1',
+      expect.objectContaining({ status: 'READY', page: 1, pageSize: 20 }),
+    )
+    expect(orders.detail).toHaveBeenCalledWith('tenant-1', orderId)
+  })
+
+  it('rejects unsupported payment order status filters', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/v1/sys/payment-orders')
+      .query({ status: 'NOT_A_STATUS', page: 1, pageSize: 20 })
+      .expect(400)
+
+    expectWrappedError(response.body, 400)
+    expect(orders.list).not.toHaveBeenCalled()
   })
 
   it('rejects numeric and zero amounts before invoking the service', async () => {
@@ -148,6 +180,28 @@ describe('Payment order API contract (e2e)', () => {
 
     expectWrappedSuccess(response.body)
     expect(batches.create).toHaveBeenCalledWith('tenant-1', paymentOrderIds)
+  })
+
+  it('lists and reads payment batches in the resolved tenant', async () => {
+    const batchId = '00000000-0000-4000-8000-000000000041'
+    batches.list.mockResolvedValue({ items: [{ id: batchId }], total: 1, page: 1, pageSize: 20 })
+    batches.detail.mockResolvedValue({ batch: { id: batchId }, items: [] })
+
+    const listed = await request(app.getHttpServer())
+      .get('/v1/sys/payment-batches')
+      .query({ status: 'PROCESSING', page: 1, pageSize: 20 })
+      .expect(200)
+    const detail = await request(app.getHttpServer())
+      .get(`/v1/sys/payment-batches/${batchId}`)
+      .expect(200)
+
+    expectWrappedSuccess(listed.body)
+    expectWrappedSuccess(detail.body)
+    expect(batches.list).toHaveBeenCalledWith(
+      'tenant-1',
+      expect.objectContaining({ status: 'PROCESSING', page: 1, pageSize: 20 }),
+    )
+    expect(batches.detail).toHaveBeenCalledWith('tenant-1', batchId)
   })
 
   it('rejects duplicate payment orders before creating a batch', async () => {

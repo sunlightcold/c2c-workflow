@@ -33,12 +33,17 @@ Controller：`BusinessController`。基础路径：`/v1/sys`。所有接口均�
 
 | Method | Path | 权限 | Request | data 来源 |
 | --- | --- | --- | --- | --- |
+| GET | `/payment-platforms` | `payment:account:read` | 无 | 支付平台及其支付通道目录 |
+| GET | `/payment-accounts` | `payment:account:read` | Query `{ tenantId? }` | 当前所属单位的支付账号及已开通通道 |
 | POST | `/payment-accounts` | `payment:account:create` | `{ tenantId?, platformId, code, name, externalAccountId, credentialRef }` | `PaymentAccountEntity` |
 | POST | `/payment-accounts/{id}/channels` | `payment:account:bind` | `{ tenantId?, channelId, configRef? }` | `PaymentAccountChannelEntity` |
+| GET | `/payment-plans` | `payment:account:read` | Query `{ tenantId?, merchantId? }` | 当前所属单位的 `MerchantPaymentPlanEntity[]` |
 | POST | `/payment-plans` | `payment:account:bind` | `{ tenantId?, merchantId, paymentAccountId, paymentAccountChannelId, scene, currency, priority, weight }` | `MerchantPaymentPlanEntity` |
 
 支付方案中的 `paymentAccountChannelId` 必须属于 `paymentAccountId` 且已启用；商家和支付账号
 必须属于同一所属单位。账号只提交 Secret Manager/KMS 的 `credentialRef`，不通过本接口保存明文秘钥；创建响应、后续查询和导出均不返回 `credentialRef` 或 Secret 内容。
+
+支付账号查询返回账号基本信息、`credentialConfigured` 和已开通通道；不返回账号 `credentialRef` 或通道 `configRef`。支付方案查询始终按当前所属单位隔离，可再按商家筛选。
 
 ## 响应与错误
 

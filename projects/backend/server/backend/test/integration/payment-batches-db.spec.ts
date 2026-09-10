@@ -212,6 +212,27 @@ describe('Payment batch migration database integration', () => {
     ).resolves.toEqual([{ fromStatus: null, toStatus: 'READY' }])
   })
 
+  it('lists and reads only payment batches from the requested tenant', async () => {
+    const created = await service.create(tenantId, [orderId])
+
+    await expect(
+      service.list(tenantId, { page: 1, pageSize: 20, status: PaymentBatchStatus.READY }),
+    ).resolves.toMatchObject({
+      items: [expect.objectContaining({ id: created.batch.id })],
+      total: 1,
+    })
+    await expect(
+      service.list('00000000-0000-4000-8000-000000000999', { page: 1, pageSize: 20 }),
+    ).resolves.toMatchObject({ items: [], total: 0 })
+    await expect(service.detail(tenantId, created.batch.id)).resolves.toMatchObject({
+      batch: { id: created.batch.id },
+      items: [expect.objectContaining({ paymentOrderId: orderId })],
+    })
+    await expect(
+      service.detail('00000000-0000-4000-8000-000000000999', created.batch.id),
+    ).rejects.toThrow('支付批次不存在')
+  })
+
   it('rejects orders that are not routed to batch execution', async () => {
     await dataSource.query(`UPDATE payment_order SET "executionMode" = 'INSTANT' WHERE id = $1`, [
       orderId,

@@ -2,10 +2,18 @@
 
 import {
   MerchantEntity,
+  MerchantPaymentPlanEntity,
+  PaymentAccountChannelEntity,
+  PaymentAccountEntity,
+  PaymentBatchEntity,
+  PaymentBatchItemEntity,
+  PaymentBatchStatusHistoryEntity,
+  PaymentChannelEntity,
   PaymentExecutionMode,
   PaymentOrderEntity,
   PaymentOrderStatus,
   PaymentOrderStatusHistoryEntity,
+  PaymentPlatformEntity,
   PaymentSourceType,
 } from '@/apps/admin/database'
 import {
@@ -13,9 +21,12 @@ import {
   migrateC2cBusinessFoundation,
 } from '@/apps/admin/database/migrations/c2c-business-foundation.migration'
 import { migrateC2cPaymentOrders } from '@/apps/admin/database/migrations/c2c-payment-orders.migration'
+import { migrateC2cPaymentBatches } from '@/apps/admin/database/migrations/c2c-payment-batches.migration'
+import { migrateC2cMerchantPlatformCredentials } from '@/apps/admin/database/migrations/c2c-merchant-platform-credentials.migration'
 import { migrateC2cPaymentRouting } from '@/apps/admin/database/migrations/c2c-payment-routing.migration'
 import { PaymentOrderService } from '@/apps/admin/modules/payment/payment-order.service'
 import { PaymentPlanResolver } from '@/apps/admin/modules/payment/payment-plan-resolver'
+import { PaymentConfigService } from '@/apps/admin/modules/business/payment-config.service'
 import developmentConfig from '@/config/development'
 import { DataSource } from 'typeorm'
 
@@ -32,6 +43,7 @@ describe('Payment routing database integration', () => {
   let dataSource: DataSource
   let resolver: PaymentPlanResolver
   let orders: PaymentOrderService
+  let paymentConfig: PaymentConfigService
 
   beforeAll(async () => {
     adminDataSource = new DataSource({
@@ -56,7 +68,19 @@ describe('Payment routing database integration', () => {
       schema,
       synchronize: false,
       logging: false,
-      entities: [MerchantEntity, PaymentOrderEntity, PaymentOrderStatusHistoryEntity],
+      entities: [
+        MerchantEntity,
+        MerchantPaymentPlanEntity,
+        PaymentAccountEntity,
+        PaymentAccountChannelEntity,
+        PaymentPlatformEntity,
+        PaymentChannelEntity,
+        PaymentOrderEntity,
+        PaymentOrderStatusHistoryEntity,
+        PaymentBatchEntity,
+        PaymentBatchItemEntity,
+        PaymentBatchStatusHistoryEntity,
+      ],
       extra: { options: `-c search_path=${schema},public` },
     })
     await dataSource.initialize()
@@ -64,6 +88,8 @@ describe('Payment routing database integration', () => {
     await migrateC2cPaymentOrders(dataSource.manager)
     await migrateC2cPaymentRouting(dataSource.manager)
     await migrateC2cPaymentRouting(dataSource.manager)
+    await migrateC2cMerchantPlatformCredentials(dataSource.manager)
+    await migrateC2cPaymentBatches(dataSource.manager)
     await seedConfiguration()
     resolver = new PaymentPlanResolver(dataSource)
     orders = new PaymentOrderService(
@@ -71,6 +97,14 @@ describe('Payment routing database integration', () => {
       dataSource.getRepository(MerchantEntity),
       resolver,
       dataSource,
+    )
+    paymentConfig = new PaymentConfigService(
+      dataSource.getRepository(MerchantEntity),
+      dataSource.getRepository(PaymentAccountEntity),
+      dataSource.getRepository(PaymentAccountChannelEntity),
+      dataSource.getRepository(MerchantPaymentPlanEntity),
+      dataSource.getRepository(PaymentPlatformEntity),
+      dataSource.getRepository(PaymentChannelEntity),
     )
   })
 
@@ -133,6 +167,39 @@ describe('Payment routing database integration', () => {
     ).resolves.toBeNull()
   })
 
+  it('returns tenant-scoped payment accounts and plans without secret references', async () => {
+    const accounts = await paymentConfig.listAccounts(tenantId)
+    const plans = await paymentConfig.listPlans(tenantId, merchantId)
+
+    expect(accounts).toHaveLength(2)
+    expect(accounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: instantAccountId,
+          tenantId,
+          credentialConfigured: true,
+          channels: [
+            expect.objectContaining({
+              id: instantAccountChannelId,
+              channelCode: 'ALIPAY_MERCHANT_TRANSFER',
+            }),
+          ],
+        }),
+      ]),
+    )
+    for (const account of accounts) {
+      expect(account).not.toHaveProperty('credentialRef')
+      for (const channel of account.channels) expect(channel).not.toHaveProperty('configRef')
+    }
+    expect(plans).toHaveLength(2)
+    await expect(
+      paymentConfig.listAccounts('00000000-0000-4000-8000-000000000999'),
+    ).resolves.toEqual([])
+    await expect(paymentConfig.listPlans('00000000-0000-4000-8000-000000000999')).resolves.toEqual(
+      [],
+    )
+  })
+
   it('creates one order when the same source is requested concurrently', async () => {
     const input = {
       merchantId,
@@ -171,6 +238,39 @@ describe('Payment routing database integration', () => {
         [results[0].id],
       ),
     ).resolves.toEqual([{ fromStatus: null, toStatus: 'READY' }])
+  })
+
+  it('lists and reads only payment orders from the requested tenant', async () => {
+    const created = await orders.create(tenantId, {
+      merchantId,
+      sourceType: PaymentSourceType.BOT_MANUAL,
+      sourceBusinessNo: 'manual-query-1',
+      amount: '88.00',
+      currency: 'CNY',
+      paymentMethod: 'ALIPAY',
+      executionMode: PaymentExecutionMode.BATCH,
+      payeeIdentity: 'payee@example.com',
+      payeeName: 'Payee',
+    })
+
+    const listed = await orders.list(tenantId, {
+      page: 1,
+      pageSize: 20,
+      status: PaymentOrderStatus.READY,
+    })
+    expect(listed.items).toContainEqual(expect.objectContaining({ id: created.id, tenantId }))
+    expect(listed.total).toBe(listed.items.length)
+    await expect(
+      orders.list('00000000-0000-4000-8000-000000000999', { page: 1, pageSize: 20 }),
+    ).resolves.toMatchObject({ items: [], total: 0 })
+    await expect(orders.detail(tenantId, created.id)).resolves.toMatchObject({
+      id: created.id,
+      history: [expect.objectContaining({ toStatus: PaymentOrderStatus.READY })],
+      batchItems: [],
+    })
+    await expect(orders.detail('00000000-0000-4000-8000-000000000999', created.id)).rejects.toThrow(
+      '支付订单不存在',
+    )
   })
 
   it('records one transition when a pending-config order is rematched', async () => {

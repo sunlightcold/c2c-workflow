@@ -20,13 +20,18 @@ describe('PaymentConfigService', () => {
     merchant: { findOne: jest.fn() },
     account: {
       create: jest.fn((value) => value),
+      find: jest.fn(),
       findOne: jest.fn(),
       save: jest.fn(async (value) => value),
     },
-    accountChannel: { findOne: jest.fn() },
-    plan: { create: jest.fn((value) => value), save: jest.fn(async (value) => value) },
-    platform: { findOne: jest.fn() },
-    channel: { findOne: jest.fn() },
+    accountChannel: { createQueryBuilder: jest.fn(), findOne: jest.fn() },
+    plan: {
+      create: jest.fn((value) => value),
+      find: jest.fn(),
+      save: jest.fn(async (value) => value),
+    },
+    platform: { find: jest.fn(), findOne: jest.fn() },
+    channel: { find: jest.fn(), findOne: jest.fn() },
   }
   let service: PaymentConfigService
 
@@ -115,5 +120,84 @@ describe('PaymentConfigService', () => {
         weight: 100,
       }),
     ).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  it('returns tenant payment configuration without credential references', async () => {
+    const accountChannelQuery = {
+      innerJoin: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      getMany: jest.fn(),
+    }
+    repositories.platform.find.mockResolvedValue([
+      { id: 'platform-1', code: 'ALIPAY', name: '支付宝', status: 'active' },
+    ])
+    repositories.channel.find.mockResolvedValue([
+      {
+        id: 'channel-1',
+        platformId: 'platform-1',
+        code: 'ALIPAY_BATCH',
+        name: '支付宝批量有密',
+        status: 'active',
+      },
+    ])
+    repositories.account.find.mockResolvedValue([
+      {
+        id: accountId,
+        tenantId,
+        platformId: 'platform-1',
+        code: 'alipay-1',
+        name: 'Alipay 1',
+        externalAccountId: '2088',
+        credentialRef: 'secret://must-not-leak',
+        status: 'active',
+      },
+    ])
+    accountChannelQuery.getMany.mockResolvedValue([
+      {
+        id: accountChannelId,
+        paymentAccountId: accountId,
+        channelId: 'channel-1',
+        configRef: 'secret://must-not-leak',
+        status: 'active',
+      },
+    ])
+    repositories.accountChannel.createQueryBuilder.mockReturnValue(accountChannelQuery)
+
+    const catalog = await service.listCatalog()
+    const accounts = await service.listAccounts(tenantId)
+
+    expect(catalog).toEqual([
+      expect.objectContaining({
+        id: 'platform-1',
+        channels: [expect.objectContaining({ id: 'channel-1' })],
+      }),
+    ])
+    expect(accounts).toEqual([
+      expect.objectContaining({
+        id: accountId,
+        credentialConfigured: true,
+        channels: [expect.objectContaining({ id: accountChannelId, channelId: 'channel-1' })],
+      }),
+    ])
+    expect(accounts[0]).not.toHaveProperty('credentialRef')
+    expect(accounts[0].channels[0]).not.toHaveProperty('configRef')
+    expect(repositories.account.find).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId } }),
+    )
+    expect(accountChannelQuery.where).toHaveBeenCalledWith('account."tenantId" = :tenantId', {
+      tenantId,
+    })
+  })
+
+  it('scopes payment plans to the tenant and optional merchant', async () => {
+    repositories.plan.find.mockResolvedValue([])
+
+    await service.listPlans(tenantId, merchantId)
+
+    expect(repositories.plan.find).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId, merchantId } }),
+    )
   })
 })

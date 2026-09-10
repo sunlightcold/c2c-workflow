@@ -1,5 +1,18 @@
-import { ApiProperty } from '@nestjs/swagger'
-import { ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsUUID } from 'class-validator'
+import { PaymentBatchStatus } from '@admin/database'
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { Type } from 'class-transformer'
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  ArrayUnique,
+  IsArray,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsUUID,
+  Max,
+  Min,
+} from 'class-validator'
 import { PaymentTenantContextDto } from './payment-order.dto'
 
 export class CreatePaymentBatchDto extends PaymentTenantContextDto {
@@ -13,4 +26,34 @@ export class CreatePaymentBatchDto extends PaymentTenantContextDto {
   @ArrayUnique()
   @IsUUID(undefined, { each: true })
   paymentOrderIds: string[]
+}
+
+export class PaymentBatchListDto extends PaymentTenantContextDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  merchantId?: string
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  paymentAccountId?: string
+
+  @ApiPropertyOptional({ enum: PaymentBatchStatus })
+  @IsOptional()
+  @IsEnum(PaymentBatchStatus)
+  status?: PaymentBatchStatus
+
+  @ApiPropertyOptional({ default: 1 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page = 1
+
+  @ApiPropertyOptional({ default: 20, maximum: 100 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize = 20
 }

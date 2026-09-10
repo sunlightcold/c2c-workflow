@@ -28,6 +28,9 @@ describe('Business configuration API contract (e2e)', () => {
     createAccount: jest.fn(),
     openAccountChannel: jest.fn(),
     createPlan: jest.fn(),
+    listCatalog: jest.fn(),
+    listAccounts: jest.fn(),
+    listPlans: jest.fn(),
   }
   const credentials = { list: jest.fn(), rotate: jest.fn() }
 
@@ -63,6 +66,35 @@ describe('Business configuration API contract (e2e)', () => {
     expect(merchants.create).toHaveBeenCalledWith(
       'tenant-1',
       expect.objectContaining({ platform: 'BINANCE' }),
+    )
+  })
+
+  it('lists the payment catalog, tenant accounts and merchant plans', async () => {
+    payments.listCatalog.mockResolvedValue([{ id: 'platform-1', channels: [] }])
+    payments.listAccounts.mockResolvedValue([{ id: 'account-1', channels: [] }])
+    payments.listPlans.mockResolvedValue([{ id: 'plan-1', merchantId: 'merchant-1' }])
+
+    const catalog = await request(app.getHttpServer()).get('/v1/sys/payment-platforms').expect(200)
+    const accounts = await request(app.getHttpServer())
+      .get('/v1/sys/payment-accounts')
+      .query({ tenantId: '00000000-0000-4000-8000-000000000010' })
+      .expect(200)
+    const plans = await request(app.getHttpServer())
+      .get('/v1/sys/payment-plans')
+      .query({
+        tenantId: '00000000-0000-4000-8000-000000000010',
+        merchantId: '00000000-0000-4000-8000-000000000020',
+      })
+      .expect(200)
+
+    expectWrappedSuccess(catalog.body)
+    expectWrappedSuccess(accounts.body)
+    expectWrappedSuccess(plans.body)
+    expect(payments.listCatalog).toHaveBeenCalled()
+    expect(payments.listAccounts).toHaveBeenCalledWith('tenant-1')
+    expect(payments.listPlans).toHaveBeenCalledWith(
+      'tenant-1',
+      '00000000-0000-4000-8000-000000000020',
     )
   })
 

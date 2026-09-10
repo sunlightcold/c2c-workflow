@@ -16,9 +16,15 @@ import {
   PaymentOrderStatus,
   PaymentPlatformEntity,
 } from '@admin/database'
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
 import { DataSource, EntityManager, In, QueryFailedError } from 'typeorm'
 import { sumCnyAmounts } from './payment-adapter.types'
+import type { PaymentBatchListDto } from './payment-batch.dto'
 
 export interface PaymentBatchView {
   batch: PaymentBatchEntity
@@ -28,6 +34,33 @@ export interface PaymentBatchView {
 @Injectable()
 export class PaymentBatchService {
   constructor(private readonly dataSource: DataSource) {}
+
+  async list(tenantId: string, input: PaymentBatchListDto) {
+    const [items, total] = await this.dataSource.getRepository(PaymentBatchEntity).findAndCount({
+      where: {
+        tenantId,
+        ...(input.merchantId ? { merchantId: input.merchantId } : {}),
+        ...(input.paymentAccountId ? { paymentAccountId: input.paymentAccountId } : {}),
+        ...(input.status ? { status: input.status } : {}),
+      },
+      order: { createdAt: 'DESC' },
+      skip: (input.page - 1) * input.pageSize,
+      take: input.pageSize,
+    })
+    return { items, total, page: input.page, pageSize: input.pageSize }
+  }
+
+  async detail(tenantId: string, batchId: string): Promise<PaymentBatchView> {
+    const batch = await this.dataSource.getRepository(PaymentBatchEntity).findOne({
+      where: { id: batchId, tenantId },
+    })
+    if (!batch) throw new NotFoundException('支付批次不存在')
+    const items = await this.dataSource.getRepository(PaymentBatchItemEntity).find({
+      where: { batchId: batch.id, tenantId, merchantId: batch.merchantId },
+      order: { createdAt: 'ASC' },
+    })
+    return { batch, items }
+  }
 
   async create(tenantId: string, paymentOrderIds: string[]): Promise<PaymentBatchView> {
     this.validateOrderIds(paymentOrderIds)

@@ -9,6 +9,7 @@ import {
   CreatePaymentPlanDto,
   CreateTenantDto,
   OpenPaymentAccountChannelDto,
+  PaymentPlanListDto,
   RotateMerchantPlatformCredentialDto,
   SetTenantStatusDto,
   TenantContextDto,
@@ -24,7 +25,7 @@ const MerchantPermissions = definePermission('merchant:account', [
   'create',
   'credential',
 ] as const)
-const PaymentPermissions = definePermission('payment:account', ['create', 'bind'] as const)
+const PaymentPermissions = definePermission('payment:account', ['read', 'create', 'bind'] as const)
 
 @ApiTags('C2C-业务配置')
 @ApiBearerAuth()
@@ -95,6 +96,24 @@ export class BusinessController {
   createPaymentAccount(@Body() dto: CreatePaymentAccountDto, @User() actor: AuthUser) {
     const { tenantId, ...input } = dto
     return this.payments.createAccount(this.scope.resolveTenantId(actor, tenantId), input)
+  }
+
+  @Get('payment-platforms')
+  @Permission(PaymentPermissions.READ)
+  listPaymentCatalog() {
+    return this.payments.listCatalog()
+  }
+
+  @Get('payment-accounts')
+  @Permission(PaymentPermissions.READ)
+  listPaymentAccounts(@Query() dto: TenantContextDto, @User() actor: AuthUser) {
+    return this.payments.listAccounts(this.scope.resolveTenantId(actor, dto.tenantId))
+  }
+
+  @Get('payment-plans')
+  @Permission(PaymentPermissions.READ)
+  listPaymentPlans(@Query() dto: PaymentPlanListDto, @User() actor: AuthUser) {
+    return this.payments.listPlans(this.scope.resolveTenantId(actor, dto.tenantId), dto.merchantId)
   }
 
   @Post('payment-accounts/:id/channels')

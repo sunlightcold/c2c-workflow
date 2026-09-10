@@ -3,6 +3,12 @@
 Controller：`PaymentBatchController`。基础路径：`/v1/sys/payment-batches`。所有接口均要求
 `Authorization: Bearer <accessToken>`，响应使用 API 总览定义的统一包装体。
 
+## 查询批次
+
+- `GET /v1/sys/payment-batches`，权限：`payment:batch:read`。Query 支持 `tenantId?`、`merchantId?`、`paymentAccountId?`、`status?`、`page?`、`pageSize?`，返回 `{ items, total, page, pageSize }`。
+- `GET /v1/sys/payment-batches/{id}`，权限：`payment:batch:read`。Query 支持 `tenantId?`，返回 `{ batch, items }`。
+- 列表默认第 1 页、每页 20 条，`pageSize` 最大 100，按创建时间倒序。详情不存在或跨所属单位均返回 `404`。
+
 ## 创建批次
 
 `POST /v1/sys/payment-batches`，权限：`payment:batch:create`。
@@ -57,4 +63,5 @@ Controller：`PaymentBatchController`。基础路径：`/v1/sys/payment-batches`
 | 400  | ID 格式错误、笔数超限、订单不属于当前所属单位、隔离维度不一致 |
 | 401  | 未登录或令牌失效                                              |
 | 403  | 缺少创建批次权限或所属单位范围不匹配                          |
+| 404  | 支付批次不存在或不属于当前所属单位                            |
 | 409  | 订单或批次状态已变化、锁定配置已失效、订单已加入其它活动批次  |

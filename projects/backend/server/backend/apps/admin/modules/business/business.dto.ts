@@ -143,6 +143,13 @@ export class OpenPaymentAccountChannelDto extends TenantContextDto {
   configRef?: string
 }
 
+export class PaymentPlanListDto extends TenantContextDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  merchantId?: string
+}
+
 export class CreatePaymentPlanDto extends TenantContextDto {
   @ApiProperty()
   @IsUUID()
