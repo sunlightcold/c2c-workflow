@@ -29,14 +29,17 @@ const businessPages: BusinessPageDefinition[] = [
   },
   {
     key: 'merchants',
-    name: '商家',
+    name: '商家账号',
     path: '/business/merchants',
     permission: 'merchant:account',
     icon: 'lucide:store',
     actions: [
       ['read', '查询'],
       ['create', '新增'],
+      ['update', '编辑与启停'],
+      ['delete', '删除'],
       ['credential', '配置平台凭据'],
+      ['test', '连接测试'],
     ],
   },
   {

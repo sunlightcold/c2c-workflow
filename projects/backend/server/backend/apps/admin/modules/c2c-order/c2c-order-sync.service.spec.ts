@@ -11,6 +11,9 @@ describe('C2cOrderSyncService', () => {
       tenantId,
       platform: MerchantPlatform.BINANCE,
       status: BusinessStatus.ACTIVE,
+      pageSize: 20,
+      overlapSeconds: 120,
+      orderStatusList: [1],
     }),
   }
   const credentials = {

@@ -13,21 +13,23 @@ Controller：`BusinessController`。基础路径：`/v1/sys`。所有接口均�
 
 `POST /tenants` 只创建代理商所属单位。总部自营由迁移固定创建且不可停用。
 
-## 商家
+## 商家账号
 
 | Method | Path | 权限 | Request | data 来源 |
 | --- | --- | --- | --- | --- |
-| GET | `/merchants` | `merchant:account:read` | Query `{ tenantId? }` | `MerchantEntity[]` |
-| POST | `/merchants` | `merchant:account:create` | `{ tenantId?, code, name, platform, externalMerchantId? }` | `MerchantEntity` |
+| GET | `/merchants` | `merchant:account:read` | Query `{ tenantId?, accountName?, accountCode?, externalMerchantId?, platform?, status?, page?, pageSize? }` | 商家账号分页结果 |
+| POST | `/merchants` | `merchant:account:create` | 商家账号配置和平台凭据 | `MerchantEntity` |
+| PUT | `/merchants/{id}` | `merchant:account:update` | 可编辑的账号、同步、通知和申诉配置 | `MerchantEntity` |
+| PATCH | `/merchants/{id}/status` | `merchant:account:update` | Body `{ status }`，Query `{ tenantId? }` | `MerchantEntity` |
+| DELETE | `/merchants/{id}` | `merchant:account:delete` | Query `{ tenantId? }` | 无 |
+| POST | `/merchants/{id}/test` | `merchant:account:test` | Query `{ tenantId? }` | 连接测试结果 |
 | GET | `/merchants/{id}/platform-credentials` | `merchant:account:read` | Query `{ tenantId? }` | 凭据版本元数据数组 |
-| POST | `/merchants/{id}/platform-credentials` | `merchant:account:credential` | `{ tenantId?, credentialRef, clientType?, xUserId?, requestTimeoutMs? }` | 新凭据版本元数据 |
+| POST | `/merchants/{id}/platform-credentials` | `merchant:account:credential` | 币安 `{ apiKey, secretKey, clientType?, xUserId? }`；欧易 `{ sessionCookie, authorization }` | 新凭据版本元数据 |
 
-`platform` 只能是 `BINANCE` 或 `OKX`，创建后不可修改。代理商用户的 `tenantId` 从 JWT
+`platform` 只能是 `BINANCE` 或 `OKX`，创建后不可修改。创建币安账号时必须提交 API Key 和 Secret Key；创建欧易账号时必须提交 Cookie 和 Authorization。代理商用户的 `tenantId` 从 JWT
 取得，即使提交其他值也会被拒绝；平台用户必须显式提交当前经营的 `tenantId`。
 
-新增平台凭据会停用该商家的旧版本并创建递增版本。同一商家仅一个版本生效。币安要求
-`clientType`；欧易不接受 `clientType` 和 `xUserId`。接口只返回是否已配置和版本元数据，
-不返回 `credentialRef` 或 Secret 内容。
+账号支持同步页大小、重叠秒数、同步状态范围、请求超时、付款确认间隔、机器人和群组、三类聊天通知、自动申诉与备注。平台凭据在数据库中加密保存；更新凭据会停用旧版本并创建递增版本，同一商家账号仅一个版本生效。列表、详情、日志和接口响应均不返回凭据密文或明文。已有商家订单的账号不能删除，只能停用。
 
 ## 支付账号、通道和方案
 

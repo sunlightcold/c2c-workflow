@@ -23,7 +23,13 @@ describe('Business configuration API contract (e2e)', () => {
   let app: INestApplication
   const scope = { resolveTenantId: jest.fn().mockReturnValue('tenant-1') }
   const tenants = { create: jest.fn(), list: jest.fn() }
-  const merchants = { create: jest.fn(), list: jest.fn() }
+  const merchants = {
+    create: jest.fn(),
+    list: jest.fn(),
+    update: jest.fn(),
+    setStatus: jest.fn(),
+    remove: jest.fn(),
+  }
   const payments = {
     createAccount: jest.fn(),
     openAccountChannel: jest.fn(),
@@ -32,7 +38,7 @@ describe('Business configuration API contract (e2e)', () => {
     listAccounts: jest.fn(),
     listPlans: jest.fn(),
   }
-  const credentials = { list: jest.fn(), rotate: jest.fn() }
+  const credentials = { list: jest.fn(), rotate: jest.fn(), testConnection: jest.fn() }
 
   beforeAll(async () => {
     app = await createAdminContractTestApp({
@@ -60,6 +66,10 @@ describe('Business configuration API contract (e2e)', () => {
         code: 'm-1',
         name: 'M1',
         platform: 'BINANCE',
+        externalMerchantId: 'binance-merchant-1',
+        authMode: 'API_KEY',
+        apiKey: 'binance-api-key',
+        secretKey: 'binance-secret-key',
       })
       .expect(201)
     expectWrappedSuccess(response.body)
@@ -67,6 +77,51 @@ describe('Business configuration API contract (e2e)', () => {
       'tenant-1',
       expect.objectContaining({ platform: 'BINANCE' }),
     )
+  })
+
+  it('filters, edits, disables, tests and deletes merchant accounts in the resolved tenant', async () => {
+    merchants.list.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 })
+    merchants.update.mockResolvedValue({ id: '00000000-0000-4000-8000-000000000020' })
+    merchants.setStatus.mockResolvedValue({ status: 'disabled' })
+    merchants.remove.mockResolvedValue(undefined)
+    credentials.testConnection.mockResolvedValue({ success: true, platform: 'BINANCE' })
+    const tenantId = '00000000-0000-4000-8000-000000000010'
+    const merchantId = '00000000-0000-4000-8000-000000000020'
+
+    await request(app.getHttpServer())
+      .get('/v1/sys/merchants')
+      .query({ tenantId, accountName: 'main', page: 1, pageSize: 20 })
+      .expect(200)
+    await request(app.getHttpServer())
+      .put(`/v1/sys/merchants/${merchantId}`)
+      .send({ tenantId, name: 'Main Account', overlapSeconds: 180 })
+      .expect(200)
+    await request(app.getHttpServer())
+      .patch(`/v1/sys/merchants/${merchantId}/status`)
+      .query({ tenantId })
+      .send({ status: 'disabled' })
+      .expect(200)
+    await request(app.getHttpServer())
+      .post(`/v1/sys/merchants/${merchantId}/test`)
+      .query({ tenantId })
+      .expect(201)
+    await request(app.getHttpServer())
+      .delete(`/v1/sys/merchants/${merchantId}`)
+      .query({ tenantId })
+      .expect(200)
+
+    expect(merchants.list).toHaveBeenCalledWith(
+      'tenant-1',
+      expect.objectContaining({ accountName: 'main', page: 1, pageSize: 20 }),
+    )
+    expect(merchants.update).toHaveBeenCalledWith(
+      'tenant-1',
+      merchantId,
+      expect.objectContaining({ name: 'Main Account', overlapSeconds: 180 }),
+    )
+    expect(merchants.setStatus).toHaveBeenCalledWith('tenant-1', merchantId, 'disabled')
+    expect(credentials.testConnection).toHaveBeenCalledWith('tenant-1', merchantId)
+    expect(merchants.remove).toHaveBeenCalledWith('tenant-1', merchantId)
   })
 
   it('lists the payment catalog, tenant accounts and merchant plans', async () => {
@@ -106,6 +161,10 @@ describe('Business configuration API contract (e2e)', () => {
         code: 'm-1',
         name: 'M1',
         platform: 'WECHAT',
+        externalMerchantId: 'merchant-1',
+        authMode: 'API_KEY',
+        apiKey: 'api-key-value',
+        secretKey: 'secret-key-value',
       })
       .expect(400)
     expectWrappedError(response.body, 400)
@@ -171,7 +230,8 @@ describe('Business configuration API contract (e2e)', () => {
       .post('/v1/sys/merchants/00000000-0000-4000-8000-000000000020/platform-credentials')
       .send({
         tenantId: '00000000-0000-4000-8000-000000000010',
-        credentialRef: 'vault://c2c/binance/merchant-1/v1',
+        apiKey: 'binance-api-key',
+        secretKey: 'binance-secret-key',
         clientType: 'WEB',
         requestTimeoutMs: 5000,
       })

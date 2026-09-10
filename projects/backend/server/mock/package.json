@@ -1,6 +1,7 @@
 {
   "name": "@c2c/upstream-mock",
   "private": true,
+  "packageManager": "pnpm@10.5.2",
   "scripts": {
     "build": "nitro build",
     "dev": "nitro dev --port 13002",

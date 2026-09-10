@@ -20,7 +20,9 @@ export class MerchantPlatformCredentialEntity extends CommonUuidEntity {
   })
   platform: MerchantPlatform
   @Column({ type: 'integer', update: false }) version: number
-  @Column({ type: 'varchar', length: 255, update: false, select: false }) credentialRef: string
+  @Column({ type: 'text', update: false, select: false }) credentialRef: string
+  @Column({ type: 'varchar', length: 16 }) authMode: 'API_KEY' | 'WEB_COOKIE'
+  @Column({ type: 'varchar', length: 255 }) apiBaseUrl: string
   @Column({ type: 'varchar', length: 32, nullable: true }) clientType: string | null
   @Column({ type: 'varchar', length: 64, nullable: true }) xUserId: string | null
   @Column({ type: 'integer', default: 5000 }) requestTimeoutMs: number

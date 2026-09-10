@@ -21,10 +21,16 @@ describe('C2C buy-order clients', () => {
     okx = module.get(OkxWebPrivateClient)
   })
 
-  it('signs the Binance list request and permits BUY orders only', async () => {
+  it('signs the Binance list request against the configured API gateway and permits BUY orders only', async () => {
     http.request.mockResolvedValue({ success: true, code: '000000', data: [], total: 0 })
     await binance.listOrders(
-      { apiKey: 'key', secretKey: 'secret', clientType: 'WEB', timeoutMs: 5000 },
+      {
+        apiKey: 'key',
+        secretKey: 'secret',
+        clientType: 'WEB',
+        timeoutMs: 5000,
+        baseUrl: 'http://127.0.0.1:13002/upstreams/binance',
+      },
       {
         tradeType: 'BUY',
         asset: 'USDT',
@@ -39,7 +45,7 @@ describe('C2C buy-order clients', () => {
       expect.objectContaining({
         method: 'POST',
         url: expect.stringMatching(
-          /^https:\/\/api\.binance\.com\/sapi\/v1\/c2c\/orderMatch\/listOrders\?.+signature=/,
+          /^http:\/\/127\.0\.0\.1:13002\/upstreams\/binance\/sapi\/v1\/c2c\/orderMatch\/listOrders\?.+signature=/,
         ),
         headers: expect.objectContaining({ 'X-MBX-APIKEY': 'key' }),
       }),
@@ -56,13 +62,19 @@ describe('C2C buy-order clients', () => {
     Object.defineProperty(invalidInput, 'tradeType', { value: 'SELL' })
     await expect(
       binance.listOrders(
-        { apiKey: 'key', secretKey: 'secret', clientType: 'WEB', timeoutMs: 5000 },
+        {
+          apiKey: 'key',
+          secretKey: 'secret',
+          clientType: 'WEB',
+          timeoutMs: 5000,
+          baseUrl: 'https://api.binance.com',
+        },
         invalidInput,
       ),
     ).rejects.toThrow('仅支持 BUY')
   })
 
-  it('keeps OKX private requests on the fixed origin and fixed paths', async () => {
+  it('keeps OKX private requests on the configured origin and fixed paths', async () => {
     http.request.mockResolvedValue({
       code: 0,
       data: {
@@ -80,16 +92,32 @@ describe('C2C buy-order clients', () => {
         detailUser: { realName: 'Payee', kycVerified: true },
       },
     })
-    await okx.getOrderDetail({ cookie: 'session', authorization: 'token', timeoutMs: 5000 }, '123')
+    await okx.getOrderDetail(
+      {
+        cookie: 'session',
+        authorization: 'token',
+        timeoutMs: 5000,
+        baseUrl: 'http://127.0.0.1:13002/upstreams/okx',
+      },
+      '123',
+    )
     expect(http.request).toHaveBeenCalledWith(
-      expect.objectContaining({ method: 'GET', url: 'https://www.okx.com/v3/c2c/orders/123' }),
+      expect.objectContaining({
+        method: 'GET',
+        url: 'http://127.0.0.1:13002/upstreams/okx/v3/c2c/orders/123',
+      }),
     )
   })
 
   it('rejects nonnumeric OKX receipt account ids before sending paid confirmation', async () => {
     await expect(
       okx.markOrderAsPaid(
-        { cookie: 'session', authorization: 'token', timeoutMs: 5000 },
+        {
+          cookie: 'session',
+          authorization: 'token',
+          timeoutMs: 5000,
+          baseUrl: 'https://www.okx.com',
+        },
         '123',
         'abc',
       ),
@@ -102,7 +130,12 @@ describe('C2C buy-order clients', () => {
 
     await expect(
       okx.checkAntiFraud(
-        { cookie: 'session', authorization: 'token', timeoutMs: 5000 },
+        {
+          cookie: 'session',
+          authorization: 'token',
+          timeoutMs: 5000,
+          baseUrl: 'https://www.okx.com',
+        },
         '123',
         'CNY',
       ),
@@ -154,7 +187,13 @@ describe('C2C buy-order clients', () => {
           ],
         },
       })
-    const credentials = { apiKey: 'key', secretKey: 'secret', clientType: 'WEB', timeoutMs: 5000 }
+    const credentials = {
+      apiKey: 'key',
+      secretKey: 'secret',
+      clientType: 'WEB',
+      timeoutMs: 5000,
+      baseUrl: 'https://api.binance.com',
+    }
 
     await expect(
       binance.listOrders(credentials, {
@@ -236,7 +275,12 @@ describe('C2C buy-order clients', () => {
           detailUser: { realName: 'Li Si', kycVerified: true },
         },
       })
-    const credentials = { cookie: 'session', authorization: 'token', timeoutMs: 5000 }
+    const credentials = {
+      cookie: 'session',
+      authorization: 'token',
+      timeoutMs: 5000,
+      baseUrl: 'https://www.okx.com',
+    }
 
     await expect(
       okx.listOrders(credentials, {
@@ -288,7 +332,13 @@ describe('C2C buy-order clients', () => {
     })
 
     const result = await binance.listOrders(
-      { apiKey: 'key', secretKey: 'secret', clientType: 'WEB', timeoutMs: 5000 },
+      {
+        apiKey: 'key',
+        secretKey: 'secret',
+        clientType: 'WEB',
+        timeoutMs: 5000,
+        baseUrl: 'https://api.binance.com',
+      },
       {
         tradeType: 'BUY',
         asset: 'USDT',

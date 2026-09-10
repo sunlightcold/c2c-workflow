@@ -19,6 +19,7 @@ import {
 } from '@/apps/admin/database/migrations/c2c-business-foundation.migration'
 import { migrateC2cMerchantOrders } from '@/apps/admin/database/migrations/c2c-merchant-orders.migration'
 import { migrateC2cMerchantPlatformCredentials } from '@/apps/admin/database/migrations/c2c-merchant-platform-credentials.migration'
+import { migrateC2cMerchantAccountOperations } from '@/apps/admin/database/migrations/c2c-merchant-account-operations.migration'
 import { migrateC2cPaymentOrders } from '@/apps/admin/database/migrations/c2c-payment-orders.migration'
 import { migrateC2cPaymentRouting } from '@/apps/admin/database/migrations/c2c-payment-routing.migration'
 import { PaymentNotSubmittedError } from '@/apps/admin/modules/payment/payment-execution-coordinator'
@@ -84,16 +85,20 @@ describe('Payment preflight store database integration', () => {
       await migrateC2cPaymentOrders(manager)
       await migrateC2cPaymentRouting(manager)
       await migrateC2cMerchantPlatformCredentials(manager)
+      await migrateC2cMerchantAccountOperations(manager)
       await migrateC2cMerchantOrders(manager)
       await manager.query(
-        `INSERT INTO merchant (id, "tenantId", code, name, platform)
-         VALUES ($1, $2, 'preflight-merchant', 'Preflight Merchant', 'BINANCE')`,
+        `INSERT INTO merchant (id, "tenantId", code, name, platform, "apiBaseUrl")
+         VALUES ($1, $2, 'preflight-merchant', 'Preflight Merchant', 'BINANCE',
+                 'https://api.binance.com')`,
         [merchantId, tenantId],
       )
       await manager.query(
         `INSERT INTO merchant_platform_credential
-           ("tenantId", "merchantId", platform, version, "credentialRef", "clientType")
-         VALUES ($1, $2, 'BINANCE', 1, 'env://BINANCE_PREFLIGHT', 'WEB')`,
+           ("tenantId", "merchantId", platform, version, "credentialRef", "authMode",
+            "apiBaseUrl", "clientType")
+         VALUES ($1, $2, 'BINANCE', 1, 'env://BINANCE_PREFLIGHT', 'API_KEY',
+                 'https://api.binance.com', 'WEB')`,
         [tenantId, merchantId],
       )
       await manager.query(

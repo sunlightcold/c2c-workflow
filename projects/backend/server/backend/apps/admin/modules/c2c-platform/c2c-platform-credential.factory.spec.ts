@@ -13,6 +13,7 @@ describe('C2cPlatformCredentialFactory', () => {
       ),
     ).toEqual({
       apiKey: 'key',
+      baseUrl: 'https://api.binance.com',
       secretKey: 'secret',
       clientType: 'WEB',
       xUserId: 'user-1',
@@ -24,6 +25,11 @@ describe('C2cPlatformCredentialFactory', () => {
         { clientType: null, xUserId: null, requestTimeoutMs: 6000 },
         { cookie: ' cookie ', authorization: ' token ', ignored: 'value' },
       ),
-    ).toEqual({ cookie: 'cookie', authorization: 'token', timeoutMs: 6000 })
+    ).toEqual({
+      cookie: 'cookie',
+      authorization: 'token',
+      baseUrl: 'https://www.okx.com',
+      timeoutMs: 6000,
+    })
   })
 })

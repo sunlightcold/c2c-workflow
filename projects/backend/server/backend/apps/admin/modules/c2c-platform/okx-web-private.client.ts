@@ -7,11 +7,10 @@ import {
 } from './c2c-platform.types'
 import { normalizeOkxDetail, normalizeOkxSummary } from './c2c-order-normalizer'
 
-const OKX_ORIGIN = 'https://www.okx.com'
-
 export interface OkxWebPrivateCredentials {
   cookie: string
   authorization: string
+  baseUrl?: string
   timeoutMs: number
 }
 
@@ -130,7 +129,7 @@ export class OkxWebPrivateClient {
   ) {
     const response = await this.http.request<OkxEnvelope<T>>({
       method,
-      url: `${OKX_ORIGIN}${path}`,
+      url: `${(credentials.baseUrl ?? 'https://www.okx.com').replace(/\/$/, '')}${path}`,
       params,
       body,
       timeoutMs: credentials.timeoutMs,

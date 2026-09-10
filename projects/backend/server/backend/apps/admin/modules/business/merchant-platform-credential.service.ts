@@ -7,9 +7,20 @@ import {
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, Repository } from 'typeorm'
+import { CredentialCipherService } from '../system/credential/credential-cipher.service'
+import {
+  BinanceC2cClient,
+  type BinanceCredentials,
+  C2cPlatformCredentialFactory,
+  OkxWebPrivateClient,
+  type OkxWebPrivateCredentials,
+} from '../c2c-platform'
 
 export interface RotateMerchantPlatformCredentialInput {
-  credentialRef: string
+  apiKey?: string
+  secretKey?: string
+  sessionCookie?: string
+  authorization?: string
   clientType?: string
   xUserId?: string
   requestTimeoutMs: number
@@ -19,6 +30,7 @@ export interface MerchantPlatformCredentialView {
   id: string
   merchantId: string
   platform: MerchantPlatform
+  authMode: 'API_KEY' | 'WEB_COOKIE'
   version: number
   status: BusinessStatus
   clientType: string | null
@@ -29,6 +41,7 @@ export interface MerchantPlatformCredentialView {
 
 export interface ActiveMerchantPlatformCredentialReference {
   credentialRef: string
+  apiBaseUrl: string
   clientType: string | null
   xUserId: string | null
   requestTimeoutMs: number
@@ -42,6 +55,10 @@ export class MerchantPlatformCredentialService {
     @InjectRepository(MerchantPlatformCredentialEntity)
     private readonly credentialRepository: Repository<MerchantPlatformCredentialEntity>,
     private readonly dataSource: DataSource,
+    private readonly cipher: CredentialCipherService,
+    private readonly credentialFactory: C2cPlatformCredentialFactory,
+    private readonly binance: BinanceC2cClient,
+    private readonly okx: OkxWebPrivateClient,
   ) {}
 
   async list(tenantId: string, merchantId: string): Promise<MerchantPlatformCredentialView[]> {
@@ -81,10 +98,13 @@ export class MerchantPlatformCredentialService {
           merchantId,
           platform: merchant.platform,
           version: (latest?.version ?? 0) + 1,
-          credentialRef: input.credentialRef,
-          clientType: input.clientType ?? null,
-          xUserId: input.xUserId ?? null,
-          requestTimeoutMs: input.requestTimeoutMs,
+          credentialRef: this.encryptedReference(merchant.platform, input),
+          authMode: merchant.platform === MerchantPlatform.BINANCE ? 'API_KEY' : 'WEB_COOKIE',
+          apiBaseUrl: merchant.apiBaseUrl,
+          clientType:
+            merchant.platform === MerchantPlatform.BINANCE ? (input.clientType ?? 'WEB') : null,
+          xUserId: merchant.platform === MerchantPlatform.BINANCE ? (input.xUserId ?? null) : null,
+          requestTimeoutMs: input.requestTimeoutMs ?? merchant.requestTimeoutMs,
           status: BusinessStatus.ACTIVE,
         }),
       )
@@ -106,10 +126,39 @@ export class MerchantPlatformCredentialService {
     if (!credential) throw new BadRequestException('商家未配置生效的平台凭据')
     return {
       credentialRef: credential.credentialRef,
+      apiBaseUrl: credential.apiBaseUrl,
       clientType: credential.clientType,
       xUserId: credential.xUserId,
       requestTimeoutMs: credential.requestTimeoutMs,
     }
+  }
+
+  async testConnection(tenantId: string, merchantId: string) {
+    const merchant = await this.merchantRepository.findOne({ where: { id: merchantId, tenantId } })
+    if (!merchant) throw new NotFoundException('商家账号不存在')
+    const reference = await this.getActiveReference(tenantId, merchantId)
+    if (!reference.credentialRef.startsWith('enc://')) {
+      throw new BadRequestException('商家账号凭据不是后台可维护的加密凭据')
+    }
+    const raw = this.cipher.decrypt(reference.credentialRef.slice('enc://'.length))
+    const secret = JSON.parse(raw) as Record<string, unknown>
+    const credentials = this.credentialFactory.create(merchant.platform, reference, secret)
+    const now = Date.now()
+    const input = {
+      tradeType: 'BUY' as const,
+      asset: 'USDT',
+      startDate: now - 60_000,
+      endDate: now,
+      page: 1,
+      rows: 1,
+      orderStatusList: merchant.orderStatusList,
+    }
+    if (merchant.platform === MerchantPlatform.BINANCE) {
+      await this.binance.listOrders(credentials as BinanceCredentials, input)
+    } else {
+      await this.okx.listOrders(credentials as OkxWebPrivateCredentials, input)
+    }
+    return { success: true, platform: merchant.platform }
   }
 
   private async requireMerchant(tenantId: string, merchantId: string): Promise<void> {
@@ -121,12 +170,29 @@ export class MerchantPlatformCredentialService {
     platform: MerchantPlatform,
     input: RotateMerchantPlatformCredentialInput,
   ): void {
-    if (platform === MerchantPlatform.BINANCE && !input.clientType) {
-      throw new BadRequestException('币安商家平台凭据必须配置 clientType')
+    if (
+      platform === MerchantPlatform.BINANCE &&
+      (!input.apiKey?.trim() || !input.secretKey?.trim())
+    ) {
+      throw new BadRequestException('币安商家账号必须配置 API Key 和 Secret Key')
     }
-    if (platform === MerchantPlatform.OKX && (input.clientType || input.xUserId)) {
-      throw new BadRequestException('欧易商家平台凭据不接受币安专属字段')
+    if (
+      platform === MerchantPlatform.OKX &&
+      (!input.sessionCookie?.trim() || !input.authorization?.trim())
+    ) {
+      throw new BadRequestException('欧易商家账号必须配置 Cookie 和 Authorization')
     }
+  }
+
+  private encryptedReference(
+    platform: MerchantPlatform,
+    input: RotateMerchantPlatformCredentialInput,
+  ): string {
+    const secret =
+      platform === MerchantPlatform.BINANCE
+        ? { apiKey: input.apiKey!.trim(), secretKey: input.secretKey!.trim() }
+        : { cookie: input.sessionCookie!.trim(), authorization: input.authorization!.trim() }
+    return `enc://${this.cipher.encrypt(JSON.stringify(secret))}`
   }
 
   private toView(credential: MerchantPlatformCredentialEntity): MerchantPlatformCredentialView {
@@ -134,6 +200,7 @@ export class MerchantPlatformCredentialService {
       id: credential.id,
       merchantId: credential.merchantId,
       platform: credential.platform,
+      authMode: credential.authMode,
       version: credential.version,
       status: credential.status,
       clientType: credential.clientType,

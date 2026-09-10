@@ -16,9 +16,11 @@ import { MerchantService } from './merchant.service'
 import { PaymentConfigService } from './payment-config.service'
 import { TenantService } from './tenant.service'
 import { MerchantPlatformCredentialService } from './merchant-platform-credential.service'
+import { C2cPlatformModule } from '../c2c-platform'
 
 @Module({
   imports: [
+    C2cPlatformModule,
     TypeOrmModule.forFeature([
       TenantEntity,
       MerchantEntity,

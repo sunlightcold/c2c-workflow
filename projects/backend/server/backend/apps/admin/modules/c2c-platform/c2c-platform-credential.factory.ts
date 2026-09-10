@@ -4,6 +4,7 @@ import type { BinanceCredentials } from './binance-c2c.client'
 import type { OkxWebPrivateCredentials } from './okx-web-private.client'
 
 export interface C2cCredentialReference {
+  apiBaseUrl?: string
   clientType: string | null
   xUserId: string | null
   requestTimeoutMs: number
@@ -23,6 +24,7 @@ export class C2cPlatformCredentialFactory {
         throw new Error('币安 Secret 缺少 apiKey、secretKey 或 clientType')
       return {
         apiKey,
+        baseUrl: reference.apiBaseUrl ?? 'https://api.binance.com',
         secretKey,
         clientType: reference.clientType,
         timeoutMs: reference.requestTimeoutMs,
@@ -32,7 +34,12 @@ export class C2cPlatformCredentialFactory {
     const cookie = this.text(secret.cookie)
     const authorization = this.text(secret.authorization)
     if (!cookie || !authorization) throw new Error('欧易 Secret 缺少 cookie 或 authorization')
-    return { cookie, authorization, timeoutMs: reference.requestTimeoutMs }
+    return {
+      cookie,
+      authorization,
+      baseUrl: reference.apiBaseUrl ?? 'https://www.okx.com',
+      timeoutMs: reference.requestTimeoutMs,
+    }
   }
 
   private text(value: unknown): string {

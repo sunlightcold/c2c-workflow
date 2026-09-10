@@ -8,10 +8,9 @@ import {
 } from './c2c-platform.types'
 import { normalizeBinanceDetail, normalizeBinanceSummary } from './c2c-order-normalizer'
 
-const BINANCE_ORIGIN = 'https://api.binance.com'
-
 export interface BinanceCredentials {
   apiKey: string
+  baseUrl?: string
   secretKey: string
   clientType: string
   timeoutMs: number
@@ -94,7 +93,7 @@ export class BinanceC2cClient {
     if (credentials.xUserId) headers['x-user-id'] = credentials.xUserId
     const response = await this.http.request<T>({
       method: 'POST',
-      url: `${BINANCE_ORIGIN}${path}?${query}&signature=${signature}`,
+      url: `${(credentials.baseUrl ?? 'https://api.binance.com').replace(/\/$/, '')}${path}?${query}&signature=${signature}`,
       headers,
       timeoutMs: credentials.timeoutMs,
       body,

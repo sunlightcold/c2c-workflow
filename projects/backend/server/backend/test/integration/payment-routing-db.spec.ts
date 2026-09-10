@@ -23,6 +23,7 @@ import {
 import { migrateC2cPaymentOrders } from '@/apps/admin/database/migrations/c2c-payment-orders.migration'
 import { migrateC2cPaymentBatches } from '@/apps/admin/database/migrations/c2c-payment-batches.migration'
 import { migrateC2cMerchantPlatformCredentials } from '@/apps/admin/database/migrations/c2c-merchant-platform-credentials.migration'
+import { migrateC2cMerchantAccountOperations } from '@/apps/admin/database/migrations/c2c-merchant-account-operations.migration'
 import { migrateC2cPaymentRouting } from '@/apps/admin/database/migrations/c2c-payment-routing.migration'
 import { PaymentOrderService } from '@/apps/admin/modules/payment/payment-order.service'
 import { PaymentPlanResolver } from '@/apps/admin/modules/payment/payment-plan-resolver'
@@ -89,6 +90,7 @@ describe('Payment routing database integration', () => {
     await migrateC2cPaymentRouting(dataSource.manager)
     await migrateC2cPaymentRouting(dataSource.manager)
     await migrateC2cMerchantPlatformCredentials(dataSource.manager)
+    await migrateC2cMerchantAccountOperations(dataSource.manager)
     await migrateC2cPaymentBatches(dataSource.manager)
     await seedConfiguration()
     resolver = new PaymentPlanResolver(dataSource)
@@ -312,8 +314,9 @@ describe('Payment routing database integration', () => {
   async function seedConfiguration() {
     await dataSource.transaction(async (manager) => {
       await manager.query(
-        `INSERT INTO merchant (id, "tenantId", code, name, platform)
-         VALUES ($1, $2, 'merchant-routing', 'Merchant Routing', 'BINANCE')`,
+        `INSERT INTO merchant (id, "tenantId", code, name, platform, "apiBaseUrl")
+         VALUES ($1, $2, 'merchant-routing', 'Merchant Routing', 'BINANCE',
+                 'https://api.binance.com')`,
         [merchantId, tenantId],
       )
       await manager.query(

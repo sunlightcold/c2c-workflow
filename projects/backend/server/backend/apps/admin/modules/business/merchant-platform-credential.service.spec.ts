@@ -15,8 +15,12 @@ describe('MerchantPlatformCredentialService', () => {
   const merchantId = '00000000-0000-4000-8000-000000000020'
   const merchant = { id: merchantId, tenantId, platform: MerchantPlatform.BINANCE }
   const merchantRepository = { findOne: jest.fn() }
-  const credentialRepository = { find: jest.fn() }
+  const credentialRepository = { find: jest.fn(), createQueryBuilder: jest.fn() }
   const transaction = jest.fn()
+  const cipher = { encrypt: jest.fn().mockReturnValue('encrypted-value'), decrypt: jest.fn() }
+  const credentialFactory = { create: jest.fn() }
+  const binance = { listOrders: jest.fn() }
+  const okx = { listOrders: jest.fn() }
   let service: MerchantPlatformCredentialService
 
   beforeEach(async () => {
@@ -31,12 +35,27 @@ describe('MerchantPlatformCredentialService', () => {
         },
         { provide: DataSource, useValue: { transaction } },
       ],
-    }).compile()
+    })
+      .useMocker((token) => {
+        if (typeof token === 'function' && token.name === 'CredentialCipherService') return cipher
+        if (typeof token === 'function' && token.name === 'C2cPlatformCredentialFactory')
+          return credentialFactory
+        if (typeof token === 'function' && token.name === 'BinanceC2cClient') return binance
+        if (typeof token === 'function' && token.name === 'OkxWebPrivateClient') return okx
+        return undefined
+      })
+      .compile()
     service = module.get(MerchantPlatformCredentialService)
   })
 
-  it('rotates one merchant credential version and never returns its secret reference', async () => {
-    const lockedMerchant = { findOne: jest.fn().mockResolvedValue(merchant) }
+  it('rotates one merchant credential version and never returns its secret', async () => {
+    const lockedMerchant = {
+      findOne: jest.fn().mockResolvedValue({
+        ...merchant,
+        apiBaseUrl: 'https://api.binance.com',
+        requestTimeoutMs: 15000,
+      }),
+    }
     const credentials = {
       findOne: jest.fn().mockResolvedValue({ version: 2 }),
       update: jest.fn().mockResolvedValue({ affected: 1 }),
@@ -51,28 +70,34 @@ describe('MerchantPlatformCredentialService', () => {
 
     await expect(
       service.rotate(tenantId, merchantId, {
-        credentialRef: 'vault://c2c/binance/merchant-1/v3',
+        apiKey: 'binance-key',
+        secretKey: 'binance-secret',
         clientType: 'WEB',
-        requestTimeoutMs: 5000,
+        requestTimeoutMs: 15000,
       }),
     ).resolves.toEqual({
       id: 'credential-3',
       merchantId,
       platform: MerchantPlatform.BINANCE,
+      authMode: 'API_KEY',
       version: 3,
       status: BusinessStatus.ACTIVE,
       clientType: 'WEB',
       xUserId: null,
-      requestTimeoutMs: 5000,
+      requestTimeoutMs: 15000,
       credentialConfigured: true,
     })
     expect(credentials.update).toHaveBeenCalledWith(
       { tenantId, merchantId, status: BusinessStatus.ACTIVE },
       { status: BusinessStatus.DISABLED },
     )
+    expect(credentials.save).toHaveBeenCalledWith(
+      expect.objectContaining({ credentialRef: 'enc://encrypted-value' }),
+    )
+    expect(JSON.stringify(credentials.save.mock.calls[0][0])).not.toContain('binance-secret')
   })
 
-  it('rejects Binance credentials without a client type', async () => {
+  it('rejects incomplete Binance credentials', async () => {
     transaction.mockImplementation((work) =>
       work({
         getRepository: () => ({ findOne: jest.fn().mockResolvedValue(merchant) }),
@@ -81,8 +106,8 @@ describe('MerchantPlatformCredentialService', () => {
 
     await expect(
       service.rotate(tenantId, merchantId, {
-        credentialRef: 'vault://c2c/binance/merchant-1/v1',
-        requestTimeoutMs: 5000,
+        apiKey: 'binance-key',
+        requestTimeoutMs: 15000,
       }),
     ).rejects.toBeInstanceOf(BadRequestException)
   })
@@ -94,12 +119,14 @@ describe('MerchantPlatformCredentialService', () => {
         id: 'credential-1',
         merchantId,
         platform: MerchantPlatform.BINANCE,
+        authMode: 'API_KEY',
         version: 1,
         credentialRef: 'vault://must-not-leak',
         status: BusinessStatus.ACTIVE,
         clientType: 'WEB',
         xUserId: null,
-        requestTimeoutMs: 5000,
+        apiBaseUrl: 'https://api.binance.com',
+        requestTimeoutMs: 15000,
       },
     ])
 
@@ -110,5 +137,45 @@ describe('MerchantPlatformCredentialService', () => {
     )
     expect(result).toEqual([expect.objectContaining({ credentialConfigured: true, version: 1 })])
     expect(result[0]).not.toHaveProperty('credentialRef')
+  })
+
+  it('tests the active Binance credential against its configured gateway', async () => {
+    merchantRepository.findOne.mockResolvedValue({
+      ...merchant,
+      orderStatusList: [1],
+    })
+    const queryBuilder = {
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue({
+        credentialRef: 'enc://encrypted-value',
+        apiBaseUrl: 'http://127.0.0.1:13002/upstreams/binance',
+        clientType: 'WEB',
+        xUserId: null,
+        requestTimeoutMs: 15000,
+      }),
+    }
+    credentialRepository.createQueryBuilder.mockReturnValue(queryBuilder)
+    cipher.decrypt.mockReturnValue('{"apiKey":"key","secretKey":"secret"}')
+    const resolved = {
+      apiKey: 'key',
+      secretKey: 'secret',
+      clientType: 'WEB',
+      timeoutMs: 15000,
+      baseUrl: 'http://127.0.0.1:13002/upstreams/binance',
+    }
+    credentialFactory.create.mockReturnValue(resolved)
+    binance.listOrders.mockResolvedValue({ items: [], total: 0 })
+
+    await expect(service.testConnection(tenantId, merchantId)).resolves.toEqual({
+      success: true,
+      platform: MerchantPlatform.BINANCE,
+    })
+    expect(binance.listOrders).toHaveBeenCalledWith(
+      resolved,
+      expect.objectContaining({ rows: 1, orderStatusList: [1] }),
+    )
+    expect(okx.listOrders).not.toHaveBeenCalled()
   })
 })

@@ -26,6 +26,60 @@ export class MerchantEntity extends CommonUuidEntity {
   @Column({ type: 'varchar', length: 128, nullable: true })
   externalMerchantId: string | null
 
+  @Column({ type: 'varchar', length: 255 })
+  apiBaseUrl: string
+
+  @Column({ type: 'integer', default: 20 })
+  pageSize: number
+
+  @Column({ type: 'integer', default: 120 })
+  overlapSeconds: number
+
+  @Column({ type: 'integer', array: true, default: () => 'ARRAY[1]::integer[]' })
+  orderStatusList: number[]
+
+  @Column({ type: 'integer', default: 15000 })
+  requestTimeoutMs: number
+
+  @Column({ type: 'integer', default: 0 })
+  paidConfirmIntervalMinMs: number
+
+  @Column({ type: 'integer', default: 0 })
+  paidConfirmIntervalMaxMs: number
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  botCode: string | null
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  chatId: string | null
+
+  @Column({ type: 'boolean', default: false })
+  c2cChatOrderCreatedEnabled: boolean
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  c2cChatOrderCreatedMessage: string | null
+
+  @Column({ type: 'boolean', default: false })
+  c2cChatOrderPaidEnabled: boolean
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  c2cChatOrderPaidMessage: string | null
+
+  @Column({ type: 'boolean', default: false })
+  c2cChatOrderCompletedEnabled: boolean
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  c2cChatOrderCompletedMessage: string | null
+
+  @Column({ type: 'boolean', default: false })
+  autoAppealEnabled: boolean
+
+  @Column({ type: 'integer', default: 18 })
+  autoAppealDelayMinutes: number
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  description: string | null
+
   @Column({ type: 'enum', enum: BusinessStatus, enumName: 'business_status_enum' })
   status: BusinessStatus
 }

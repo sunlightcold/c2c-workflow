@@ -52,9 +52,9 @@
 
 尚未完全稳定为 Contract 的需求、方案、迁移计划或联调说明。Requirement 存放在 `doc/requirements/`。
 
-**C2C Merchant**:
-代理商名下的一个 C2C 经营单元，创建时必须且只能选择一个交易平台（币安或欧易）。同一经营主体跨平台经营时分别创建 C2C Merchant，订单、凭据和同步状态不能跨商家混用。
-_Avoid_: Platform Account, Merchant Platform Account
+**C2C Merchant Account**:
+所属单位名下的一个 C2C 商家账号，创建时必须且只能选择一个交易平台（币安或欧易）。同一经营主体跨平台经营时分别创建商家账号，订单、凭据、同步状态和机器人配置不能跨账号混用。
+_Avoid_: Merchant Profile, Organization, Platform Account
 
 ## Payment Order
 

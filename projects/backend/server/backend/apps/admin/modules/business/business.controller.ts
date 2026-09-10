@@ -1,6 +1,17 @@
 import { definePermission, Permission, User } from '@/common/decorators'
 import type { AuthUser } from '@/common/interfaces'
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { BusinessScopeService } from './business-scope.service'
 import {
@@ -8,11 +19,13 @@ import {
   CreatePaymentAccountDto,
   CreatePaymentPlanDto,
   CreateTenantDto,
+  MerchantListDto,
   OpenPaymentAccountChannelDto,
   PaymentPlanListDto,
   RotateMerchantPlatformCredentialDto,
   SetTenantStatusDto,
   TenantContextDto,
+  UpdateMerchantDto,
 } from './business.dto'
 import { MerchantService } from './merchant.service'
 import { PaymentConfigService } from './payment-config.service'
@@ -23,7 +36,10 @@ const TenantPermissions = definePermission('agency:tenant', ['read', 'create', '
 const MerchantPermissions = definePermission('merchant:account', [
   'read',
   'create',
+  'update',
+  'delete',
   'credential',
+  'test',
 ] as const)
 const PaymentPermissions = definePermission('payment:account', ['read', 'create', 'bind'] as const)
 
@@ -63,8 +79,8 @@ export class BusinessController {
   @Get('merchants')
   @Permission(MerchantPermissions.READ)
   @ApiOperation({ summary: '查询商家' })
-  listMerchants(@Query() dto: TenantContextDto, @User() actor: AuthUser) {
-    return this.merchants.list(this.scope.resolveTenantId(actor, dto.tenantId))
+  listMerchants(@Query() dto: MerchantListDto, @User() actor: AuthUser) {
+    return this.merchants.list(this.scope.resolveTenantId(actor, dto.tenantId), dto)
   }
 
   @Post('merchants')
@@ -73,6 +89,59 @@ export class BusinessController {
   createMerchant(@Body() dto: CreateMerchantDto, @User() actor: AuthUser) {
     const { tenantId, ...input } = dto
     return this.merchants.create(this.scope.resolveTenantId(actor, tenantId), input)
+  }
+
+  @Put('merchants/:id')
+  @Permission(MerchantPermissions.UPDATE)
+  @ApiOperation({ summary: '编辑商家账号配置' })
+  updateMerchant(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateMerchantDto,
+    @User() actor: AuthUser,
+  ) {
+    const { tenantId, ...input } = dto
+    return this.merchants.update(this.scope.resolveTenantId(actor, tenantId), id, input)
+  }
+
+  @Patch('merchants/:id/status')
+  @Permission(MerchantPermissions.UPDATE)
+  @ApiOperation({ summary: '启用或停用商家账号' })
+  setMerchantStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() dto: TenantContextDto,
+    @Body() statusDto: SetTenantStatusDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.merchants.setStatus(
+      this.scope.resolveTenantId(actor, dto.tenantId),
+      id,
+      statusDto.status,
+    )
+  }
+
+  @Delete('merchants/:id')
+  @Permission(MerchantPermissions.DELETE)
+  @ApiOperation({ summary: '删除尚未产生订单的商家账号' })
+  removeMerchant(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() dto: TenantContextDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.merchants.remove(this.scope.resolveTenantId(actor, dto.tenantId), id)
+  }
+
+  @Post('merchants/:id/test')
+  @Permission(MerchantPermissions.TEST)
+  @ApiOperation({ summary: '测试商家账号与币安或欧易的连接' })
+  testMerchantConnection(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() dto: TenantContextDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.platformCredentials.testConnection(
+      this.scope.resolveTenantId(actor, dto.tenantId),
+      id,
+    )
   }
 
   @Get('merchants/:id/platform-credentials')

@@ -17,8 +17,6 @@ import type { C2cOrderSyncStore } from './c2c-order-sync.types'
 
 export const C2C_ORDER_SYNC_STORE = Symbol('C2C_ORDER_SYNC_STORE')
 const INITIAL_LOOKBACK_MS = 24 * 60 * 60 * 1000
-const OVERLAP_MS = 2 * 60 * 1000
-const PAGE_SIZE = 50
 
 @Injectable()
 export class C2cOrderSyncService {
@@ -42,13 +40,15 @@ export class C2cOrderSyncService {
       const secret = await this.secretResolver.resolve(reference.credentialRef)
       const lastSuccessAt = await this.store.getLastSuccessAt(tenantId, merchantId)
       const startDate = lastSuccessAt
-        ? lastSuccessAt.getTime() - OVERLAP_MS
+        ? lastSuccessAt.getTime() - (merchant.overlapSeconds ?? 120) * 1000
         : now.getTime() - INITIAL_LOOKBACK_MS
       const orders = await this.fetchAll(
         merchant.platform,
         this.credentialFactory.create(merchant.platform, reference, secret),
         startDate,
         now.getTime(),
+        merchant.pageSize ?? 20,
+        merchant.orderStatusList ?? [1],
       )
       const result = await this.store.persistWindow(
         { tenantId, merchantId, platform: merchant.platform },
@@ -67,6 +67,8 @@ export class C2cOrderSyncService {
     credentials: BinanceCredentials | OkxWebPrivateCredentials,
     startDate: number,
     endDate: number,
+    pageSize: number,
+    orderStatusList: number[],
   ): Promise<C2cBuyOrderDetail[]> {
     const result: C2cBuyOrderDetail[] = []
     let page = 1
@@ -78,8 +80,8 @@ export class C2cOrderSyncService {
         startDate,
         endDate,
         page,
-        rows: PAGE_SIZE,
-        orderStatusList: [1, 2, 3, 4, 6, 7],
+        rows: pageSize,
+        orderStatusList,
       })
       for (const summary of response.items) {
         const detail = await this.detail(platform, credentials, summary.platformOrderId)
