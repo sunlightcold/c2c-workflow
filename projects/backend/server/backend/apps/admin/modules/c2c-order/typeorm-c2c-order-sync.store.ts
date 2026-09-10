@@ -6,14 +6,17 @@ import {
   MerchantOrderSyncCheckpointEntity,
   MerchantPlatform,
 } from '@admin/database'
-import { Injectable } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 import { DataSource, EntityManager } from 'typeorm'
 import { C2cBuyOrderStatus, type C2cBuyOrderDetail } from '../c2c-platform'
 import type { C2cOrderSyncStore } from './c2c-order-sync.types'
 
 @Injectable()
 export class TypeOrmC2cOrderSyncStore implements C2cOrderSyncStore {
-  constructor(private readonly dataSource: Pick<DataSource, 'transaction' | 'getRepository'>) {}
+  constructor(
+    @Inject(DataSource)
+    private readonly dataSource: Pick<DataSource, 'transaction' | 'getRepository'>,
+  ) {}
 
   async getLastSuccessAt(tenantId: string, merchantId: string): Promise<Date | null> {
     const checkpoint = await this.dataSource
