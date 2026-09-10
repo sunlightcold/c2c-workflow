@@ -67,3 +67,4 @@ Compose 会等待 PostgreSQL 健康检查通过，启动一次性 `migrate` 服�
 2. `C2cPaymentOrders1789001000000`：支付订单、支付尝试和状态历史。
 3. `C2cPaymentRouting1789002000000`：待配置状态、可空路由快照、支付方式和执行方式。
 4. `C2cMerchantPlatformCredentials1789003000000`：按商家隔离、单版本生效的平台凭据引用。
+5. `C2cMerchantOrders1789004000000`：买币商家订单、状态历史和每商家同步检查点。

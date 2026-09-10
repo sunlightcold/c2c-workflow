@@ -34,6 +34,9 @@ import {
   PaymentAttemptEntity,
   PaymentOrderStatusHistoryEntity,
   MerchantPlatformCredentialEntity,
+  MerchantOrderEntity,
+  MerchantOrderStatusHistoryEntity,
+  MerchantOrderSyncCheckpointEntity,
 } from './business'
 
 const sysEntities = [
@@ -71,6 +74,9 @@ const entities = [
   PaymentAttemptEntity,
   PaymentOrderStatusHistoryEntity,
   MerchantPlatformCredentialEntity,
+  MerchantOrderEntity,
+  MerchantOrderStatusHistoryEntity,
+  MerchantOrderSyncCheckpointEntity,
 ]
 
 /**
