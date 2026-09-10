@@ -6,8 +6,8 @@ export const ValidationMatch = {
     message: 'uid 必须为 11 位字符串',
   },
   username: {
-    regExp: /^[a-zA-Z0-9-_]{4,16}$/,
-    message: '用户名只能为英文字母，数字，下划线或者短横线组成，并且用户名长度为 4~16 位',
+    regExp: /^[\u4e00-\u9fa5a-zA-Z0-9_-]{2,16}$/,
+    message: '用户名支持2-16个中英文、数字、下划线或短横线字符',
   },
   email: {
     regExp: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,

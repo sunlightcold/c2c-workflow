@@ -86,6 +86,6 @@ describe('Object storage center migration database integration', () => {
     )
     await expect(
       queryRunner.query(`DELETE FROM sys_storage_channel WHERE id = $1`, [channelId]),
-    ).rejects.toMatchObject({ code: '23001' })
+    ).rejects.toMatchObject({ code: '23503' })
   })
 })
