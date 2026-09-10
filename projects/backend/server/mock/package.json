@@ -1,0 +1,17 @@
+{
+  "name": "@c2c/upstream-mock",
+  "private": true,
+  "scripts": {
+    "build": "nitro build",
+    "dev": "nitro dev --port 3002",
+    "prepare": "nitro prepare",
+    "preview": "node --env-file-if-exists=.env .output/server/index.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "nitropack": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

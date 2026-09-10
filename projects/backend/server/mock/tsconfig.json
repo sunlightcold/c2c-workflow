@@ -1,0 +1,10 @@
+{
+  "extends": "./.nitro/types/tsconfig.json",
+  "compilerOptions": {
+    "skipLibCheck": true,
+    "paths": {
+      "@mock/core/*": ["./server/core/*"],
+      "@mock/upstreams/*": ["./server/upstreams/*"]
+    }
+  }
+}
