@@ -12,7 +12,7 @@
 
 申诉上传地址会指向 mock 自己的 `PUT /api/mock/binance-c2c/complaint-upload`，不会访问真实 S3。
 
-网关地址直接配置为 `http://127.0.0.1:3002`。Mock 会校验 `X-MBX-APIKEY`、`clientType`、`timestamp`、`recvWindow` 和 HMAC-SHA256 `signature`。默认配置来自项目根目录 `.env`：
+网关地址直接配置为 `http://127.0.0.1:13002`。Mock 会校验 `X-MBX-APIKEY`、`clientType`、`timestamp`、`recvWindow` 和 HMAC-SHA256 `signature`。默认配置来自项目根目录 `.env`：
 
 ```dotenv
 MOCK_BINANCE_API_KEY=mock-binance-api-key
@@ -23,7 +23,7 @@ MOCK_BINANCE_CLIENT_TYPE=WEB
 添加测试订单：
 
 ```bash
-curl -X POST http://127.0.0.1:3002/api/mock/binance-c2c/orders \
+curl -X POST http://127.0.0.1:13002/api/mock/binance-c2c/orders \
   -H 'content-type: application/json' \
   -d '{"orderNumber":"22924521759466590208","totalPrice":"133.00","amount":"0.0019","realName":"杨圳","paymentMethod":{"id":"1","identifier":"BANK","tradeMethodName":"银行卡","payAccount":"13822079784","fieldList":[{"fieldName":"account_name","fieldValue":"杨圳"}]}}'
 ```
@@ -47,11 +47,11 @@ curl -X POST http://127.0.0.1:3002/api/mock/binance-c2c/orders \
 查看和重置：
 
 ```bash
-curl http://127.0.0.1:3002/api/mock/binance-c2c/orders
-curl -X POST http://127.0.0.1:3002/api/mock/binance-c2c/reset
+curl http://127.0.0.1:13002/api/mock/binance-c2c/orders
+curl -X POST http://127.0.0.1:13002/api/mock/binance-c2c/reset
 
 # 模拟标记付款失败；恢复时改为 false
-curl -X PATCH http://127.0.0.1:3002/api/mock/binance-c2c/config \
+curl -X PATCH http://127.0.0.1:13002/api/mock/binance-c2c/config \
   -H 'Content-Type: application/json' \
   -d '{"markOrderAsPaidFailure":true}'
 ```

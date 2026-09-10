@@ -66,8 +66,8 @@ describe('AlipayTransferMockPlugin', () => {
   })
 
   it('本地通道配置默认通过转发应用访问Mock', async () => {
-    const config = await getLocalAlipayTransferConfig('http://127.0.0.1:3002')
-    expect(config.mockGateway).toBe('http://127.0.0.1:3002/api/alipay/gateway')
+    const config = await getLocalAlipayTransferConfig('http://127.0.0.1:13002')
+    expect(config.mockGateway).toBe('http://127.0.0.1:13002/api/alipay/gateway')
     expect(config.pfaParams).toMatchObject({
       appId: APP_ID,
       authMode: 'KEY',

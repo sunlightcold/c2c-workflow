@@ -18,10 +18,10 @@ pnpm install
 pnpm dev:mock
 ```
 
-默认地址为 `http://127.0.0.1:3002`。获取健康状态：
+默认地址为 `http://127.0.0.1:13002`。获取健康状态：
 
 ```bash
-curl http://127.0.0.1:3002/api/mock/health
+curl http://127.0.0.1:13002/api/mock/health
 ```
 
 ## 已实现上游
@@ -35,10 +35,10 @@ curl http://127.0.0.1:3002/api/mock/health
 
 ## OKX C2C
 
-Mock 同时提供 OKX 网关和控制接口，可直接驱动 pay 的轮询、详情核验、自动创建代付订单以及标记付款流程。默认网关为 `http://127.0.0.1:3002`，账号中填写：
+Mock 同时提供 OKX 网关和控制接口，可直接驱动系统的轮询、详情核验、自动创建支付订单以及标记付款流程。默认网关为 `http://127.0.0.1:13002`，账号中填写：
 
 ```text
-API 网关：http://127.0.0.1:3002
+API 网关：http://127.0.0.1:13002
 Authorization：Bearer mock-okx-authorization
 Cookie：token=mock-okx-token; sid=mock-okx-session
 ```
@@ -46,7 +46,7 @@ Cookie：token=mock-okx-token; sid=mock-okx-session
 启动后会自动生成一笔可处理的 BUY/USDT/CNY 订单，订单号 `260905000000001`，收款账户 ID `25990076`，实名为“测试用户”。也可以通过控制接口创建来单：
 
 ```bash
-curl -X POST http://127.0.0.1:3002/api/mock/okx-c2c/orders \
+curl -X POST http://127.0.0.1:13002/api/mock/okx-c2c/orders \
   -H "Content-Type: application/json" \
   -d '{"publicTradingOrderId":"260905000000002","baseAmount":"10.00","baseCurrency":"usdt","quoteAmount":"70.00","quoteCurrency":"cny","price":"7.00","receiptAccountId":"25990076","accountName":"测试用户","accountNo":"13800138000","payType":"aliPay","payMethodName":"支付宝","kycVerified":true}'
 ```
@@ -65,7 +65,7 @@ POST /api/mock/okx-c2c/reset         恢复默认订单和 headers
 要验证标记付款，可执行：
 
 ```bash
-curl -X POST "http://127.0.0.1:3002/v3/c2c/orders/260905000000001/payment/paid?t=1" \
+curl -X POST "http://127.0.0.1:13002/v3/c2c/orders/260905000000001/payment/paid?t=1" \
   -H "Authorization: Bearer mock-okx-authorization" \
   -H "Cookie: token=mock-okx-token; sid=mock-okx-session" \
   -H "Content-Type: application/json" \

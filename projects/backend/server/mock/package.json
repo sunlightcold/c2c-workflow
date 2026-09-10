@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "build": "nitro build",
-    "dev": "nitro dev --port 3002",
+    "dev": "nitro dev --port 13002",
     "prepare": "nitro prepare",
     "preview": "node --env-file-if-exists=.env .output/server/index.mjs",
     "test": "vitest run",

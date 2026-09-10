@@ -28,7 +28,10 @@
       "stack": ["NestJS", "TypeORM", "PostgreSQL", "Redis", "BullMQ", "pnpm workspace", "TypeScript"],
       "packageManager": "pnpm@10.5.2",
       "ports": {
-        "api": null
+        "api": 13001,
+        "mock": 13002,
+        "postgres": 15433,
+        "redis": 16380
       },
       "commands": {
         "install": ["pnpm", "install", "--frozen-lockfile"],
@@ -71,7 +74,7 @@
       "stack": ["Vue 3", "Vite", "TypeScript", "Vben Admin", "Ant Design Vue", "pnpm workspace", "Turbo"],
       "packageManager": "pnpm@9.15.9",
       "ports": {
-        "webDev": 5666
+        "webDev": 15666
       },
       "commands": {
         "install": ["pnpm", "install", "--frozen-lockfile"],

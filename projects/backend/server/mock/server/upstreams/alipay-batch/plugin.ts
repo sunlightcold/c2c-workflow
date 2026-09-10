@@ -426,7 +426,7 @@ export class AlipayBatchPlugin implements UpstreamMockPlugin {
         updatedAt: new Date().toISOString(),
       }
     })!
-    const publicOrigin = (origin ?? process.env.MOCK_PUBLIC_ORIGIN ?? 'http://127.0.0.1:3002').replace(/\/$/, '')
+    const publicOrigin = (origin ?? process.env.MOCK_PUBLIC_ORIGIN ?? 'http://127.0.0.1:13002').replace(/\/$/, '')
     return {
       code: '10000',
       msg: 'Success',

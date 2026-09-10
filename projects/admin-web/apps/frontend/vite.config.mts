@@ -4,7 +4,7 @@ import AutoImport from 'unplugin-auto-import/vite';
 import { AntDesignVueResolver } from 'unplugin-vue-components/resolvers';
 import Components from 'unplugin-vue-components/vite';
 
-const BACKEND_DEV_SERVER = 'http://localhost:3001';
+const BACKEND_DEV_SERVER = 'http://localhost:13001';
 
 export default defineConfig(async () => {
   return {

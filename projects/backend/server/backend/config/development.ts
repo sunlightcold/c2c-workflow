@@ -11,7 +11,7 @@ export default {
   },
   admin: {
     sysPrefix: env.C2C_REDIS_PREFIX ?? 'c2c',
-    port: Number(env.C2C_BACKEND_PORT ?? '3001'),
+    port: Number(env.C2C_BACKEND_PORT ?? '13001'),
     accessTokenExpiresIn: 86400,
     captchaExpiresIn: 60000,
     optEnabledExpiresIn: 300000,
@@ -19,11 +19,11 @@ export default {
     throttlerLimit: 200,
     maxFileSize: 1024 * 1024 * 10,
     staticDirName: 'static',
-    staticServerUrl: env.C2C_STATIC_SERVER_URL ?? 'http://localhost:3001',
+    staticServerUrl: env.C2C_STATIC_SERVER_URL ?? 'http://localhost:13001',
     credentialMasterKey: env.C2C_CREDENTIAL_MASTER_KEY ?? '',
     postgres: {
       host: env.C2C_POSTGRES_HOST ?? 'localhost',
-      port: Number(env.C2C_POSTGRES_PORT ?? '5432'),
+      port: Number(env.C2C_POSTGRES_PORT ?? '15433'),
       username: env.C2C_POSTGRES_USER ?? 'postgres',
       password: env.C2C_POSTGRES_PASSWORD ?? '',
       database: env.C2C_POSTGRES_DB ?? 'c2c_backend',
@@ -31,7 +31,7 @@ export default {
       logging: false,
     },
     redis: {
-      url: env.C2C_REDIS_URL ?? 'redis://localhost:6379',
+      url: env.C2C_REDIS_URL ?? 'redis://localhost:16380',
     },
   },
 }

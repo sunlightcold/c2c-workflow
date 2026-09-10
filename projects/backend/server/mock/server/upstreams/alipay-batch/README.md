@@ -9,7 +9,7 @@
 启动 Mock 后请求：
 
 ```text
-GET http://127.0.0.1:3002/api/mock/alipay-batch/config
+GET http://127.0.0.1:13002/api/mock/alipay-batch/config
 ```
 
 响应中的 `pfaParams` 可直接作为 `PfaAlipayBatchAdapter` 的通道实例配置，包含 `appId`、`privateKey`、`alipayPublicKey`、网关地址、创建/查单/余额查询方法名、回单申请与查询方法名、`userId` 和 `payeeIdentityType`。
@@ -59,7 +59,7 @@ SDK 推荐使用 `/api/alipay/gateway`，并在表单参数中传递 `method`。
 ### 修改行为和回调地址
 
 ```bash
-curl -X PATCH http://127.0.0.1:3002/api/mock/alipay-batch/config \
+curl -X PATCH http://127.0.0.1:13002/api/mock/alipay-batch/config \
   -H "Content-Type: application/json" \
   -d '{"availableAmount":"50000.00","autoAdvanceAfterQueries":2,"randomDetailFailRate":20,"notifyUrl":"http://127.0.0.1:3100/v1/notify/alipay-batch"}'
 ```
@@ -67,7 +67,7 @@ curl -X PATCH http://127.0.0.1:3002/api/mock/alipay-batch/config \
 ### 模拟失败
 
 ```bash
-curl -X PUT http://127.0.0.1:3002/api/mock/alipay-batch/orders/SYS_ORDER_NO/status \
+curl -X PUT http://127.0.0.1:13002/api/mock/alipay-batch/orders/SYS_ORDER_NO/status \
   -H "Content-Type: application/json" \
   -d '{"batchStatus":"FAIL","errorCode":"PAYEE_ACCOUNT_INVALID","errorMsg":"收款账号不存在"}'
 ```
@@ -75,7 +75,7 @@ curl -X PUT http://127.0.0.1:3002/api/mock/alipay-batch/orders/SYS_ORDER_NO/stat
 ### 修改状态并通知
 
 ```bash
-curl -X PUT http://127.0.0.1:3002/api/mock/alipay-batch/orders/SYS_ORDER_NO/status \
+curl -X PUT http://127.0.0.1:13002/api/mock/alipay-batch/orders/SYS_ORDER_NO/status \
   -H "Content-Type: application/json" \
   -d '{"batchStatus":"SUCCESS","notify":true}'
 ```
@@ -83,7 +83,7 @@ curl -X PUT http://127.0.0.1:3002/api/mock/alipay-batch/orders/SYS_ORDER_NO/stat
 部分成功批次可按 `outBizNo` 分别设置明细状态：
 
 ```bash
-curl -X PUT http://127.0.0.1:3002/api/mock/alipay-batch/orders/BATCH_NO/status \
+curl -X PUT http://127.0.0.1:13002/api/mock/alipay-batch/orders/BATCH_NO/status \
   -H "Content-Type: application/json" \
   -d '{"batchStatus":"PART_SUCCESS","details":[{"outBizNo":"ORDER_1","detailStatus":"SUCCESS"},{"outBizNo":"ORDER_2","detailStatus":"FAIL","errorCode":"PAYEE_ACCOUNT_INVALID","errorMsg":"收款账号不存在"}],"notify":true}'
 ```

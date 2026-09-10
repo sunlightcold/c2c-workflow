@@ -13,7 +13,7 @@
 
 ```text
 支付系统 -> pfa-forwarder:3100/v1/gateway/alipay-transfer
-         -> mock:3002/api/alipay/gateway
+         -> mock:13002/api/alipay/gateway
 
 mock -> pfa-forwarder:3100/v1/notify/alipay-transfer
      -> 支付系统 /v1/api/pfa/notify/PfaAlipayAdapter
@@ -22,14 +22,14 @@ mock -> pfa-forwarder:3100/v1/notify/alipay-transfer
 转发应用本地配置：
 
 ```env
-ALIPAY_TRANSFER_GATEWAY_TARGET=http://127.0.0.1:3002/api/alipay/gateway
+ALIPAY_TRANSFER_GATEWAY_TARGET=http://127.0.0.1:13002/api/alipay/gateway
 ALIPAY_TRANSFER_NOTIFY_TARGET=http://127.0.0.1:3000/v1/api/pfa/notify/PfaAlipayAdapter
 ```
 
 获取完整本地通道配置：
 
 ```bash
-curl http://127.0.0.1:3002/api/mock/alipay-transfer/config
+curl http://127.0.0.1:13002/api/mock/alipay-transfer/config
 ```
 
 返回的 `pfaParams.appKey` 必须原样配置到通道实例，用于本地回调验签。

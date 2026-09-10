@@ -20,14 +20,14 @@ export default defineConfig({
   testDir: './tests/e2e',
   timeout: 60_000,
   use: {
-    baseURL: 'http://127.0.0.1:5666',
+    baseURL: 'http://127.0.0.1:15666',
     headless: true,
     trace: 'retain-on-failure',
   },
   webServer: {
     command: 'pnpm dev --force',
     env: { VITE_E2E_DISABLE_SOCKET: 'true' },
-    port: 5666,
+    port: 15_666,
     reuseExistingServer: true,
     timeout: 120_000,
   },
