@@ -14,6 +14,7 @@ export async function authLogin(page: Page) {
   const sliderCaptchaAction = await page.locator(`div[name='captcha-action']`);
   await expect(sliderCaptcha).toBeVisible();
   await expect(sliderCaptchaAction).toBeVisible();
+  await sliderCaptchaAction.hover();
 
   // 拖动验证码滑块
   // 获取拖动按钮的位置
@@ -27,8 +28,12 @@ export async function authLogin(page: Page) {
   const startX = actionBoundingBox.x + actionBoundingBox.width / 2; // div 中心的 x 坐标
   const startY = actionBoundingBox.y + actionBoundingBox.height / 2; // div 中心的 y 坐标
 
-  const targetX = startX + sliderCaptchaBox.width + actionBoundingBox.width; // 向右拖动容器的宽度
-  const targetY = startY; // y 坐标保持不变
+  const targetX =
+    sliderCaptchaBox.x +
+    sliderCaptchaBox.width -
+    actionBoundingBox.width / 2 -
+    1;
+  const targetY = startY;
 
   // 模拟鼠标拖动
   await page.mouse.move(startX, startY); // 移动到 action 的中心
@@ -36,9 +41,7 @@ export async function authLogin(page: Page) {
   await page.mouse.move(targetX, targetY, { steps: 20 }); // 拖动到目标位置
   await page.mouse.up(); // 松开鼠标
 
-  // 在拖动后进行断言，检查action是否在预期位置,
-  const newActionBoundingBox = await sliderCaptchaAction.boundingBox();
-  expect(newActionBoundingBox?.x).toBeGreaterThan(actionBoundingBox.x);
+  await expect(sliderCaptcha).toContainText(/Passed|验证通过/);
 
   // 到这里已经校验成功，点击进行登录
   await page.waitForTimeout(300);

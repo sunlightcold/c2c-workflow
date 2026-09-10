@@ -53,6 +53,9 @@ export default defineConfig(async () => {
             ws: false,
           },
         },
+        warmup: {
+          clientFiles: ['./src/views/business/**/*.vue'],
+        },
       },
     },
   };

@@ -10,6 +10,7 @@ import { getRepositoryToken } from '@nestjs/typeorm'
 import { Test } from '@nestjs/testing'
 import { DataSource } from 'typeorm'
 import { PAYMENT_PLAN_RESOLVER } from './payment-plan-resolver'
+import type { PaymentOrderListDto } from './payment-order.dto'
 import { PaymentOrderService } from './payment-order.service'
 
 describe('PaymentOrderService', () => {
@@ -28,6 +29,7 @@ describe('PaymentOrderService', () => {
   }
   const orders = {
     create: jest.fn((value) => value),
+    findAndCount: jest.fn(),
     findOne: jest.fn(),
   }
   const manager = {
@@ -130,6 +132,26 @@ describe('PaymentOrderService', () => {
     merchants.findOne.mockResolvedValue(null)
 
     await expect(service.create(tenantId, input)).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  it('filters batch candidates by tenant and execution mode', async () => {
+    orders.findAndCount.mockResolvedValue([[], 0])
+    const query: PaymentOrderListDto = {
+      executionMode: PaymentExecutionMode.BATCH,
+      page: 1,
+      pageSize: 100,
+    }
+
+    await service.list(tenantId, query)
+
+    expect(orders.findAndCount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          tenantId,
+          executionMode: PaymentExecutionMode.BATCH,
+        },
+      }),
+    )
   })
 
   it('rematches only pending-config orders and locks the newly available route', async () => {

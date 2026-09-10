@@ -55,6 +55,7 @@ export class PaymentOrderService {
       where: {
         tenantId,
         ...(input.merchantId ? { merchantId: input.merchantId } : {}),
+        ...(input.executionMode ? { executionMode: input.executionMode } : {}),
         ...(input.sourceType ? { sourceType: input.sourceType } : {}),
         ...(input.status ? { status: input.status } : {}),
       },

@@ -1,0 +1,411 @@
+import type { CommonPaginationData } from '../../../types/common';
+
+import { requestClient } from '#/api/request';
+
+export namespace BusinessApi {
+  export type BusinessStatus = 'active' | 'disabled';
+  export type MerchantPlatform = 'BINANCE' | 'OKX';
+  export type PaymentExecutionMode = 'BATCH' | 'INSTANT';
+  export type PaymentSourceType = 'BOT_MANUAL' | 'C2C_BUY' | 'REFUND';
+
+  export interface TenantContext {
+    tenantId?: string;
+  }
+
+  export interface Tenant {
+    code: string;
+    createdAt: string;
+    id: string;
+    name: string;
+    status: BusinessStatus;
+    systemLocked: boolean;
+    timezone: string;
+    type: 'AGENT' | 'HEADQUARTERS_SELF';
+    updatedAt: string;
+  }
+
+  export interface Merchant {
+    code: string;
+    createdAt: string;
+    externalMerchantId: null | string;
+    id: string;
+    name: string;
+    platform: MerchantPlatform;
+    status: BusinessStatus;
+    tenantId: string;
+    updatedAt: string;
+  }
+
+  export interface MerchantCredential {
+    clientType: null | string;
+    createdAt: string;
+    credentialConfigured: boolean;
+    id: string;
+    requestTimeoutMs: number;
+    status: BusinessStatus;
+    version: number;
+    xUserId: null | string;
+  }
+
+  export interface PaymentChannelBinding {
+    adapterCode: null | string;
+    channelCode: null | string;
+    channelId: string;
+    channelName: null | string;
+    concurrencyLimit: number;
+    executionMode: null | PaymentExecutionMode;
+    id: string;
+    maximumAmount: null | string;
+    minimumAmount: null | string;
+    status: BusinessStatus;
+  }
+
+  export interface PaymentAccount {
+    channels: PaymentChannelBinding[];
+    code: string;
+    createdAt: string;
+    credentialConfigured: boolean;
+    externalAccountId: string;
+    id: string;
+    name: string;
+    platformId: string;
+    status: BusinessStatus;
+    tenantId: string;
+    updatedAt: string;
+  }
+
+  export interface PaymentChannel {
+    adapterCode: string;
+    code: string;
+    executionMode: PaymentExecutionMode;
+    id: string;
+    name: string;
+    status: BusinessStatus;
+  }
+
+  export interface PaymentPlatform {
+    channels: PaymentChannel[];
+    code: string;
+    id: string;
+    name: string;
+    status: BusinessStatus;
+  }
+
+  export interface PaymentPlan {
+    currency: string;
+    id: string;
+    merchantId: string;
+    paymentAccountChannelId: string;
+    paymentAccountId: string;
+    priority: number;
+    scene: string;
+    status: BusinessStatus;
+    tenantId: string;
+    weight: number;
+  }
+
+  export interface MerchantOrder {
+    asset: string;
+    assetAmount: string;
+    counterpartyName: null | string;
+    fiatAmount: string;
+    fiatCurrency: string;
+    id: string;
+    lastError: null | string;
+    merchantId: string;
+    payable: boolean;
+    paymentDeadline: null | string;
+    paymentMethod: null | string;
+    payeeIdentity: null | string;
+    payeeName: null | string;
+    platform: MerchantPlatform;
+    platformCreatedAt: string;
+    platformOrderId: string;
+    platformStatus: string;
+    status: string;
+    tenantId: string;
+  }
+
+  export interface PaymentOrder {
+    amount: string;
+    createdAt: string;
+    currency: string;
+    executionMode: PaymentExecutionMode;
+    id: string;
+    lastError: null | string;
+    merchantId: string;
+    payeeIdentity: string;
+    payeeName: string;
+    paymentAccountChannelId: null | string;
+    paymentAccountId: null | string;
+    paymentMethod: string;
+    paymentNo: string;
+    paymentPlanId: null | string;
+    sourceBusinessNo: string;
+    sourceType: PaymentSourceType;
+    status: string;
+    tenantId: string;
+    updatedAt: string;
+    upstreamId: null | string;
+  }
+
+  export interface PaymentBatch {
+    batchNo: string;
+    createdAt: string;
+    currency: string;
+    failedCount: number;
+    id: string;
+    lastError: null | string;
+    merchantId: string;
+    paymentAccountId: string;
+    paymentAccountChannelId: string;
+    processingCount: number;
+    status: string;
+    successCount: number;
+    tenantId: string;
+    totalAmount: string;
+    totalCount: number;
+    unknownCount: number;
+    updatedAt: string;
+    upstreamId: null | string;
+  }
+
+  export interface StatusHistory {
+    createdAt: string;
+    fromStatus: null | string;
+    id: string;
+    reason: null | string;
+    source: string;
+    toStatus: string;
+  }
+
+  export interface PaymentBatchItem {
+    amount: string;
+    errorCode: null | string;
+    errorMessage: null | string;
+    id: string;
+    paymentOrderId: string;
+    status: string;
+    upstreamId: null | string;
+  }
+
+  export interface PageQuery extends TenantContext {
+    page: number;
+    pageSize: number;
+  }
+
+  export interface PaymentOrderQuery extends PageQuery {
+    executionMode?: PaymentExecutionMode;
+    merchantId?: string;
+    sourceType?: PaymentSourceType;
+    status?: string;
+  }
+
+  export interface PaymentBatchQuery extends PageQuery {
+    merchantId?: string;
+    paymentAccountId?: string;
+    status?: string;
+  }
+
+  export interface ManualPaymentOrderInput extends TenantContext {
+    amount: string;
+    currency: string;
+    executionMode: PaymentExecutionMode;
+    merchantId: string;
+    payeeIdentity: string;
+    payeeName: string;
+    paymentMethod: 'ALIPAY';
+    sourceBusinessNo: string;
+  }
+}
+
+function toPagination<T>(response: {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+}): CommonPaginationData<T> {
+  return {
+    items: response.items,
+    meta: {
+      currentPage: response.page,
+      itemsPerPage: response.pageSize,
+      totalItems: response.total,
+      totalPages: Math.ceil(response.total / response.pageSize),
+    },
+  };
+}
+
+export const getTenantsApi = () =>
+  requestClient.get<BusinessApi.Tenant[]>('/sys/tenants');
+export const createTenantApi = (
+  data: Pick<BusinessApi.Tenant, 'code' | 'name' | 'timezone'>,
+) => requestClient.post<BusinessApi.Tenant>('/sys/tenants', data);
+export const setTenantStatusApi = (
+  id: string,
+  status: BusinessApi.BusinessStatus,
+) =>
+  requestClient.request<BusinessApi.Tenant>(`/sys/tenants/${id}/status`, {
+    data: { status },
+    method: 'PATCH',
+  });
+
+export const getMerchantsApi = (params: BusinessApi.TenantContext) =>
+  requestClient.get<BusinessApi.Merchant[]>('/sys/merchants', { params });
+export const createMerchantApi = (
+  data: BusinessApi.TenantContext &
+    Pick<BusinessApi.Merchant, 'code' | 'name' | 'platform'> & {
+      externalMerchantId?: string;
+    },
+) => requestClient.post<BusinessApi.Merchant>('/sys/merchants', data);
+export const getMerchantCredentialsApi = (
+  id: string,
+  params: BusinessApi.TenantContext,
+) =>
+  requestClient.get<BusinessApi.MerchantCredential[]>(
+    `/sys/merchants/${id}/platform-credentials`,
+    {
+      params,
+    },
+  );
+export const rotateMerchantCredentialApi = (
+  id: string,
+  data: BusinessApi.TenantContext & {
+    clientType?: string;
+    credentialRef: string;
+    requestTimeoutMs?: number;
+    xUserId?: string;
+  },
+) =>
+  requestClient.post<BusinessApi.MerchantCredential>(
+    `/sys/merchants/${id}/platform-credentials`,
+    data,
+  );
+
+export const getPaymentPlatformsApi = () =>
+  requestClient.get<BusinessApi.PaymentPlatform[]>('/sys/payment-platforms');
+export const getPaymentAccountsApi = (params: BusinessApi.TenantContext) =>
+  requestClient.get<BusinessApi.PaymentAccount[]>('/sys/payment-accounts', {
+    params,
+  });
+export const createPaymentAccountApi = (
+  data: BusinessApi.TenantContext &
+    Pick<
+      BusinessApi.PaymentAccount,
+      'code' | 'externalAccountId' | 'name' | 'platformId'
+    > & {
+      credentialRef: string;
+    },
+) =>
+  requestClient.post<BusinessApi.PaymentAccount>('/sys/payment-accounts', data);
+export const openPaymentAccountChannelApi = (
+  id: string,
+  data: BusinessApi.TenantContext & { channelId: string; configRef?: string },
+) => requestClient.post(`/sys/payment-accounts/${id}/channels`, data);
+export const getPaymentPlansApi = (
+  params: BusinessApi.TenantContext & { merchantId?: string },
+) =>
+  requestClient.get<BusinessApi.PaymentPlan[]>('/sys/payment-plans', {
+    params,
+  });
+export const createPaymentPlanApi = (
+  data: BusinessApi.TenantContext &
+    Pick<
+      BusinessApi.PaymentPlan,
+      | 'currency'
+      | 'merchantId'
+      | 'paymentAccountChannelId'
+      | 'paymentAccountId'
+      | 'priority'
+      | 'scene'
+      | 'weight'
+    >,
+) => requestClient.post<BusinessApi.PaymentPlan>('/sys/payment-plans', data);
+
+export async function getMerchantOrdersApi(
+  params: BusinessApi.PageQuery & { merchantId: string; status?: string },
+) {
+  return toPagination<BusinessApi.MerchantOrder>(
+    await requestClient.get('/sys/merchant-orders', { params }),
+  );
+}
+export const getMerchantOrderApi = (
+  id: string,
+  params: BusinessApi.TenantContext & { merchantId: string },
+) =>
+  requestClient.get<
+    BusinessApi.MerchantOrder & { history: BusinessApi.StatusHistory[] }
+  >(`/sys/merchant-orders/${id}`, { params });
+export const syncMerchantOrdersApi = (
+  id: string,
+  params: BusinessApi.TenantContext,
+) =>
+  requestClient.post<{ created: number; scanned: number; updated: number }>(
+    `/sys/merchants/${id}/orders/sync`,
+    undefined,
+    { params },
+  );
+
+export async function getPaymentOrdersApi(
+  params: BusinessApi.PaymentOrderQuery,
+) {
+  return toPagination<BusinessApi.PaymentOrder>(
+    await requestClient.get('/sys/payment-orders', { params }),
+  );
+}
+export const getPaymentOrderApi = (
+  id: string,
+  params: BusinessApi.TenantContext,
+) =>
+  requestClient.get<
+    BusinessApi.PaymentOrder & {
+      batchItems: BusinessApi.PaymentBatchItem[];
+      history: BusinessApi.StatusHistory[];
+    }
+  >(`/sys/payment-orders/${id}`, { params });
+export const createManualPaymentOrderApi = (
+  data: BusinessApi.ManualPaymentOrderInput,
+) => requestClient.post<BusinessApi.PaymentOrder>('/sys/payment-orders', data);
+export const rematchPaymentOrderApi = (
+  id: string,
+  data: BusinessApi.TenantContext,
+) =>
+  requestClient.post<BusinessApi.PaymentOrder>(
+    `/sys/payment-orders/${id}/rematch`,
+    data,
+  );
+export const reconcilePaymentOrderApi = (
+  id: string,
+  data: BusinessApi.TenantContext,
+) =>
+  requestClient.post<BusinessApi.PaymentOrder>(
+    `/sys/payment-orders/${id}/reconcile`,
+    data,
+  );
+
+export async function getPaymentBatchesApi(
+  params: BusinessApi.PaymentBatchQuery,
+) {
+  return toPagination<BusinessApi.PaymentBatch>(
+    await requestClient.get('/sys/payment-batches', { params }),
+  );
+}
+export const getPaymentBatchApi = (
+  id: string,
+  params: BusinessApi.TenantContext,
+) =>
+  requestClient.get<{
+    batch: BusinessApi.PaymentBatch;
+    items: BusinessApi.PaymentBatchItem[];
+  }>(`/sys/payment-batches/${id}`, { params });
+export const createPaymentBatchApi = (
+  data: BusinessApi.TenantContext & { paymentOrderIds: string[] },
+) => requestClient.post('/sys/payment-batches', data);
+export const submitPaymentBatchApi = (
+  id: string,
+  data: BusinessApi.TenantContext,
+) => requestClient.post(`/sys/payment-batches/${id}/submit`, data);
+export const reconcilePaymentBatchApi = (
+  id: string,
+  data: BusinessApi.TenantContext,
+) => requestClient.post(`/sys/payment-batches/${id}/reconcile`, data);

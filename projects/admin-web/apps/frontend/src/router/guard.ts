@@ -100,7 +100,9 @@ function setupAccessGuard(router: Router) {
     await authStore.setAccessCodes();
 
     // 客户端和服务端 socket 连接
-    useSocketStore().connect();
+    if (import.meta.env.VITE_E2E_DISABLE_SOCKET !== 'true') {
+      useSocketStore().connect();
+    }
 
     // 生成菜单和路由
     const { accessibleMenus, accessibleRoutes } = await generateAccess({

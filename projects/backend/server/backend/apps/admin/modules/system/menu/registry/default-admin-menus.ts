@@ -5,6 +5,90 @@ import type { AdminMenuDefinition } from './admin-menu.types'
 const enabled = StatusEnum.ENABLED
 const disabled = StatusEnum.DISABLED
 
+interface BusinessPageDefinition {
+  actions: ReadonlyArray<readonly [action: string, name: string]>
+  icon: string
+  key: string
+  name: string
+  path: string
+  permission: string
+}
+
+const businessPages: BusinessPageDefinition[] = [
+  {
+    key: 'tenants',
+    name: '所属单位',
+    path: '/business/tenants',
+    permission: 'agency:tenant',
+    icon: 'lucide:building-2',
+    actions: [
+      ['read', '查询'],
+      ['create', '新增'],
+      ['update', '修改状态'],
+    ],
+  },
+  {
+    key: 'merchants',
+    name: '商家',
+    path: '/business/merchants',
+    permission: 'merchant:account',
+    icon: 'lucide:store',
+    actions: [
+      ['read', '查询'],
+      ['create', '新增'],
+      ['credential', '配置平台凭据'],
+    ],
+  },
+  {
+    key: 'merchantOrders',
+    name: '商家订单',
+    path: '/business/merchant-orders',
+    permission: 'merchant:order',
+    icon: 'lucide:shopping-receipt',
+    actions: [
+      ['read', '查询'],
+      ['sync', '同步'],
+    ],
+  },
+  {
+    key: 'paymentAccounts',
+    name: '支付账号',
+    path: '/business/payment-accounts',
+    permission: 'payment:account',
+    icon: 'lucide:wallet-cards',
+    actions: [
+      ['read', '查询'],
+      ['create', '新增'],
+      ['bind', '配置通道与方案'],
+    ],
+  },
+  {
+    key: 'paymentOrders',
+    name: '支付订单',
+    path: '/business/payment-orders',
+    permission: 'payment:order',
+    icon: 'lucide:receipt-text',
+    actions: [
+      ['read', '查询'],
+      ['create', '新增'],
+      ['retry', '重新匹配或回查'],
+    ],
+  },
+  {
+    key: 'paymentBatches',
+    name: '支付批次',
+    path: '/business/payment-batches',
+    permission: 'payment:batch',
+    icon: 'lucide:layers-3',
+    actions: [
+      ['read', '查询'],
+      ['create', '创建'],
+      ['submit', '提交'],
+      ['retry', '回查'],
+    ],
+  },
+]
+
 export const DEFAULT_ADMIN_MENUS: AdminMenuDefinition[] = [
   {
     key: 'dashboard',
@@ -28,6 +112,36 @@ export const DEFAULT_ADMIN_MENUS: AdminMenuDefinition[] = [
     orderNo: 10,
     keepAlive: enabled,
   },
+  {
+    key: 'business',
+    type: SysMenuType.FOLDER,
+    name: '业务运营',
+    path: '/business',
+    permission: 'business',
+    icon: 'lucide:briefcase-business',
+    orderNo: 995,
+    keepAlive: disabled,
+  },
+  ...businessPages.map(({ icon, key, name, path, permission }, index) => ({
+    key: `business.${key}`,
+    type: SysMenuType.MENU,
+    parentKey: 'business',
+    name,
+    path,
+    component: path,
+    permission,
+    icon,
+    orderNo: 60 - index * 10,
+  })),
+  ...businessPages.flatMap(({ actions, key, permission }) =>
+    actions.map(([action, name]) => ({
+      key: `business.${key}.${action}`,
+      type: SysMenuType.PERMISSION,
+      parentKey: `business.${key}`,
+      name,
+      permission: `${permission}:${action}`,
+    })),
+  ),
   {
     key: 'system',
     type: SysMenuType.FOLDER,

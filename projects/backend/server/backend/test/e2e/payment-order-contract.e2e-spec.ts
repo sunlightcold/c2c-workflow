@@ -76,7 +76,7 @@ describe('Payment order API contract (e2e)', () => {
 
     const listed = await request(app.getHttpServer())
       .get('/v1/sys/payment-orders')
-      .query({ status: 'READY', page: 1, pageSize: 20 })
+      .query({ executionMode: 'BATCH', status: 'READY', page: 1, pageSize: 20 })
       .expect(200)
     const detail = await request(app.getHttpServer())
       .get(`/v1/sys/payment-orders/${orderId}`)
@@ -86,7 +86,12 @@ describe('Payment order API contract (e2e)', () => {
     expectWrappedSuccess(detail.body)
     expect(orders.list).toHaveBeenCalledWith(
       'tenant-1',
-      expect.objectContaining({ status: 'READY', page: 1, pageSize: 20 }),
+      expect.objectContaining({
+        executionMode: 'BATCH',
+        status: 'READY',
+        page: 1,
+        pageSize: 20,
+      }),
     )
     expect(orders.detail).toHaveBeenCalledWith('tenant-1', orderId)
   })
@@ -95,6 +100,16 @@ describe('Payment order API contract (e2e)', () => {
     const response = await request(app.getHttpServer())
       .get('/v1/sys/payment-orders')
       .query({ status: 'NOT_A_STATUS', page: 1, pageSize: 20 })
+      .expect(400)
+
+    expectWrappedError(response.body, 400)
+    expect(orders.list).not.toHaveBeenCalled()
+  })
+
+  it('rejects unsupported payment execution mode filters', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/v1/sys/payment-orders')
+      .query({ executionMode: 'MANUAL', page: 1, pageSize: 20 })
       .expect(400)
 
     expectWrappedError(response.body, 400)

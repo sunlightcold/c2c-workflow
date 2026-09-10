@@ -28,9 +28,53 @@ jest.mock('@/common/interfaces', () => ({
 
 import { SysMenuEntity, SysMenuType } from '@/apps/admin/database'
 import { MenuRegistryService } from './menu-registry.service'
+import { DEFAULT_ADMIN_MENUS } from './registry/default-admin-menus'
 
 describe('MenuRegistryService', () => {
   const service = new MenuRegistryService({} as any, {} as any)
+
+  it('registers one business folder with the six operational pages and action permissions', () => {
+    const businessPages = DEFAULT_ADMIN_MENUS.filter(
+      ({ parentKey, type }) => parentKey === 'business' && type === SysMenuType.MENU,
+    )
+    const permissions = new Set(
+      DEFAULT_ADMIN_MENUS.map(({ permission }) => permission).filter(Boolean),
+    )
+
+    expect(DEFAULT_ADMIN_MENUS).toContainEqual(
+      expect.objectContaining({ key: 'business', name: '业务运营', type: SysMenuType.FOLDER }),
+    )
+    expect(businessPages.map(({ key }) => key)).toEqual([
+      'business.tenants',
+      'business.merchants',
+      'business.merchantOrders',
+      'business.paymentAccounts',
+      'business.paymentOrders',
+      'business.paymentBatches',
+    ])
+    for (const permission of [
+      'agency:tenant:read',
+      'agency:tenant:create',
+      'agency:tenant:update',
+      'merchant:account:read',
+      'merchant:account:create',
+      'merchant:account:credential',
+      'merchant:order:read',
+      'merchant:order:sync',
+      'payment:account:read',
+      'payment:account:create',
+      'payment:account:bind',
+      'payment:order:read',
+      'payment:order:create',
+      'payment:order:retry',
+      'payment:batch:read',
+      'payment:batch:create',
+      'payment:batch:submit',
+      'payment:batch:retry',
+    ]) {
+      expect(permissions.has(permission)).toBe(true)
+    }
+  })
 
   it('rejects duplicate menu keys', () => {
     expect(() =>

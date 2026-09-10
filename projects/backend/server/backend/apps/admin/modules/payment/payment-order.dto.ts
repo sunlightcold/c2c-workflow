@@ -32,6 +32,11 @@ export class PaymentOrderListDto extends PaymentTenantContextDto {
   @IsUUID()
   merchantId?: string
 
+  @ApiPropertyOptional({ enum: PaymentExecutionMode })
+  @IsOptional()
+  @IsEnum(PaymentExecutionMode)
+  executionMode?: PaymentExecutionMode
+
   @ApiPropertyOptional({ enum: PaymentSourceType })
   @IsOptional()
   @IsEnum(PaymentSourceType)
