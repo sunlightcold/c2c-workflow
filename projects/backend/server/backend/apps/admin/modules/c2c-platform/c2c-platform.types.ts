@@ -1,7 +1,7 @@
 export const C2C_HTTP_TRANSPORT = Symbol('C2C_HTTP_TRANSPORT')
 
 export interface C2cHttpRequest {
-  method: 'GET' | 'POST'
+  method: 'GET' | 'POST' | 'PUT'
   url: string
   headers: Record<string, string>
   timeoutMs: number
@@ -24,6 +24,7 @@ export interface C2cListInput {
 }
 
 export interface C2cCapabilities {
+  appeal: boolean
   listOrders: boolean
   getOrderDetail: boolean
   markOrderAsPaid: boolean

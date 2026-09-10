@@ -61,6 +61,7 @@ describe('MenuRegistryService', () => {
       'merchant:account:credential',
       'merchant:order:read',
       'merchant:order:sync',
+      'merchant:order:appeal',
       'payment:account:read',
       'payment:account:create',
       'payment:account:bind',

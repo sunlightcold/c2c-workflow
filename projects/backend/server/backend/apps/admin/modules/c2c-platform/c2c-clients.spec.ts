@@ -352,4 +352,55 @@ describe('C2C buy-order clients', () => {
 
     expect(result.items[0].status).toBe('EXPIRED')
   })
+
+  it('uses the Binance complaint reason, upload and submission contracts', async () => {
+    const credentials = {
+      apiKey: 'key',
+      secretKey: 'secret',
+      clientType: 'WEB',
+      timeoutMs: 5000,
+      baseUrl: 'http://127.0.0.1:13002',
+    }
+    http.request
+      .mockResolvedValueOnce({
+        success: true,
+        code: '000000',
+        data: [{ reasonCode: 6, reasonDesc: '卖家收款后未放行' }],
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        code: '000000',
+        data: { uploadUrl: 'http://127.0.0.1:13002/upload', filePath: '/mock/receipt.png' },
+      })
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({
+        success: true,
+        code: '000000',
+        data: { complaintNo: '30006788' },
+      })
+
+    await expect(binance.getComplaintReasons(credentials, 'BIN-1')).resolves.toEqual([
+      { reasonCode: 6, reasonDesc: '卖家收款后未放行' },
+    ])
+    const upload = await binance.getComplaintUploadUrl(credentials, 'receipt.png')
+    await binance.uploadComplaintFile(upload.uploadUrl, Buffer.from('receipt'))
+    await expect(
+      binance.submitComplaint(credentials, {
+        description: '我已付款给卖家，卖家未放行',
+        fileUrls: [upload.filePath],
+        orderNo: 'BIN-1',
+        reason: '卖家收款后未放行',
+        reasonCode: 6,
+      }),
+    ).resolves.toMatchObject({ data: { complaintNo: '30006788' } })
+
+    expect(http.request).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        method: 'PUT',
+        url: 'http://127.0.0.1:13002/upload',
+        body: Buffer.from('receipt'),
+      }),
+    )
+  })
 })

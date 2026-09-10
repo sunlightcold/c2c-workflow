@@ -1,5 +1,6 @@
 export * from './c2c-order.module'
 export * from './c2c-order.service'
+export * from './c2c-order-appeal.service'
 export * from './c2c-order-sync.service'
 export * from './c2c-order-sync.types'
 export * from './c2c-secret-resolver'

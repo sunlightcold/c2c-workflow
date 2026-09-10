@@ -18,6 +18,7 @@ import {
   migrateC2cBusinessFoundation,
 } from '@/apps/admin/database/migrations/c2c-business-foundation.migration'
 import { migrateC2cMerchantOrders } from '@/apps/admin/database/migrations/c2c-merchant-orders.migration'
+import { migrateC2cMerchantOrderAppeals } from '@/apps/admin/database/migrations/c2c-merchant-order-appeals.migration'
 import { migrateC2cMerchantPlatformCredentials } from '@/apps/admin/database/migrations/c2c-merchant-platform-credentials.migration'
 import { migrateC2cMerchantAccountOperations } from '@/apps/admin/database/migrations/c2c-merchant-account-operations.migration'
 import { migrateC2cPaymentOrders } from '@/apps/admin/database/migrations/c2c-payment-orders.migration'
@@ -87,6 +88,7 @@ describe('Payment preflight store database integration', () => {
       await migrateC2cMerchantPlatformCredentials(manager)
       await migrateC2cMerchantAccountOperations(manager)
       await migrateC2cMerchantOrders(manager)
+      await migrateC2cMerchantOrderAppeals(manager)
       await manager.query(
         `INSERT INTO merchant (id, "tenantId", code, name, platform, "apiBaseUrl")
          VALUES ($1, $2, 'preflight-merchant', 'Preflight Merchant', 'BINANCE',

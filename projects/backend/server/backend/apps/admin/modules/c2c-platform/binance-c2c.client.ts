@@ -29,6 +29,24 @@ interface BinanceListEnvelope<T> extends BinanceEnvelope<T> {
   total?: number
 }
 
+export interface BinanceComplaintReason {
+  reasonCode: number
+  reasonDesc: string
+}
+
+export interface BinanceComplaintUpload {
+  filePath: string
+  uploadUrl: string
+}
+
+export interface BinanceComplaintPayload {
+  description: string
+  fileUrls: string[]
+  orderNo: string
+  reason: string
+  reasonCode: number
+}
+
 @Injectable()
 export class BinanceC2cClient {
   constructor(@Inject(C2C_HTTP_TRANSPORT) private readonly http: C2cHttpTransport) {}
@@ -63,8 +81,50 @@ export class BinanceC2cClient {
     })
   }
 
+  async getComplaintReasons(credentials: BinanceCredentials, orderNo: string) {
+    const response = await this.post<BinanceComplaintReason[]>(
+      credentials,
+      '/sapi/v1/c2c/complaint/get-complaint-reasons',
+      { orderNo },
+    )
+    return response.data
+  }
+
+  async getComplaintUploadUrl(credentials: BinanceCredentials, fileName: string) {
+    const response = await this.get<BinanceComplaintUpload>(
+      credentials,
+      '/sapi/v1/c2c/file-upload/get-s3-presigned-url',
+      { fileName, scenario: 'complaint' },
+    )
+    return response.data
+  }
+
+  uploadComplaintFile(uploadUrl: string, content: Buffer) {
+    return this.http.request<unknown>({
+      method: 'PUT',
+      url: uploadUrl,
+      headers: { 'Content-Type': 'application/octet-stream' },
+      timeoutMs: 30_000,
+      body: content,
+    })
+  }
+
+  submitComplaint(credentials: BinanceCredentials, payload: BinanceComplaintPayload) {
+    return this.post<{ complaintNo?: number | string }>(
+      credentials,
+      '/sapi/v1/c2c/complaint/submit-complaint',
+      payload,
+    )
+  }
+
   getCapabilities(): C2cCapabilities {
-    return { listOrders: true, getOrderDetail: true, markOrderAsPaid: true, sellOrders: false }
+    return {
+      appeal: true,
+      listOrders: true,
+      getOrderDetail: true,
+      markOrderAsPaid: true,
+      sellOrders: false,
+    }
   }
 
   private async post<T>(credentials: BinanceCredentials, path: string, body: unknown) {
@@ -75,12 +135,23 @@ export class BinanceC2cClient {
     return this.request<BinanceListEnvelope<T>>(credentials, path, body)
   }
 
+  private async get<T>(
+    credentials: BinanceCredentials,
+    path: string,
+    params: Record<string, string>,
+  ) {
+    return this.request<BinanceEnvelope<T>>(credentials, path, undefined, 'GET', params)
+  }
+
   private async request<T extends BinanceEnvelope<unknown>>(
     credentials: BinanceCredentials,
     path: string,
     body: unknown,
+    method: 'GET' | 'POST' = 'POST',
+    params: Record<string, string> = {},
   ) {
     const query = new URLSearchParams({
+      ...params,
       recvWindow: '5000',
       timestamp: String(Date.now()),
     }).toString()
@@ -92,7 +163,7 @@ export class BinanceC2cClient {
     }
     if (credentials.xUserId) headers['x-user-id'] = credentials.xUserId
     const response = await this.http.request<T>({
-      method: 'POST',
+      method,
       url: `${(credentials.baseUrl ?? 'https://api.binance.com').replace(/\/$/, '')}${path}?${query}&signature=${signature}`,
       headers,
       timeoutMs: credentials.timeoutMs,

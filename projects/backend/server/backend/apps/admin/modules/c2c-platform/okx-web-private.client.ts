@@ -100,7 +100,13 @@ export class OkxWebPrivateClient {
   }
 
   getCapabilities(): C2cCapabilities {
-    return { listOrders: true, getOrderDetail: true, markOrderAsPaid: true, sellOrders: false }
+    return {
+      appeal: false,
+      listOrders: true,
+      getOrderDetail: true,
+      markOrderAsPaid: true,
+      sellOrders: false,
+    }
   }
 
   private get<T>(

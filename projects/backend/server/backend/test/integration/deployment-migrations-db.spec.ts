@@ -22,6 +22,7 @@ describe('Deployment migrations database integration', () => {
     'C2cMerchantOrders1789004000000',
     'C2cPaymentBatches1789005000000',
     'C2cMerchantAccountOperations1789006000000',
+    'C2cMerchantOrderAppeals1789007000000',
   ]
   const { postgres } = developmentConfig.admin
   const schema = `deployment_migrations_test_${process.pid}_${Date.now()}`

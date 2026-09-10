@@ -15,6 +15,7 @@ import { C2cMerchantPlatformCredentials1789003000000 } from './c2c-merchant-plat
 import { C2cMerchantOrders1789004000000 } from './c2c-merchant-orders.migration'
 import { C2cPaymentBatches1789005000000 } from './c2c-payment-batches.migration'
 import { C2cMerchantAccountOperations1789006000000 } from './c2c-merchant-account-operations.migration'
+import { C2cMerchantOrderAppeals1789007000000 } from './c2c-merchant-order-appeals.migration'
 
 export type AdminMigrationConstructor = new () => MigrationInterface
 
@@ -35,4 +36,5 @@ export const adminMigrations: AdminMigrationConstructor[] = [
   C2cMerchantOrders1789004000000,
   C2cPaymentBatches1789005000000,
   C2cMerchantAccountOperations1789006000000,
+  C2cMerchantOrderAppeals1789007000000,
 ]

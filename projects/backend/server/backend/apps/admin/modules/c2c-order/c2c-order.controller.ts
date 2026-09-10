@@ -1,14 +1,38 @@
 import { definePermission, Permission, User } from '@/common/decorators'
 import type { AuthUser } from '@/common/interfaces'
-import { Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common'
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
+import { ValidateFilePipe } from '@/common/pipes'
+import { getConfig } from '@/common/utils/config'
+import { ValidationMatch } from '@/common/utils/regexp'
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common'
+import { FileInterceptor } from '@nestjs/platform-express'
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { TenantContextDto } from '../business/business.dto'
 import { BusinessScopeService } from '../business/business-scope.service'
-import { MerchantOrderDetailDto, MerchantOrderListDto } from './c2c-order.dto'
+import {
+  MerchantOrderAppealSubmitDto,
+  MerchantOrderDetailDto,
+  MerchantOrderListDto,
+} from './c2c-order.dto'
+import { C2cOrderAppealService } from './c2c-order-appeal.service'
 import { C2cOrderService } from './c2c-order.service'
 import { C2cOrderSyncService } from './c2c-order-sync.service'
 
-const MerchantOrderPermissions = definePermission('merchant:order', ['read', 'sync'] as const)
+const MerchantOrderPermissions = definePermission('merchant:order', [
+  'read',
+  'sync',
+  'appeal',
+] as const)
+const MAX_RECEIPT_SIZE = getConfig('admin').maxFileSize
 
 @ApiTags('C2C-商家订单')
 @ApiBearerAuth()
@@ -18,6 +42,7 @@ export class C2cOrderController {
     private readonly scope: BusinessScopeService,
     private readonly orders: C2cOrderService,
     private readonly syncService: C2cOrderSyncService,
+    private readonly appeals: C2cOrderAppealService,
   ) {}
 
   @Get('merchant-orders')
@@ -36,6 +61,64 @@ export class C2cOrderController {
     @User() actor: AuthUser,
   ) {
     return this.orders.detail(this.scope.resolveTenantId(actor, dto.tenantId), dto.merchantId, id)
+  }
+
+  @Get('merchant-orders/:id/appeal-reasons')
+  @Permission(MerchantOrderPermissions.APPEAL)
+  @ApiOperation({ summary: '查询币安商家订单的实时申诉原因' })
+  appealReasons(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() dto: MerchantOrderDetailDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.appeals.getReasons(
+      this.scope.resolveTenantId(actor, dto.tenantId),
+      dto.merchantId,
+      id,
+    )
+  }
+
+  @Post('merchant-orders/:id/appeal')
+  @Permission(MerchantOrderPermissions.APPEAL)
+  @ApiOperation({ summary: '提交币安商家订单申诉' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['merchantId', 'reasonCode', 'description', 'receipt'],
+      properties: {
+        tenantId: { type: 'string', format: 'uuid', description: '总部操作时选择的经营单位' },
+        merchantId: { type: 'string', format: 'uuid' },
+        reasonCode: { type: 'integer', minimum: 1 },
+        description: { type: 'string', maxLength: 500 },
+        receipt: { type: 'string', format: 'binary', description: '付款回单图片' },
+      },
+    },
+  })
+  @UseInterceptors(FileInterceptor('receipt'))
+  appeal(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: MerchantOrderAppealSubmitDto,
+    @UploadedFile(
+      new ValidateFilePipe({
+        maxFileSize: MAX_RECEIPT_SIZE,
+        fileType: ValidationMatch.image.regExp,
+      }),
+    )
+    receipt: Express.Multer.File,
+    @User() actor: AuthUser,
+  ) {
+    return this.appeals.submit(
+      this.scope.resolveTenantId(actor, dto.tenantId),
+      dto.merchantId,
+      id,
+      {
+        description: dto.description,
+        fileName: receipt.originalname,
+        receipt: receipt.buffer,
+        reasonCode: dto.reasonCode,
+      },
+    )
   }
 
   @Post('merchants/:id/orders/sync')

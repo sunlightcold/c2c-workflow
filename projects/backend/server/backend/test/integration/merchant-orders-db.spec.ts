@@ -7,8 +7,10 @@ import {
 } from '@/apps/admin/database/migrations/c2c-business-foundation.migration'
 import { migrateC2cMerchantPlatformCredentials } from '@/apps/admin/database/migrations/c2c-merchant-platform-credentials.migration'
 import { migrateC2cMerchantOrders } from '@/apps/admin/database/migrations/c2c-merchant-orders.migration'
+import { migrateC2cMerchantOrderAppeals } from '@/apps/admin/database/migrations/c2c-merchant-order-appeals.migration'
 import { DataSource, type QueryRunner } from 'typeorm'
 import { TypeOrmC2cOrderSyncStore } from '@/apps/admin/modules/c2c-order/typeorm-c2c-order-sync.store'
+import { TypeOrmC2cOrderAppealStore } from '@/apps/admin/modules/c2c-order/typeorm-c2c-order-appeal.store'
 import {
   MerchantOrderEntity,
   MerchantOrderStatusHistoryEntity,
@@ -49,6 +51,8 @@ describe('Merchant orders database integration', () => {
     await migrateC2cMerchantPlatformCredentials(queryRunner.manager)
     await migrateC2cMerchantOrders(queryRunner.manager)
     await migrateC2cMerchantOrders(queryRunner.manager)
+    await migrateC2cMerchantOrderAppeals(queryRunner.manager)
+    await migrateC2cMerchantOrderAppeals(queryRunner.manager)
     await queryRunner.query(`
       INSERT INTO merchant (id, "tenantId", code, name, platform)
       VALUES ('${merchantId}', '${C2C_FOUNDATION_IDS.headquartersTenant}', 'm1', 'M1', 'BINANCE')
@@ -63,6 +67,39 @@ describe('Merchant orders database integration', () => {
       await adminDataSource.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
       await adminDataSource.destroy()
     }
+  })
+
+  it('migrates every merchant order appeal field', async () => {
+    const columns = (await queryRunner.query(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_schema = $1
+         AND table_name = 'merchant_order'
+         AND column_name = ANY($2)
+       ORDER BY column_name`,
+      [
+        schema,
+        [
+          'appealStatus',
+          'appealReasonCode',
+          'appealReason',
+          'appealComplaintNo',
+          'appealClaimedAt',
+          'appealSubmittedAt',
+          'appealLastError',
+        ],
+      ],
+    )) as Array<{ column_name: string }>
+
+    expect(columns.map(({ column_name }) => column_name)).toEqual([
+      'appealClaimedAt',
+      'appealComplaintNo',
+      'appealLastError',
+      'appealReason',
+      'appealReasonCode',
+      'appealStatus',
+      'appealSubmittedAt',
+    ])
   })
 
   it('stores a buy order, its initial history and one merchant checkpoint', async () => {
@@ -194,5 +231,98 @@ describe('Merchant orders database integration', () => {
     expect(state.orderCount).toBe('1')
     expect(state.historyCount).toBe('2')
     expect(state.lastSuccessAt.toISOString()).toBe(secondAt.toISOString())
+  })
+
+  it('claims one appeal atomically and preserves uncertain submissions against retries', async () => {
+    const [order] = (await queryRunner.query(
+      `INSERT INTO merchant_order (
+        "tenantId", "merchantId", platform, "platformOrderId", side, "platformStatus", status,
+        asset, "assetAmount", "fiatCurrency", "fiatAmount", "platformCreatedAt", "lastSyncedAt"
+      ) VALUES ($1, $2, 'BINANCE', 'BIN-APPEAL-1', 'BUY', 'PAID', 'PENDING_RELEASE',
+        'USDT', 10, 'CNY', 70, now(), now()) RETURNING id`,
+      [C2C_FOUNDATION_IDS.headquartersTenant, merchantId],
+    )) as Array<{ id: string }>
+    const store = new TypeOrmC2cOrderAppealStore({
+      getRepository: (entity) => queryRunner.manager.getRepository(entity),
+    })
+
+    await expect(
+      store.claim(C2C_FOUNDATION_IDS.headquartersTenant, merchantId, order.id),
+    ).resolves.toBe('CLAIMED')
+    await expect(
+      store.claim(C2C_FOUNDATION_IDS.headquartersTenant, merchantId, order.id),
+    ).resolves.toBe('PROCESSING')
+    await store.setReason(
+      C2C_FOUNDATION_IDS.headquartersTenant,
+      merchantId,
+      order.id,
+      6,
+      '卖家收款后未放行',
+    )
+    await store.markSubmissionUncertain(
+      C2C_FOUNDATION_IDS.headquartersTenant,
+      merchantId,
+      order.id,
+      'upstream timeout',
+    )
+    const [processing] = (await queryRunner.query(
+      `SELECT "appealStatus", "appealReasonCode", "appealReason", "appealLastError"
+       FROM merchant_order WHERE id = $1`,
+      [order.id],
+    )) as Array<Record<string, unknown>>
+    expect(processing).toMatchObject({
+      appealStatus: 'PROCESSING',
+      appealReasonCode: 6,
+      appealReason: '卖家收款后未放行',
+      appealLastError: 'upstream timeout',
+    })
+
+    await store.markSubmitted(
+      C2C_FOUNDATION_IDS.headquartersTenant,
+      merchantId,
+      order.id,
+      '30006788',
+    )
+    await expect(
+      store.claim(C2C_FOUNDATION_IDS.headquartersTenant, merchantId, order.id),
+    ).resolves.toBe('SUBMITTED')
+    await expect(
+      store.claim('00000000-0000-4000-8000-000000000099', merchantId, order.id),
+    ).rejects.toThrow('商家订单不存在')
+  })
+
+  it('releases a claim before submission so an operator can retry', async () => {
+    const [order] = (await queryRunner.query(
+      `INSERT INTO merchant_order (
+        "tenantId", "merchantId", platform, "platformOrderId", side, "platformStatus", status,
+        asset, "assetAmount", "fiatCurrency", "fiatAmount", "platformCreatedAt", "lastSyncedAt"
+      ) VALUES ($1, $2, 'BINANCE', 'BIN-APPEAL-2', 'BUY', 'PAID', 'PENDING_RELEASE',
+        'USDT', 10, 'CNY', 70, now(), now()) RETURNING id`,
+      [C2C_FOUNDATION_IDS.headquartersTenant, merchantId],
+    )) as Array<{ id: string }>
+    const store = new TypeOrmC2cOrderAppealStore({
+      getRepository: (entity) => queryRunner.manager.getRepository(entity),
+    })
+
+    await store.claim(C2C_FOUNDATION_IDS.headquartersTenant, merchantId, order.id)
+    await store.releaseClaim(
+      C2C_FOUNDATION_IDS.headquartersTenant,
+      merchantId,
+      order.id,
+      'receipt upload failed',
+    )
+    const [released] = (await queryRunner.query(
+      `SELECT "appealStatus", "appealClaimedAt", "appealLastError"
+       FROM merchant_order WHERE id = $1`,
+      [order.id],
+    )) as Array<Record<string, unknown>>
+    expect(released).toMatchObject({
+      appealStatus: null,
+      appealClaimedAt: null,
+      appealLastError: 'receipt upload failed',
+    })
+    await expect(
+      store.claim(C2C_FOUNDATION_IDS.headquartersTenant, merchantId, order.id),
+    ).resolves.toBe('CLAIMED')
   })
 })

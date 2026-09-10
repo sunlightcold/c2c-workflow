@@ -22,6 +22,7 @@ import {
 } from '@/apps/admin/database/migrations/c2c-business-foundation.migration'
 import { migrateC2cMerchantPlatformCredentials } from '@/apps/admin/database/migrations/c2c-merchant-platform-credentials.migration'
 import { migrateC2cMerchantOrders } from '@/apps/admin/database/migrations/c2c-merchant-orders.migration'
+import { migrateC2cMerchantOrderAppeals } from '@/apps/admin/database/migrations/c2c-merchant-order-appeals.migration'
 import { migrateC2cPaymentBatches } from '@/apps/admin/database/migrations/c2c-payment-batches.migration'
 import { migrateC2cPaymentOrders } from '@/apps/admin/database/migrations/c2c-payment-orders.migration'
 import { migrateC2cPaymentRouting } from '@/apps/admin/database/migrations/c2c-payment-routing.migration'
@@ -92,6 +93,7 @@ describe('Payment batch migration database integration', () => {
       await migrateC2cPaymentRouting(manager)
       await migrateC2cMerchantPlatformCredentials(manager)
       await migrateC2cMerchantOrders(manager)
+      await migrateC2cMerchantOrderAppeals(manager)
       await migrateC2cPaymentBatches(manager)
       await manager.query(
         `INSERT INTO merchant (id, "tenantId", code, name, platform)

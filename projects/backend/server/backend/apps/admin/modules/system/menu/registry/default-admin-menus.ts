@@ -54,6 +54,7 @@ const businessPages: BusinessPageDefinition[] = [
       ['pay', '创建支付'],
       ['confirm_paid', '补偿确认'],
       ['cancel', '作废'],
+      ['appeal', '提交申诉'],
     ],
   },
   {

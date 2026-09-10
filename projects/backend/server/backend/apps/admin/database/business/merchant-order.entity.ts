@@ -2,6 +2,11 @@ import { CommonUuidEntity } from '@/common/entities'
 import { Check, Column, Entity, Index, VersionColumn } from 'typeorm'
 import { MerchantOrderSide, MerchantOrderStatus, MerchantPlatform } from './business.enums'
 
+export enum MerchantOrderAppealStatus {
+  PROCESSING = 'PROCESSING',
+  SUBMITTED = 'SUBMITTED',
+}
+
 @Entity('merchant_order')
 @Check('ck_merchant_order_buy_only_v1', `"side" = 'BUY'`)
 @Index('uq_merchant_order_platform_order', ['merchantId', 'platform', 'platformOrderId'], {
@@ -42,6 +47,19 @@ export class MerchantOrderEntity extends CommonUuidEntity {
   @Column({ type: 'timestamptz', nullable: true }) platformUpdatedAt: Date | null
   @Column({ type: 'timestamptz' }) lastSyncedAt: Date
   @Column({ type: 'varchar', length: 512, nullable: true }) lastError: string | null
+  @Column({
+    type: 'enum',
+    enum: MerchantOrderAppealStatus,
+    enumName: 'merchant_order_appeal_status_enum',
+    nullable: true,
+  })
+  appealStatus: MerchantOrderAppealStatus | null
+  @Column({ type: 'integer', nullable: true }) appealReasonCode: number | null
+  @Column({ type: 'varchar', length: 255, nullable: true }) appealReason: string | null
+  @Column({ type: 'varchar', length: 128, nullable: true }) appealComplaintNo: string | null
+  @Column({ type: 'timestamptz', nullable: true }) appealClaimedAt: Date | null
+  @Column({ type: 'timestamptz', nullable: true }) appealSubmittedAt: Date | null
+  @Column({ type: 'varchar', length: 512, nullable: true }) appealLastError: string | null
   @VersionColumn() version: number
 }
 

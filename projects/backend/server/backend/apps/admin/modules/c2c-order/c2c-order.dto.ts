@@ -65,3 +65,16 @@ export class MerchantOrderDetailDto extends TenantContextDto {
   @IsUUID()
   merchantId: string
 }
+
+export class MerchantOrderAppealSubmitDto extends MerchantOrderDetailDto {
+  @ApiProperty({ description: '币安实时返回的申诉原因码' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  reasonCode: number
+
+  @ApiProperty({ description: '申诉说明', maxLength: 500 })
+  @IsString()
+  @MaxLength(500)
+  description: string
+}

@@ -1,6 +1,7 @@
 import { C2cOrderController } from '@/apps/admin/modules/c2c-order/c2c-order.controller'
 import { C2cOrderService } from '@/apps/admin/modules/c2c-order/c2c-order.service'
 import { C2cOrderSyncService } from '@/apps/admin/modules/c2c-order/c2c-order-sync.service'
+import { C2cOrderAppealService } from '@/apps/admin/modules/c2c-order/c2c-order-appeal.service'
 import { BusinessScopeService } from '@/apps/admin/modules/business/business-scope.service'
 import { C2cMerchantPaymentController } from '@/apps/admin/modules/payment/c2c-merchant-payment.controller'
 import { C2cMerchantPaymentService } from '@/apps/admin/modules/payment/c2c-merchant-payment.service'
@@ -20,6 +21,7 @@ describe('C2C merchant order API contract (e2e)', () => {
   const scope = { resolveTenantId: jest.fn().mockReturnValue('tenant-1') }
   const orders = { list: jest.fn(), detail: jest.fn() }
   const sync = { sync: jest.fn() }
+  const appeals = { getReasons: jest.fn(), submit: jest.fn() }
   const payment = { cancel: jest.fn(), confirmPaid: jest.fn(), create: jest.fn() }
 
   beforeAll(async () => {
@@ -30,6 +32,7 @@ describe('C2C merchant order API contract (e2e)', () => {
         { provide: BusinessScopeService, useValue: scope },
         { provide: C2cOrderService, useValue: orders },
         { provide: C2cOrderSyncService, useValue: sync },
+        { provide: C2cOrderAppealService, useValue: appeals },
         { provide: C2cMerchantPaymentService, useValue: payment },
       ],
     })
@@ -127,5 +130,59 @@ describe('C2C merchant order API contract (e2e)', () => {
       .expect(201)
     expectWrappedSuccess(response.body)
     expect(sync.sync).toHaveBeenCalledWith('tenant-1', '00000000-0000-4000-8000-000000000020')
+  })
+
+  it('lists live Binance appeal reasons for one scoped merchant order', async () => {
+    appeals.getReasons.mockResolvedValue({
+      orderNo: 'BIN-1',
+      reasons: [{ reasonCode: 6, reasonDesc: '卖家收款后未放行' }],
+    })
+    const response = await request(app.getHttpServer())
+      .get('/v1/sys/merchant-orders/00000000-0000-4000-8000-000000000030/appeal-reasons')
+      .query({
+        tenantId: '00000000-0000-4000-8000-000000000010',
+        merchantId: '00000000-0000-4000-8000-000000000020',
+      })
+      .expect(200)
+
+    expectWrappedSuccess(response.body)
+    expect(appeals.getReasons).toHaveBeenCalledWith(
+      'tenant-1',
+      '00000000-0000-4000-8000-000000000020',
+      '00000000-0000-4000-8000-000000000030',
+    )
+  })
+
+  it('submits one appeal with a validated receipt upload', async () => {
+    appeals.submit.mockResolvedValue({
+      complaintNo: '30006788',
+      orderNo: 'BIN-1',
+      reason: '卖家收款后未放行',
+      reasonCode: 6,
+    })
+    const response = await request(app.getHttpServer())
+      .post('/v1/sys/merchant-orders/00000000-0000-4000-8000-000000000030/appeal')
+      .field('tenantId', '00000000-0000-4000-8000-000000000010')
+      .field('merchantId', '00000000-0000-4000-8000-000000000020')
+      .field('reasonCode', '6')
+      .field('description', '我已付款给卖家，卖家未放行')
+      .attach('receipt', Buffer.from('receipt'), {
+        filename: 'receipt.png',
+        contentType: 'image/png',
+      })
+      .expect(201)
+
+    expectWrappedSuccess(response.body)
+    expect(appeals.submit).toHaveBeenCalledWith(
+      'tenant-1',
+      '00000000-0000-4000-8000-000000000020',
+      '00000000-0000-4000-8000-000000000030',
+      {
+        description: '我已付款给卖家，卖家未放行',
+        fileName: 'receipt.png',
+        receipt: expect.any(Buffer),
+        reasonCode: 6,
+      },
+    )
   })
 })
