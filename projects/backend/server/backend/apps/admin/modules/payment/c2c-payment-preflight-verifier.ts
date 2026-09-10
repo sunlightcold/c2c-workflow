@@ -1,0 +1,268 @@
+import {
+  BusinessStatus,
+  MerchantOrderStatus,
+  MerchantPlatform,
+  PaymentAdapterCode,
+  PaymentExecutionMode,
+  PaymentOrderStatus,
+  PaymentSourceType,
+} from '@admin/database'
+import { Inject, Injectable } from '@nestjs/common'
+import {
+  BinanceC2cClient,
+  type BinanceCredentials,
+  C2cBuyOrderStatus,
+  type C2cBuyOrderDetail,
+  OkxWebPrivateClient,
+  type OkxWebPrivateCredentials,
+} from '../c2c-platform'
+import { C2C_SECRET_RESOLVER, type C2cSecretResolver } from '../c2c-order/c2c-secret-resolver'
+import { normalizeCnyAmount } from './payment-adapter.types'
+import { PaymentNotSubmittedError } from './payment-execution-coordinator'
+
+export interface PaymentPreflightConfiguration {
+  order: {
+    id: string
+    tenantId: string
+    merchantId: string
+    sourceType: PaymentSourceType
+    sourceBusinessNo: string
+    paymentNo: string
+    amount: string
+    currency: string
+    paymentMethod: string
+    executionMode: PaymentExecutionMode
+    payeeIdentity: string
+    payeeName: string
+    paymentPlanId: string | null
+    paymentAccountId: string | null
+    paymentAccountChannelId: string | null
+    status: PaymentOrderStatus
+  }
+  merchant: {
+    id: string
+    tenantId: string
+    platform: MerchantPlatform
+    status: BusinessStatus
+  }
+  merchantOrder: {
+    tenantId: string
+    merchantId: string
+    platform: MerchantPlatform
+    platformOrderId: string
+    status: MerchantOrderStatus
+    payable: boolean
+    fiatAmount: string
+    fiatCurrency: string
+    paymentMethod: string | null
+    platformPaymentMethodId: string | null
+    payeeIdentity: string | null
+    payeeName: string | null
+    paymentDeadline: Date | null
+  }
+  credential: {
+    platform: MerchantPlatform
+    credentialRef: string
+    clientType: string | null
+    xUserId: string | null
+    requestTimeoutMs: number
+    status: BusinessStatus
+  }
+  plan: {
+    id: string
+    tenantId: string
+    merchantId: string
+    paymentAccountId: string
+    paymentAccountChannelId: string
+    status: BusinessStatus
+  }
+  account: {
+    id: string
+    tenantId: string
+    platformId: string
+    status: BusinessStatus
+  }
+  accountChannel: {
+    id: string
+    paymentAccountId: string
+    channelId: string
+    status: BusinessStatus
+  }
+  channel: {
+    id: string
+    platformId: string
+    adapterCode: PaymentAdapterCode
+    executionMode: PaymentExecutionMode
+    status: BusinessStatus
+  }
+  paymentPlatform: {
+    id: string
+    code: string
+    status: BusinessStatus
+  }
+}
+
+export interface PaymentPreflightStore {
+  load: (tenantId: string, orderId: string) => Promise<PaymentPreflightConfiguration>
+}
+
+export interface VerifiedC2cPayment {
+  order: PaymentPreflightConfiguration['order']
+  platformOrder: C2cBuyOrderDetail
+}
+
+export const PAYMENT_PREFLIGHT_STORE = Symbol('PAYMENT_PREFLIGHT_STORE')
+
+@Injectable()
+export class C2cPaymentPreflightVerifier {
+  constructor(
+    @Inject(PAYMENT_PREFLIGHT_STORE) private readonly store: PaymentPreflightStore,
+    @Inject(C2C_SECRET_RESOLVER) private readonly secretResolver: C2cSecretResolver,
+    private readonly binance: BinanceC2cClient,
+    private readonly okx: OkxWebPrivateClient,
+  ) {}
+
+  async verify(tenantId: string, orderId: string, now = new Date()): Promise<VerifiedC2cPayment> {
+    const context = await this.store.load(tenantId, orderId)
+    this.verifyLocal(context, now)
+    let platformOrder: C2cBuyOrderDetail
+    try {
+      const secret = await this.secretResolver.resolve(context.credential.credentialRef)
+      platformOrder = await this.getPlatformOrder(context, secret)
+    } catch (error) {
+      throw this.notSubmitted(error)
+    }
+    this.verifyPlatform(context, platformOrder, now)
+    return { order: context.order, platformOrder }
+  }
+
+  private verifyLocal(context: PaymentPreflightConfiguration, now: Date): void {
+    const { order, merchant, merchantOrder, credential, plan, account, accountChannel, channel } =
+      context
+    this.require(order.sourceType === PaymentSourceType.C2C_BUY, '支付订单不是 C2C 买币来源')
+    this.require(order.status === PaymentOrderStatus.SUBMITTING, '支付订单未处于提交中状态')
+    this.require(merchant.status === BusinessStatus.ACTIVE, '商家已停用')
+    this.require(merchantOrder.status === MerchantOrderStatus.PENDING_PAYMENT, '商家订单已不可付款')
+    this.require(merchantOrder.payable, '商家订单当前不可付款')
+    this.require(credential.status === BusinessStatus.ACTIVE, '商家平台凭据已停用')
+    this.require(
+      merchant.platform === merchantOrder.platform && merchant.platform === credential.platform,
+      '商家平台配置不一致',
+    )
+    this.require(plan.status === BusinessStatus.ACTIVE, '支付方案已停用')
+    this.require(account.status === BusinessStatus.ACTIVE, '支付账号已停用')
+    this.require(accountChannel.status === BusinessStatus.ACTIVE, '支付账号通道已停用')
+    this.require(channel.status === BusinessStatus.ACTIVE, '支付通道已停用')
+    this.require(context.paymentPlatform.status === BusinessStatus.ACTIVE, '支付平台已停用')
+    this.require(
+      order.paymentPlanId === plan.id &&
+        order.paymentAccountId === account.id &&
+        order.paymentAccountChannelId === accountChannel.id &&
+        plan.paymentAccountId === account.id &&
+        plan.paymentAccountChannelId === accountChannel.id &&
+        accountChannel.paymentAccountId === account.id &&
+        accountChannel.channelId === channel.id &&
+        account.platformId === channel.platformId &&
+        account.platformId === context.paymentPlatform.id,
+      '支付订单锁定的支付方案关系已失效',
+    )
+    this.require(
+      context.paymentPlatform.code === 'ALIPAY' &&
+        order.paymentMethod === 'ALIPAY' &&
+        channel.adapterCode === PaymentAdapterCode.ALIPAY_MERCHANT_TRANSFER &&
+        channel.executionMode === PaymentExecutionMode.INSTANT &&
+        order.executionMode === PaymentExecutionMode.INSTANT,
+      '支付通道不支持即时商家转账',
+    )
+    this.require(this.sameAmount(order.amount, merchantOrder.fiatAmount), '商家订单金额已变化')
+    this.require(order.currency === merchantOrder.fiatCurrency, '商家订单币种已变化')
+    this.require(order.paymentMethod === merchantOrder.paymentMethod, '商家订单收款方式已变化')
+    this.require(order.payeeIdentity === merchantOrder.payeeIdentity, '商家订单收款账号已变化')
+    this.require(order.payeeName === merchantOrder.payeeName, '商家订单收款人已变化')
+    this.require(Boolean(merchantOrder.platformPaymentMethodId), '商家订单缺少平台付款方式')
+    this.require(Boolean(merchantOrder.paymentDeadline), '商家订单缺少明确付款截止时间')
+    this.require(
+      merchantOrder.paymentDeadline!.getTime() > now.getTime(),
+      '商家订单付款截止时间已过',
+    )
+  }
+
+  private verifyPlatform(
+    context: PaymentPreflightConfiguration,
+    current: C2cBuyOrderDetail,
+    now: Date,
+  ): void {
+    const snapshot = context.merchantOrder
+    this.require(current.status === C2cBuyOrderStatus.PENDING_PAYMENT, '平台订单已不可付款')
+    this.require(current.payable, '平台订单当前不可付款')
+    this.require(current.platformOrderId === snapshot.platformOrderId, '平台订单编号不匹配')
+    this.require(this.sameAmount(current.fiatAmount, context.order.amount), '平台订单金额已变化')
+    this.require(current.fiatCurrency === context.order.currency, '平台订单币种已变化')
+    this.require(current.paymentMethod === context.order.paymentMethod, '平台订单收款方式已变化')
+    this.require(current.payeeIdentity === context.order.payeeIdentity, '平台订单收款账号已变化')
+    this.require(current.payeeName === context.order.payeeName, '平台订单收款人已变化')
+    this.require(
+      current.platformPaymentMethodId === snapshot.platformPaymentMethodId,
+      '平台付款方式已变化',
+    )
+    this.require(Boolean(current.paymentDeadline), '平台订单缺少明确付款截止时间')
+    const deadline = new Date(current.paymentDeadline!)
+    this.require(!Number.isNaN(deadline.getTime()), '平台订单付款截止时间无效')
+    this.require(
+      deadline.getTime() === snapshot.paymentDeadline!.getTime(),
+      '平台订单付款截止时间已变化',
+    )
+    this.require(deadline.getTime() > now.getTime(), '平台订单付款截止时间已过')
+  }
+
+  private getPlatformOrder(
+    context: PaymentPreflightConfiguration,
+    secret: Record<string, unknown>,
+  ): Promise<C2cBuyOrderDetail> {
+    const { merchant, credential, order } = context
+    if (merchant.platform === MerchantPlatform.BINANCE) {
+      const apiKey = this.text(secret.apiKey)
+      const secretKey = this.text(secret.secretKey)
+      this.require(Boolean(apiKey && secretKey && credential.clientType), '币安支付复核凭据不完整')
+      const credentials: BinanceCredentials = {
+        apiKey,
+        secretKey,
+        clientType: credential.clientType!,
+        timeoutMs: credential.requestTimeoutMs,
+        ...(credential.xUserId ? { xUserId: credential.xUserId } : {}),
+      }
+      return this.binance.getOrderDetail(credentials, order.sourceBusinessNo)
+    }
+    const cookie = this.text(secret.cookie)
+    const authorization = this.text(secret.authorization)
+    this.require(Boolean(cookie && authorization), '欧易支付复核凭据不完整')
+    const credentials: OkxWebPrivateCredentials = {
+      cookie,
+      authorization,
+      timeoutMs: credential.requestTimeoutMs,
+    }
+    return this.okx.getOrderDetail(credentials, order.sourceBusinessNo)
+  }
+
+  private sameAmount(left: string, right: string): boolean {
+    try {
+      return normalizeCnyAmount(left) === normalizeCnyAmount(right)
+    } catch {
+      return false
+    }
+  }
+
+  private text(value: unknown): string {
+    return typeof value === 'string' ? value.trim() : ''
+  }
+
+  private require(condition: boolean, message: string): asserts condition {
+    if (!condition) throw new PaymentNotSubmittedError(message)
+  }
+
+  private notSubmitted(error: unknown): PaymentNotSubmittedError {
+    return error instanceof PaymentNotSubmittedError
+      ? error
+      : new PaymentNotSubmittedError(error instanceof Error ? error.message : String(error))
+  }
+}

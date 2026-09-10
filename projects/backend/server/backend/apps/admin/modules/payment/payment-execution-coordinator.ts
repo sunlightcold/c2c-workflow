@@ -31,6 +31,13 @@ export const PAYMENT_ORDER_STORE = Symbol('PAYMENT_ORDER_STORE')
 export const PAYMENT_EXECUTOR = Symbol('PAYMENT_EXECUTOR')
 export const PLATFORM_PAYMENT_CONFIRMER = Symbol('PLATFORM_PAYMENT_CONFIRMER')
 
+export class PaymentNotSubmittedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PaymentNotSubmittedError'
+  }
+}
+
 @Injectable()
 export class PaymentExecutionCoordinator {
   constructor(
@@ -48,7 +55,11 @@ export class PaymentExecutionCoordinator {
     try {
       result = await this.executor.submit(claimed)
     } catch (error) {
-      return this.store.transition(claimed, PaymentOrderState.UNKNOWN, {
+      const status =
+        error instanceof PaymentNotSubmittedError
+          ? PaymentOrderState.FAILED
+          : PaymentOrderState.UNKNOWN
+      return this.store.transition(claimed, status, {
         errorMessage: this.errorMessage(error),
       })
     }

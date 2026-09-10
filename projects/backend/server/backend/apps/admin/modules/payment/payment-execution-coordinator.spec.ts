@@ -1,5 +1,8 @@
 import { PaymentExecutionStatus } from './payment-adapter.types'
-import { PaymentExecutionCoordinator } from './payment-execution-coordinator'
+import {
+  PaymentExecutionCoordinator,
+  PaymentNotSubmittedError,
+} from './payment-execution-coordinator'
 import { PaymentOrderState } from './payment-order-state-machine'
 
 describe('PaymentExecutionCoordinator', () => {
@@ -41,6 +44,20 @@ describe('PaymentExecutionCoordinator', () => {
     await expect(coordinator.submit('t1', 'o1')).resolves.toMatchObject({
       status: PaymentOrderState.UNKNOWN,
     })
+    expect(confirmer.confirmPaid).not.toHaveBeenCalled()
+  })
+
+  it('fails an order when preflight proves no payment was submitted', async () => {
+    executor.submit.mockRejectedValue(new PaymentNotSubmittedError('平台订单已过期'))
+
+    await expect(coordinator.submit('t1', 'o1')).resolves.toMatchObject({
+      status: PaymentOrderState.FAILED,
+    })
+    expect(store.transition).toHaveBeenCalledWith(
+      expect.objectContaining({ status: PaymentOrderState.SUBMITTING }),
+      PaymentOrderState.FAILED,
+      { errorMessage: '平台订单已过期' },
+    )
     expect(confirmer.confirmPaid).not.toHaveBeenCalled()
   })
 })

@@ -34,6 +34,6 @@ import { C2cOrderService } from './c2c-order.service'
     C2cOrderSyncService,
     C2cOrderService,
   ],
-  exports: [C2cOrderSyncService, C2cOrderService],
+  exports: [C2C_SECRET_RESOLVER, C2cOrderSyncService, C2cOrderService],
 })
 export class C2cOrderModule {}
