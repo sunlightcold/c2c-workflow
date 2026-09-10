@@ -53,6 +53,10 @@ C2C 买币支付订单进入实际付款前，系统按所属单位和商家重�
 
 复核通过后，系统使用锁定支付账号的内部 Secret 引用创建独立支付宝客户端，以支付订单 `paymentNo` 作为 `out_biz_no` 调用 `alipay.fund.trans.uni.transfer`。支付宝明确返回失败时支付订单进入 `FAILED`；调用超时或响应结果无法确认时进入 `UNKNOWN`，不得生成新业务单号再次付款。回查调用 `alipay.fund.trans.common.query`，并继续使用原 `paymentNo`。
 
+支付宝明确成功后，商家订单先进入 `PAID_PENDING_PLATFORM_CONFIRM`。系统重新读取同一币安或欧易订单，复核订单编号、金额、币种、收款资料和平台付款方式未变化，然后使用平台付款方式 ID 调用平台“已付款”接口：币安传数字 `payId`，欧易传原字符串 `receiptAccountId`，不得传支付宝支付账号 ID。欧易执行前必须通过反欺诈检查。平台操作后再次查询订单，只有状态为 `PAID` 或 `COMPLETED` 才把支付订单收口为 `COMPLETED`，并把商家订单分别更新为 `PENDING_RELEASE` 或 `COMPLETED`。
+
+平台确认接口失败或平台暂未显示已付款时，支付订单保持 `PLATFORM_CONFIRM_PENDING`，后续只重试平台确认，不再调用支付宝。若平台订单已经取消、过期或进入争议，支付订单和商家订单均进入资金异常。
+
 ## 错误
 
 | HTTP | 场景 |

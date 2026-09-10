@@ -3,6 +3,7 @@ import {
   PaymentExecutionCoordinator,
   PaymentNotSubmittedError,
 } from './payment-execution-coordinator'
+import { PlatformFundsExceptionError } from './payment-execution.errors'
 import { PaymentOrderState } from './payment-order-state-machine'
 
 describe('PaymentExecutionCoordinator', () => {
@@ -35,6 +36,16 @@ describe('PaymentExecutionCoordinator', () => {
     confirmer.confirmPaid.mockRejectedValue(new Error('platform unavailable'))
     await expect(coordinator.submit('t1', 'o1')).resolves.toMatchObject({
       status: PaymentOrderState.PLATFORM_CONFIRM_PENDING,
+    })
+    expect(executor.submit).toHaveBeenCalledTimes(1)
+  })
+
+  it('moves both sides to funds exception when platform confirmation finds a terminal conflict', async () => {
+    executor.submit.mockResolvedValue({ status: PaymentExecutionStatus.SUCCESS, upstreamId: 'a1' })
+    confirmer.confirmPaid.mockRejectedValue(new PlatformFundsExceptionError('平台订单已取消'))
+
+    await expect(coordinator.submit('t1', 'o1')).resolves.toMatchObject({
+      status: PaymentOrderState.FUND_EXCEPTION,
     })
     expect(executor.submit).toHaveBeenCalledTimes(1)
   })

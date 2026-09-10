@@ -11,6 +11,7 @@ import { Inject, Injectable } from '@nestjs/common'
 import {
   BinanceC2cClient,
   type BinanceCredentials,
+  C2cPlatformCredentialFactory,
   C2cBuyOrderStatus,
   type C2cBuyOrderDetail,
   OkxWebPrivateClient,
@@ -46,6 +47,7 @@ export interface PaymentPreflightConfiguration {
     status: BusinessStatus
   }
   merchantOrder: {
+    id: string
     tenantId: string
     merchantId: string
     platform: MerchantPlatform
@@ -120,6 +122,7 @@ export class C2cPaymentPreflightVerifier {
   constructor(
     @Inject(PAYMENT_PREFLIGHT_STORE) private readonly store: PaymentPreflightStore,
     @Inject(C2C_SECRET_RESOLVER) private readonly secretResolver: C2cSecretResolver,
+    private readonly credentialFactory: C2cPlatformCredentialFactory,
     private readonly binance: BinanceC2cClient,
     private readonly okx: OkxWebPrivateClient,
   ) {}
@@ -130,7 +133,12 @@ export class C2cPaymentPreflightVerifier {
     let platformOrder: C2cBuyOrderDetail
     try {
       const secret = await this.secretResolver.resolve(context.credential.credentialRef)
-      platformOrder = await this.getPlatformOrder(context, secret)
+      const credentials = this.credentialFactory.create(
+        context.merchant.platform,
+        context.credential,
+        secret,
+      )
+      platformOrder = await this.getPlatformOrder(context, credentials)
     } catch (error) {
       throw this.notSubmitted(error)
     }
@@ -227,31 +235,17 @@ export class C2cPaymentPreflightVerifier {
 
   private getPlatformOrder(
     context: PaymentPreflightConfiguration,
-    secret: Record<string, unknown>,
+    credentials: BinanceCredentials | OkxWebPrivateCredentials,
   ): Promise<C2cBuyOrderDetail> {
-    const { merchant, credential, order } = context
-    if (merchant.platform === MerchantPlatform.BINANCE) {
-      const apiKey = this.text(secret.apiKey)
-      const secretKey = this.text(secret.secretKey)
-      this.require(Boolean(apiKey && secretKey && credential.clientType), '币安支付复核凭据不完整')
-      const credentials: BinanceCredentials = {
-        apiKey,
-        secretKey,
-        clientType: credential.clientType!,
-        timeoutMs: credential.requestTimeoutMs,
-        ...(credential.xUserId ? { xUserId: credential.xUserId } : {}),
-      }
-      return this.binance.getOrderDetail(credentials, order.sourceBusinessNo)
-    }
-    const cookie = this.text(secret.cookie)
-    const authorization = this.text(secret.authorization)
-    this.require(Boolean(cookie && authorization), '欧易支付复核凭据不完整')
-    const credentials: OkxWebPrivateCredentials = {
-      cookie,
-      authorization,
-      timeoutMs: credential.requestTimeoutMs,
-    }
-    return this.okx.getOrderDetail(credentials, order.sourceBusinessNo)
+    return context.merchant.platform === MerchantPlatform.BINANCE
+      ? this.binance.getOrderDetail(
+          credentials as BinanceCredentials,
+          context.order.sourceBusinessNo,
+        )
+      : this.okx.getOrderDetail(
+          credentials as OkxWebPrivateCredentials,
+          context.order.sourceBusinessNo,
+        )
   }
 
   private sameAmount(left: string, right: string): boolean {
@@ -260,10 +254,6 @@ export class C2cPaymentPreflightVerifier {
     } catch {
       return false
     }
-  }
-
-  private text(value: unknown): string {
-    return typeof value === 'string' ? value.trim() : ''
   }
 
   private require(condition: boolean, message: string): asserts condition {

@@ -8,13 +8,19 @@ import {
   C2cPaymentPreflightVerifier,
   PAYMENT_PREFLIGHT_STORE,
 } from './c2c-payment-preflight-verifier'
-import { PAYMENT_EXECUTOR, PAYMENT_ORDER_STORE } from './payment-execution-coordinator'
+import {
+  PAYMENT_EXECUTOR,
+  PAYMENT_ORDER_STORE,
+  PLATFORM_PAYMENT_CONFIRMER,
+  PaymentExecutionCoordinator,
+} from './payment-execution-coordinator'
 import {
   ALIPAY_ACCOUNT_GATEWAY_FACTORY,
   AlipayAccountGatewayProvider,
 } from './alipay-account-gateway.provider'
 import { AlipayGatewayFactory } from './alipay-gateway.factory'
 import { C2cAlipayPaymentExecutor } from './c2c-alipay-payment.executor'
+import { C2cPlatformPaymentConfirmer } from './c2c-platform-payment.confirmer'
 import { PaymentOrderService } from './payment-order.service'
 import { PaymentOrderController } from './payment-order.controller'
 import { PAYMENT_PLAN_RESOLVER, PaymentPlanResolver } from './payment-plan-resolver'
@@ -46,10 +52,15 @@ import { TypeOrmPaymentPreflightStore } from './typeorm-payment-preflight.store'
     },
     C2cAlipayPaymentExecutor,
     { provide: PAYMENT_EXECUTOR, useExisting: C2cAlipayPaymentExecutor },
+    C2cPlatformPaymentConfirmer,
+    { provide: PLATFORM_PAYMENT_CONFIRMER, useExisting: C2cPlatformPaymentConfirmer },
+    PaymentExecutionCoordinator,
   ],
   exports: [
     C2cPaymentPreflightVerifier,
     PAYMENT_EXECUTOR,
+    PLATFORM_PAYMENT_CONFIRMER,
+    PaymentExecutionCoordinator,
     PaymentOrderService,
     PAYMENT_ORDER_STORE,
     PAYMENT_PLAN_RESOLVER,

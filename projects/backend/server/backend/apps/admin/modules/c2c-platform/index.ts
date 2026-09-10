@@ -1,5 +1,6 @@
 export * from './binance-c2c.client'
 export * from './okx-web-private.client'
 export * from './c2c-platform.types'
+export * from './c2c-platform-credential.factory'
 export * from './c2c-order-normalizer'
 export * from './c2c-platform.module'

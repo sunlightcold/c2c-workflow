@@ -1,6 +1,8 @@
 import {
   MerchantEntity,
   MerchantOrderEntity,
+  MerchantOrderStatus,
+  MerchantOrderStatusHistoryEntity,
   MerchantPaymentPlanEntity,
   MerchantPlatformCredentialEntity,
   PaymentAccountChannelEntity,
@@ -9,8 +11,9 @@ import {
   PaymentOrderEntity,
   PaymentPlatformEntity,
 } from '@admin/database'
-import { Injectable } from '@nestjs/common'
+import { ConflictException, Injectable } from '@nestjs/common'
 import { DataSource } from 'typeorm'
+import { C2cBuyOrderStatus } from '../c2c-platform'
 import type {
   PaymentPreflightConfiguration,
   PaymentPreflightStore,
@@ -91,5 +94,83 @@ export class TypeOrmPaymentPreflightStore implements PaymentPreflightStore {
       channel,
       paymentPlatform,
     }
+  }
+
+  transitionMerchantOrder(
+    tenantId: string,
+    merchantOrderId: string,
+    status: MerchantOrderStatus,
+    platformStatus: C2cBuyOrderStatus,
+  ): Promise<void> {
+    return this.dataSource.transaction(async (manager) => {
+      const repository = manager.getRepository(MerchantOrderEntity)
+      const order = await repository.findOne({
+        where: { id: merchantOrderId, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      })
+      if (!order) throw new ConflictException('商家订单不存在或不属于当前所属单位')
+      if (order.status === status || this.isAlreadyBeyond(order.status, status)) return
+      if (!this.canTransition(order.status, status))
+        throw new ConflictException(`商家订单状态已变化: ${order.status}`)
+      const previous = order.status
+      order.status = status
+      order.platformStatus = platformStatus
+      order.payable = false
+      order.lastError =
+        status === MerchantOrderStatus.FUNDS_EXCEPTION
+          ? `资金已支付，但平台订单状态为 ${platformStatus}`
+          : null
+      await repository.save(order)
+      await manager.getRepository(MerchantOrderStatusHistoryEntity).save({
+        tenantId: order.tenantId,
+        merchantId: order.merchantId,
+        merchantOrderId: order.id,
+        fromStatus: previous,
+        toStatus: status,
+        source: 'PLATFORM_PAYMENT_CONFIRMATION',
+        platformStatus,
+        reason: order.lastError,
+      })
+    })
+  }
+
+  private canTransition(current: MerchantOrderStatus, next: MerchantOrderStatus): boolean {
+    const allowed: Partial<Record<MerchantOrderStatus, readonly MerchantOrderStatus[]>> = {
+      [MerchantOrderStatus.PENDING_PAYMENT]: [
+        MerchantOrderStatus.PAID_PENDING_PLATFORM_CONFIRM,
+        MerchantOrderStatus.FUNDS_EXCEPTION,
+      ],
+      [MerchantOrderStatus.PAYMENT_PROCESSING]: [
+        MerchantOrderStatus.PAID_PENDING_PLATFORM_CONFIRM,
+        MerchantOrderStatus.FUNDS_EXCEPTION,
+      ],
+      [MerchantOrderStatus.PAID_PENDING_PLATFORM_CONFIRM]: [
+        MerchantOrderStatus.PENDING_RELEASE,
+        MerchantOrderStatus.COMPLETED,
+        MerchantOrderStatus.FUNDS_EXCEPTION,
+      ],
+      [MerchantOrderStatus.PENDING_RELEASE]: [
+        MerchantOrderStatus.COMPLETED,
+        MerchantOrderStatus.FUNDS_EXCEPTION,
+      ],
+      [MerchantOrderStatus.CANCELLED]: [MerchantOrderStatus.FUNDS_EXCEPTION],
+      [MerchantOrderStatus.EXPIRED]: [MerchantOrderStatus.FUNDS_EXCEPTION],
+      [MerchantOrderStatus.DISPUTED]: [MerchantOrderStatus.FUNDS_EXCEPTION],
+      [MerchantOrderStatus.EXCEPTION]: [MerchantOrderStatus.FUNDS_EXCEPTION],
+    }
+    return allowed[current]?.includes(next) ?? false
+  }
+
+  private isAlreadyBeyond(current: MerchantOrderStatus, next: MerchantOrderStatus): boolean {
+    const progress = [
+      MerchantOrderStatus.PAID_PENDING_PLATFORM_CONFIRM,
+      MerchantOrderStatus.PENDING_RELEASE,
+      MerchantOrderStatus.COMPLETED,
+    ]
+    return (
+      progress.includes(current) &&
+      progress.includes(next) &&
+      progress.indexOf(current) > progress.indexOf(next)
+    )
   }
 }

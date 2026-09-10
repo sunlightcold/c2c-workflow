@@ -24,6 +24,14 @@ describe('C2cOrderSyncService', () => {
   const secretResolver = {
     resolve: jest.fn().mockResolvedValue({ apiKey: 'key', secretKey: 'secret' }),
   }
+  const credentialFactory = {
+    create: jest.fn().mockReturnValue({
+      apiKey: 'key',
+      secretKey: 'secret',
+      clientType: 'WEB',
+      timeoutMs: 5000,
+    }),
+  }
   const store = {
     getLastSuccessAt: jest.fn().mockResolvedValue(null),
     persistWindow: jest.fn().mockResolvedValue({ created: 1, updated: 0 }),
@@ -89,6 +97,7 @@ describe('C2cOrderSyncService', () => {
       merchantRepository as never,
       credentials as never,
       secretResolver,
+      credentialFactory as never,
       binance as never,
       okx as never,
       store,
@@ -117,6 +126,7 @@ describe('C2cOrderSyncService', () => {
       merchantRepository as never,
       credentials as never,
       secretResolver,
+      credentialFactory as never,
       binance as never,
       okx as never,
       store,

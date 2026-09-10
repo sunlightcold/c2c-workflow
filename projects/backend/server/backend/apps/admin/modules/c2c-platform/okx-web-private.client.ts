@@ -69,12 +69,19 @@ export class OkxWebPrivateClient {
   }
 
   async checkAntiFraud(credentials: OkxWebPrivateCredentials, orderId: string, fiat: string) {
-    return this.get(credentials, '/v4/c2c/risk/antiFraudPopup/info', {
-      fiatCurrency: fiat,
-      publicOrderId: this.orderId(orderId),
-      eventType: '4',
-      t: String(Date.now()),
-    })
+    const response = await this.get<{ shouldShowPopup?: boolean; isShowPopup?: boolean }>(
+      credentials,
+      '/v4/c2c/risk/antiFraudPopup/info',
+      {
+        fiatCurrency: fiat,
+        publicOrderId: this.orderId(orderId),
+        eventType: '4',
+        t: String(Date.now()),
+      },
+    )
+    return {
+      riskReviewRequired: Boolean(response.data?.shouldShowPopup || response.data?.isShowPopup),
+    }
   }
 
   async markOrderAsPaid(

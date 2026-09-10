@@ -42,6 +42,7 @@ describe('C2cPaymentPreflightVerifier', () => {
       status: BusinessStatus.ACTIVE,
     },
     merchantOrder: {
+      id: 'merchant-order-1',
       tenantId: 'tenant-1',
       merchantId: 'merchant-1',
       platform: MerchantPlatform.BINANCE,
@@ -117,6 +118,7 @@ describe('C2cPaymentPreflightVerifier', () => {
   }
   const store: jest.Mocked<PaymentPreflightStore> = { load: jest.fn() }
   const secretResolver = { resolve: jest.fn() }
+  const credentialFactory = { create: jest.fn() }
   const binance = { getOrderDetail: jest.fn() }
   const okx = { getOrderDetail: jest.fn() }
   let verifier: C2cPaymentPreflightVerifier
@@ -125,10 +127,17 @@ describe('C2cPaymentPreflightVerifier', () => {
     jest.clearAllMocks()
     store.load.mockResolvedValue({ order, ...configuration })
     secretResolver.resolve.mockResolvedValue({ apiKey: 'key', secretKey: 'secret' })
+    credentialFactory.create.mockReturnValue({
+      apiKey: 'key',
+      secretKey: 'secret',
+      clientType: 'WEB',
+      timeoutMs: 5000,
+    })
     binance.getOrderDetail.mockResolvedValue(platformOrder)
     verifier = new C2cPaymentPreflightVerifier(
       store,
       secretResolver,
+      credentialFactory as never,
       binance as never,
       okx as never,
     )
@@ -160,6 +169,11 @@ describe('C2cPaymentPreflightVerifier', () => {
     }
     store.load.mockResolvedValue({ order, ...okxConfiguration })
     secretResolver.resolve.mockResolvedValue({ cookie: 'cookie', authorization: 'authorization' })
+    credentialFactory.create.mockReturnValue({
+      cookie: 'cookie',
+      authorization: 'authorization',
+      timeoutMs: 5000,
+    })
     okx.getOrderDetail.mockResolvedValue(platformOrder)
 
     await expect(verifier.verify('tenant-1', 'payment-1', now)).resolves.toMatchObject({

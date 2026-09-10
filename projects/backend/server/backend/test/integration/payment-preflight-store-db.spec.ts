@@ -3,6 +3,8 @@
 import {
   MerchantEntity,
   MerchantOrderEntity,
+  MerchantOrderStatus,
+  MerchantOrderStatusHistoryEntity,
   MerchantPaymentPlanEntity,
   MerchantPlatformCredentialEntity,
   PaymentAccountChannelEntity,
@@ -23,6 +25,7 @@ import { PaymentNotSubmittedError } from '@/apps/admin/modules/payment/payment-e
 import { TypeOrmPaymentPreflightStore } from '@/apps/admin/modules/payment/typeorm-payment-preflight.store'
 import developmentConfig from '@/config/development'
 import { DataSource } from 'typeorm'
+import { C2cBuyOrderStatus } from '@/apps/admin/modules/c2c-platform'
 
 describe('Payment preflight store database integration', () => {
   const { postgres } = developmentConfig.admin
@@ -64,6 +67,7 @@ describe('Payment preflight store database integration', () => {
       entities: [
         MerchantEntity,
         MerchantOrderEntity,
+        MerchantOrderStatusHistoryEntity,
         MerchantPaymentPlanEntity,
         MerchantPlatformCredentialEntity,
         PaymentAccountChannelEntity,
@@ -137,6 +141,17 @@ describe('Payment preflight store database integration', () => {
     store = new TypeOrmPaymentPreflightStore(dataSource)
   })
 
+  beforeEach(async () => {
+    await dataSource.query('DELETE FROM merchant_order_status_history')
+    await dataSource.query(
+      `UPDATE merchant_order
+       SET status = 'PENDING_PAYMENT', "platformStatus" = 'PENDING_PAYMENT', payable = true,
+           "lastError" = NULL
+       WHERE id = $1`,
+      [merchantOrderId],
+    )
+  })
+
   afterAll(async () => {
     if (dataSource?.isInitialized) await dataSource.destroy()
     if (adminDataSource?.isInitialized) {
@@ -173,5 +188,54 @@ describe('Payment preflight store database integration', () => {
     await expect(
       store.load('00000000-0000-4000-8000-000000000999', paymentOrderId),
     ).rejects.toEqual(new PaymentNotSubmittedError('支付订单不存在或不属于当前所属单位'))
+  })
+
+  it('advances merchant confirmation state transactionally and does not duplicate history', async () => {
+    await store.transitionMerchantOrder(
+      tenantId,
+      merchantOrderId,
+      MerchantOrderStatus.PAID_PENDING_PLATFORM_CONFIRM,
+      C2cBuyOrderStatus.PENDING_PAYMENT,
+    )
+    await store.transitionMerchantOrder(
+      tenantId,
+      merchantOrderId,
+      MerchantOrderStatus.PAID_PENDING_PLATFORM_CONFIRM,
+      C2cBuyOrderStatus.PENDING_PAYMENT,
+    )
+    await store.transitionMerchantOrder(
+      tenantId,
+      merchantOrderId,
+      MerchantOrderStatus.PENDING_RELEASE,
+      C2cBuyOrderStatus.PAID,
+    )
+
+    await expect(
+      dataSource.query(
+        `SELECT status, "platformStatus", payable, "lastError"
+         FROM merchant_order WHERE id = $1`,
+        [merchantOrderId],
+      ),
+    ).resolves.toEqual([
+      { status: 'PENDING_RELEASE', platformStatus: 'PAID', payable: false, lastError: null },
+    ])
+    await expect(
+      dataSource.query(
+        `SELECT "fromStatus", "toStatus", source
+         FROM merchant_order_status_history WHERE "merchantOrderId" = $1 ORDER BY "createdAt"`,
+        [merchantOrderId],
+      ),
+    ).resolves.toEqual([
+      {
+        fromStatus: 'PENDING_PAYMENT',
+        toStatus: 'PAID_PENDING_PLATFORM_CONFIRM',
+        source: 'PLATFORM_PAYMENT_CONFIRMATION',
+      },
+      {
+        fromStatus: 'PAID_PENDING_PLATFORM_CONFIRM',
+        toStatus: 'PENDING_RELEASE',
+        source: 'PLATFORM_PAYMENT_CONFIRMATION',
+      },
+    ])
   })
 })

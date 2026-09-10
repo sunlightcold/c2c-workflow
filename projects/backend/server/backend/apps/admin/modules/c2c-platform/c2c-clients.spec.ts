@@ -97,6 +97,18 @@ describe('C2C buy-order clients', () => {
     expect(http.request).not.toHaveBeenCalled()
   })
 
+  it('requires manual review when OKX anti-fraud requests a popup', async () => {
+    http.request.mockResolvedValue({ code: 0, data: { shouldShowPopup: true } })
+
+    await expect(
+      okx.checkAntiFraud(
+        { cookie: 'session', authorization: 'token', timeoutMs: 5000 },
+        '123',
+        'CNY',
+      ),
+    ).resolves.toEqual({ riskReviewRequired: true })
+  })
+
   it('normalizes Binance list and detail responses to one buy-order contract', async () => {
     http.request
       .mockResolvedValueOnce({

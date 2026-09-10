@@ -6,6 +6,7 @@ import { MerchantPlatformCredentialService } from '../business/merchant-platform
 import {
   BinanceC2cClient,
   type BinanceCredentials,
+  C2cPlatformCredentialFactory,
   type C2cBuyOrderDetail,
   type C2cBuyOrderPage,
   OkxWebPrivateClient,
@@ -26,6 +27,7 @@ export class C2cOrderSyncService {
     private readonly merchantRepository: Repository<MerchantEntity>,
     private readonly credentialService: MerchantPlatformCredentialService,
     @Inject(C2C_SECRET_RESOLVER) private readonly secretResolver: C2cSecretResolver,
+    private readonly credentialFactory: C2cPlatformCredentialFactory,
     private readonly binance: BinanceC2cClient,
     private readonly okx: OkxWebPrivateClient,
     @Inject(C2C_ORDER_SYNC_STORE) private readonly store: C2cOrderSyncStore,
@@ -44,7 +46,7 @@ export class C2cOrderSyncService {
         : now.getTime() - INITIAL_LOOKBACK_MS
       const orders = await this.fetchAll(
         merchant.platform,
-        this.credentials(merchant.platform, reference, secret),
+        this.credentialFactory.create(merchant.platform, reference, secret),
         startDate,
         now.getTime(),
       )
@@ -106,39 +108,6 @@ export class C2cOrderSyncService {
     return platform === MerchantPlatform.BINANCE
       ? this.binance.getOrderDetail(credentials as BinanceCredentials, orderId)
       : this.okx.getOrderDetail(credentials as OkxWebPrivateCredentials, orderId)
-  }
-
-  private credentials(
-    platform: MerchantPlatform,
-    reference: {
-      clientType: string | null
-      xUserId: string | null
-      requestTimeoutMs: number
-    },
-    secret: Record<string, unknown>,
-  ): BinanceCredentials | OkxWebPrivateCredentials {
-    if (platform === MerchantPlatform.BINANCE) {
-      const apiKey = this.text(secret.apiKey)
-      const secretKey = this.text(secret.secretKey)
-      if (!apiKey || !secretKey || !reference.clientType) {
-        throw new Error('币安 Secret 缺少 apiKey、secretKey 或 clientType')
-      }
-      return {
-        apiKey,
-        secretKey,
-        clientType: reference.clientType,
-        timeoutMs: reference.requestTimeoutMs,
-        ...(reference.xUserId ? { xUserId: reference.xUserId } : {}),
-      }
-    }
-    const cookie = this.text(secret.cookie)
-    const authorization = this.text(secret.authorization)
-    if (!cookie || !authorization) throw new Error('欧易 Secret 缺少 cookie 或 authorization')
-    return { cookie, authorization, timeoutMs: reference.requestTimeoutMs }
-  }
-
-  private text(value: unknown): string {
-    return typeof value === 'string' ? value.trim() : ''
   }
 
   private errorMessage(error: unknown): string {

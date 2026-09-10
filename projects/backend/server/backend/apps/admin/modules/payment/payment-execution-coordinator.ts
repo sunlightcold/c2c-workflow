@@ -1,6 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { PaymentExecutionStatus, type PaymentExecutionResult } from './payment-adapter.types'
 import { PaymentOrderState } from './payment-order-state-machine'
+import { PaymentNotSubmittedError, PlatformFundsExceptionError } from './payment-execution.errors'
+
+export { PaymentNotSubmittedError, PlatformFundsExceptionError } from './payment-execution.errors'
 
 export interface ExecutablePaymentOrder {
   id: string
@@ -30,13 +33,6 @@ export interface PlatformPaymentConfirmer {
 export const PAYMENT_ORDER_STORE = Symbol('PAYMENT_ORDER_STORE')
 export const PAYMENT_EXECUTOR = Symbol('PAYMENT_EXECUTOR')
 export const PLATFORM_PAYMENT_CONFIRMER = Symbol('PLATFORM_PAYMENT_CONFIRMER')
-
-export class PaymentNotSubmittedError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'PaymentNotSubmittedError'
-  }
-}
 
 @Injectable()
 export class PaymentExecutionCoordinator {
@@ -77,7 +73,11 @@ export class PaymentExecutionCoordinator {
       await this.confirmer.confirmPaid(pending)
       return this.store.transition(pending, PaymentOrderState.COMPLETED)
     } catch (error) {
-      return this.store.transition(pending, PaymentOrderState.PLATFORM_CONFIRM_PENDING, {
+      const status =
+        error instanceof PlatformFundsExceptionError
+          ? PaymentOrderState.FUND_EXCEPTION
+          : PaymentOrderState.PLATFORM_CONFIRM_PENDING
+      return this.store.transition(pending, status, {
         errorMessage: this.errorMessage(error),
       })
     }
