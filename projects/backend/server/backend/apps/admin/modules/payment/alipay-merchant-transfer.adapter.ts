@@ -45,7 +45,7 @@ export class AlipayMerchantTransferAdapter {
     )
     if (response.outBizNo && response.outBizNo !== input.businessNo)
       throw new Error('支付宝商家转账返回的业务单号不匹配')
-    return this.mapResponse(response)
+    return this.mapCreateResponse(response)
   }
 
   async query(businessNo: string): Promise<PaymentExecutionResult<TransferResponse>> {
@@ -59,13 +59,10 @@ export class AlipayMerchantTransferAdapter {
     )
     if (response.outBizNo && response.outBizNo !== businessNo)
       throw new Error('支付宝商家转账查询返回的业务单号不匹配')
-    return this.mapResponse(response)
+    return this.mapQueryResponse(response)
   }
 
-  private mapResponse(response: TransferResponse): PaymentExecutionResult<TransferResponse> {
-    if (response.subCode === 'ORDER_NOT_EXIST' && response.code === '40004') {
-      return { status: PaymentExecutionStatus.FAILED, errorMessage: response.subMsg, raw: response }
-    }
+  private mapCreateResponse(response: TransferResponse): PaymentExecutionResult<TransferResponse> {
     if (response.code !== '10000') {
       return {
         status: PaymentExecutionStatus.FAILED,
@@ -73,6 +70,26 @@ export class AlipayMerchantTransferAdapter {
         raw: response,
       }
     }
+    return this.mapSuccessfulResponse(response)
+  }
+
+  private mapQueryResponse(response: TransferResponse): PaymentExecutionResult<TransferResponse> {
+    if (response.subCode === 'ORDER_NOT_EXIST' && response.code === '40004') {
+      return { status: PaymentExecutionStatus.FAILED, errorMessage: response.subMsg, raw: response }
+    }
+    if (response.code !== '10000') {
+      return {
+        status: PaymentExecutionStatus.UNKNOWN,
+        errorMessage: response.subMsg ?? response.msg ?? '支付宝商家转账查询结果未知',
+        raw: response,
+      }
+    }
+    return this.mapSuccessfulResponse(response)
+  }
+
+  private mapSuccessfulResponse(
+    response: TransferResponse,
+  ): PaymentExecutionResult<TransferResponse> {
     const statuses: Partial<Record<TransferStatus, PaymentExecutionStatus>> = {
       DEALING: PaymentExecutionStatus.PROCESSING,
       WAIT_PAY: PaymentExecutionStatus.PROCESSING,

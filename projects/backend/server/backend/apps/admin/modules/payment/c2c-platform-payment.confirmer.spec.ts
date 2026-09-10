@@ -68,7 +68,7 @@ describe('C2cPlatformPaymentConfirmer', () => {
       merchantId: 'merchant-1',
       platform: MerchantPlatform.BINANCE,
       platformOrderId: 'platform-order-1',
-      status: MerchantOrderStatus.PENDING_PAYMENT,
+      status: MerchantOrderStatus.PAYMENT_PROCESSING,
       payable: true,
       fiatAmount: '100.00',
       fiatCurrency: 'CNY',

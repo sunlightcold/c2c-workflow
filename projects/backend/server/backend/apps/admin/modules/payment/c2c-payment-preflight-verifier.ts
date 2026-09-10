@@ -160,7 +160,10 @@ export class C2cPaymentPreflightVerifier {
     this.require(order.sourceType === PaymentSourceType.C2C_BUY, '支付订单不是 C2C 买币来源')
     this.require(order.status === PaymentOrderStatus.SUBMITTING, '支付订单未处于提交中状态')
     this.require(merchant.status === BusinessStatus.ACTIVE, '商家已停用')
-    this.require(merchantOrder.status === MerchantOrderStatus.PENDING_PAYMENT, '商家订单已不可付款')
+    this.require(
+      merchantOrder.status === MerchantOrderStatus.PAYMENT_PROCESSING,
+      '商家订单未进入支付处理状态',
+    )
     this.require(merchantOrder.payable, '商家订单当前不可付款')
     this.require(credential.status === BusinessStatus.ACTIVE, '商家平台凭据已停用')
     this.require(

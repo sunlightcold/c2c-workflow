@@ -1,7 +1,8 @@
 import { BusinessScopeService } from '@/apps/admin/modules/business/business-scope.service'
 import { PaymentOrderController } from '@/apps/admin/modules/payment/payment-order.controller'
 import { PaymentOrderService } from '@/apps/admin/modules/payment/payment-order.service'
-import type { INestApplication } from '@nestjs/common'
+import { PaymentExecutionCoordinator } from '@/apps/admin/modules/payment/payment-execution-coordinator'
+import { ConflictException, type INestApplication } from '@nestjs/common'
 import request from 'supertest'
 import {
   createAdminContractTestApp,
@@ -20,6 +21,7 @@ describe('Payment order API contract (e2e)', () => {
   let app: INestApplication
   const scope = { resolveTenantId: jest.fn().mockReturnValue('tenant-1') }
   const orders = { create: jest.fn(), rematch: jest.fn() }
+  const execution = { reconcile: jest.fn() }
 
   beforeAll(async () => {
     app = await createAdminContractTestApp({
@@ -28,6 +30,7 @@ describe('Payment order API contract (e2e)', () => {
       providers: [
         { provide: BusinessScopeService, useValue: scope },
         { provide: PaymentOrderService, useValue: orders },
+        { provide: PaymentExecutionCoordinator, useValue: execution },
       ],
     })
   })
@@ -81,16 +84,46 @@ describe('Payment order API contract (e2e)', () => {
   })
 
   it('rematches a pending-config order in the resolved tenant', async () => {
-    orders.rematch.mockResolvedValue({ id: '00000000-0000-4000-8000-000000000030', status: 'READY' })
+    orders.rematch.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000030',
+      status: 'READY',
+    })
     const response = await request(app.getHttpServer())
       .post('/v1/sys/payment-orders/00000000-0000-4000-8000-000000000030/rematch')
       .send({ tenantId: '00000000-0000-4000-8000-000000000010' })
       .expect(201)
 
     expectWrappedSuccess(response.body)
-    expect(orders.rematch).toHaveBeenCalledWith(
+    expect(orders.rematch).toHaveBeenCalledWith('tenant-1', '00000000-0000-4000-8000-000000000030')
+  })
+
+  it('reconciles a processing payment in the resolved tenant without resubmitting it', async () => {
+    execution.reconcile.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000030',
+      status: 'PROCESSING',
+    })
+    const response = await request(app.getHttpServer())
+      .post('/v1/sys/payment-orders/00000000-0000-4000-8000-000000000030/reconcile')
+      .send({ tenantId: '00000000-0000-4000-8000-000000000010' })
+      .expect(201)
+
+    expectWrappedSuccess(response.body)
+    expect(execution.reconcile).toHaveBeenCalledWith(
       'tenant-1',
       '00000000-0000-4000-8000-000000000030',
     )
+  })
+
+  it('returns conflict when a payment cannot be reconciled in its current state', async () => {
+    execution.reconcile.mockRejectedValue(
+      new ConflictException('只有处理中或结果未知的支付订单可以回查'),
+    )
+
+    const response = await request(app.getHttpServer())
+      .post('/v1/sys/payment-orders/00000000-0000-4000-8000-000000000030/reconcile')
+      .send({ tenantId: '00000000-0000-4000-8000-000000000010' })
+      .expect(409)
+
+    expectWrappedError(response.body, 409)
   })
 })

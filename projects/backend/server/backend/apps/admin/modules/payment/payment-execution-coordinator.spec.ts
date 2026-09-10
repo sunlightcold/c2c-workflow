@@ -5,10 +5,11 @@ import {
 } from './payment-execution-coordinator'
 import { PlatformFundsExceptionError } from './payment-execution.errors'
 import { PaymentOrderState } from './payment-order-state-machine'
+import { ConflictException } from '@nestjs/common'
 
 describe('PaymentExecutionCoordinator', () => {
   const order = { id: 'o1', tenantId: 't1', status: PaymentOrderState.READY }
-  const store = { claim: jest.fn(), transition: jest.fn() }
+  const store = { get: jest.fn(), claim: jest.fn(), transition: jest.fn() }
   const executor = { submit: jest.fn(), query: jest.fn() }
   const confirmer = { confirmPaid: jest.fn() }
   let coordinator: PaymentExecutionCoordinator
@@ -16,6 +17,7 @@ describe('PaymentExecutionCoordinator', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     store.claim.mockResolvedValue({ ...order, status: PaymentOrderState.SUBMITTING })
+    store.get.mockResolvedValue({ ...order, status: PaymentOrderState.UNKNOWN })
     store.transition.mockImplementation(async (_order, status) => ({ ...order, status }))
     coordinator = new PaymentExecutionCoordinator(store, executor, confirmer)
   })
@@ -70,5 +72,37 @@ describe('PaymentExecutionCoordinator', () => {
       { errorMessage: '平台订单已过期' },
     )
     expect(confirmer.confirmPaid).not.toHaveBeenCalled()
+  })
+
+  it('queries an unknown payment using the original order and confirms the platform on success', async () => {
+    executor.query.mockResolvedValue({ status: PaymentExecutionStatus.SUCCESS, upstreamId: 'a1' })
+    confirmer.confirmPaid.mockResolvedValue(undefined)
+
+    await expect(coordinator.reconcile('t1', 'o1')).resolves.toMatchObject({
+      status: PaymentOrderState.COMPLETED,
+    })
+    expect(executor.submit).not.toHaveBeenCalled()
+    expect(executor.query).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'o1', status: PaymentOrderState.UNKNOWN }),
+    )
+  })
+
+  it('keeps a payment unknown when its query cannot determine the result', async () => {
+    executor.query.mockRejectedValue(new Error('query timeout'))
+
+    await expect(coordinator.reconcile('t1', 'o1')).resolves.toMatchObject({
+      status: PaymentOrderState.UNKNOWN,
+    })
+    expect(confirmer.confirmPaid).not.toHaveBeenCalled()
+  })
+
+  it('rejects reconciliation for a payment that was never submitted', async () => {
+    store.get.mockResolvedValue({ ...order, status: PaymentOrderState.READY })
+
+    await expect(coordinator.reconcile('t1', 'o1')).rejects.toThrow(
+      '只有处理中或结果未知的支付订单可以回查',
+    )
+    await expect(coordinator.reconcile('t1', 'o1')).rejects.toBeInstanceOf(ConflictException)
+    expect(executor.query).not.toHaveBeenCalled()
   })
 })

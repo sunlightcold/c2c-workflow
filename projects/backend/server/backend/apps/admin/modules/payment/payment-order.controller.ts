@@ -6,6 +6,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { BusinessScopeService } from '../business/business-scope.service'
 import { CreateManualPaymentOrderDto, PaymentTenantContextDto } from './payment-order.dto'
 import { PaymentOrderService } from './payment-order.service'
+import { PaymentExecutionCoordinator } from './payment-execution-coordinator'
 
 const PaymentOrderPermissions = definePermission('payment:order', ['create', 'retry'] as const)
 
@@ -16,6 +17,7 @@ export class PaymentOrderController {
   constructor(
     private readonly scope: BusinessScopeService,
     private readonly orders: PaymentOrderService,
+    private readonly execution: PaymentExecutionCoordinator,
   ) {}
 
   @Post()
@@ -39,5 +41,16 @@ export class PaymentOrderController {
     @User() actor: AuthUser,
   ) {
     return this.orders.rematch(this.scope.resolveTenantId(actor, dto.tenantId), id)
+  }
+
+  @Post(':id/reconcile')
+  @Permission(PaymentOrderPermissions.RETRY)
+  @ApiOperation({ summary: '使用原支付单号回查处理中或结果未知的支付订单' })
+  reconcile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PaymentTenantContextDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.execution.reconcile(this.scope.resolveTenantId(actor, dto.tenantId), id)
   }
 }

@@ -1,4 +1,11 @@
-import { PaymentOrderEntity, PaymentOrderStatusHistoryEntity } from '@admin/database'
+import {
+  MerchantOrderEntity,
+  MerchantOrderStatus,
+  MerchantOrderStatusHistoryEntity,
+  PaymentOrderEntity,
+  PaymentOrderStatusHistoryEntity,
+  PaymentSourceType,
+} from '@admin/database'
 import { ConflictException, Injectable } from '@nestjs/common'
 import { DataSource, type EntityManager } from 'typeorm'
 import type { ExecutablePaymentOrder, PaymentOrderStore } from './payment-execution-coordinator'
@@ -7,6 +14,14 @@ import { assertPaymentOrderTransition, PaymentOrderState } from './payment-order
 @Injectable()
 export class TypeOrmPaymentOrderStore implements PaymentOrderStore {
   constructor(private readonly dataSource: DataSource) {}
+
+  async get(tenantId: string, orderId: string): Promise<ExecutablePaymentOrder> {
+    const order = await this.dataSource
+      .getRepository(PaymentOrderEntity)
+      .findOne({ where: { id: orderId, tenantId } })
+    if (!order) throw new ConflictException('支付订单不存在或不属于当前所属单位')
+    return this.toExecutable(order)
+  }
 
   claim(tenantId: string, orderId: string): Promise<ExecutablePaymentOrder> {
     return this.dataSource.transaction(async (manager) => {
@@ -18,6 +33,7 @@ export class TypeOrmPaymentOrderStore implements PaymentOrderStore {
         PaymentOrderState.SUBMITTING,
       )
       await this.history(manager, order, PaymentOrderState.READY, PaymentOrderState.SUBMITTING)
+      await this.claimMerchantOrder(manager, order)
       return this.toExecutable(order)
     })
   }
@@ -38,6 +54,9 @@ export class TypeOrmPaymentOrderStore implements PaymentOrderStore {
         detail,
       )
       await this.history(manager, order, input.status, next, detail?.errorMessage)
+      if (next === PaymentOrderState.FAILED) {
+        await this.restoreMerchantOrder(manager, order, detail?.errorMessage)
+      }
       return this.toExecutable(order)
     })
   }
@@ -83,6 +102,83 @@ export class TypeOrmPaymentOrderStore implements PaymentOrderStore {
       fromStatus: from,
       toStatus: to,
       source: 'PAYMENT_COORDINATOR',
+      reason: reason ?? null,
+    })
+  }
+
+  private async claimMerchantOrder(
+    manager: EntityManager,
+    paymentOrder: PaymentOrderEntity,
+  ): Promise<void> {
+    if (paymentOrder.sourceType !== PaymentSourceType.C2C_BUY) return
+    const repository = manager.getRepository(MerchantOrderEntity)
+    const merchantOrder = await repository.findOne({
+      where: {
+        tenantId: paymentOrder.tenantId,
+        merchantId: paymentOrder.merchantId,
+        platformOrderId: paymentOrder.sourceBusinessNo,
+      },
+      lock: { mode: 'pessimistic_write' },
+    })
+    if (!merchantOrder || merchantOrder.status !== MerchantOrderStatus.PENDING_PAYMENT) {
+      throw new ConflictException('商家订单已不可进入支付处理')
+    }
+    const previous = merchantOrder.status
+    merchantOrder.status = MerchantOrderStatus.PAYMENT_PROCESSING
+    await repository.save(merchantOrder)
+    await this.merchantHistory(
+      manager,
+      merchantOrder,
+      previous,
+      MerchantOrderStatus.PAYMENT_PROCESSING,
+    )
+  }
+
+  private async restoreMerchantOrder(
+    manager: EntityManager,
+    paymentOrder: PaymentOrderEntity,
+    reason?: string,
+  ): Promise<void> {
+    if (paymentOrder.sourceType !== PaymentSourceType.C2C_BUY) return
+    const repository = manager.getRepository(MerchantOrderEntity)
+    const merchantOrder = await repository.findOne({
+      where: {
+        tenantId: paymentOrder.tenantId,
+        merchantId: paymentOrder.merchantId,
+        platformOrderId: paymentOrder.sourceBusinessNo,
+      },
+      lock: { mode: 'pessimistic_write' },
+    })
+    if (!merchantOrder) throw new ConflictException('支付订单关联的商家订单不存在')
+    if (merchantOrder.status !== MerchantOrderStatus.PAYMENT_PROCESSING) return
+    const previous = merchantOrder.status
+    merchantOrder.status = MerchantOrderStatus.PENDING_PAYMENT
+    merchantOrder.lastError = reason ?? null
+    await repository.save(merchantOrder)
+    await this.merchantHistory(
+      manager,
+      merchantOrder,
+      previous,
+      MerchantOrderStatus.PENDING_PAYMENT,
+      reason,
+    )
+  }
+
+  private merchantHistory(
+    manager: EntityManager,
+    order: MerchantOrderEntity,
+    from: MerchantOrderStatus,
+    to: MerchantOrderStatus,
+    reason?: string,
+  ) {
+    return manager.insert(MerchantOrderStatusHistoryEntity, {
+      tenantId: order.tenantId,
+      merchantId: order.merchantId,
+      merchantOrderId: order.id,
+      fromStatus: from,
+      toStatus: to,
+      source: 'PAYMENT_COORDINATOR',
+      platformStatus: order.platformStatus,
       reason: reason ?? null,
     })
   }

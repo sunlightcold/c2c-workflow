@@ -89,4 +89,17 @@ describe('Alipay payment adapters', () => {
       'alipay.fund.trans.common.query',
     ])
   })
+
+  it('keeps non-terminal merchant transfer query errors unknown', async () => {
+    gateway.execute.mockResolvedValue({
+      code: '40004',
+      subCode: 'isv.insufficient-isv-permissions',
+      subMsg: 'Insufficient permissions',
+    })
+
+    await expect(transfer.query('P1')).resolves.toMatchObject({
+      status: PaymentExecutionStatus.UNKNOWN,
+      errorMessage: 'Insufficient permissions',
+    })
+  })
 })

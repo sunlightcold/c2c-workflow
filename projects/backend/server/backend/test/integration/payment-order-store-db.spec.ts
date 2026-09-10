@@ -1,6 +1,8 @@
 /// <reference types="jest" />
 
 import {
+  MerchantOrderEntity,
+  MerchantOrderStatusHistoryEntity,
   PaymentOrderEntity,
   PaymentOrderStatus,
   PaymentOrderStatusHistoryEntity,
@@ -10,6 +12,9 @@ import {
   migrateC2cBusinessFoundation,
 } from '@/apps/admin/database/migrations/c2c-business-foundation.migration'
 import { migrateC2cPaymentOrders } from '@/apps/admin/database/migrations/c2c-payment-orders.migration'
+import { migrateC2cPaymentRouting } from '@/apps/admin/database/migrations/c2c-payment-routing.migration'
+import { migrateC2cMerchantPlatformCredentials } from '@/apps/admin/database/migrations/c2c-merchant-platform-credentials.migration'
+import { migrateC2cMerchantOrders } from '@/apps/admin/database/migrations/c2c-merchant-orders.migration'
 import { PaymentOrderState } from '@/apps/admin/modules/payment/payment-order-state-machine'
 import { TypeOrmPaymentOrderStore } from '@/apps/admin/modules/payment/typeorm-payment-order.store'
 import developmentConfig from '@/config/development'
@@ -52,13 +57,21 @@ describe('Payment order store database integration', () => {
       schema,
       synchronize: false,
       logging: false,
-      entities: [PaymentOrderEntity, PaymentOrderStatusHistoryEntity],
+      entities: [
+        MerchantOrderEntity,
+        MerchantOrderStatusHistoryEntity,
+        PaymentOrderEntity,
+        PaymentOrderStatusHistoryEntity,
+      ],
       extra: { options: `-c search_path=${schema},public` },
     })
     await dataSource.initialize()
     await dataSource.transaction(async (manager) => {
       await migrateC2cBusinessFoundation(manager)
       await migrateC2cPaymentOrders(manager)
+      await migrateC2cPaymentRouting(manager)
+      await migrateC2cMerchantPlatformCredentials(manager)
+      await migrateC2cMerchantOrders(manager)
       await manager.query(
         `INSERT INTO merchant (id, "tenantId", code, name, platform)
          VALUES ($1, $2, 'merchant-1', 'Merchant 1', 'BINANCE')`,
@@ -89,6 +102,19 @@ describe('Payment order store database integration', () => {
   beforeEach(async () => {
     await dataSource.query('DELETE FROM payment_order_status_history')
     await dataSource.query('DELETE FROM payment_order')
+    await dataSource.query('DELETE FROM merchant_order_status_history')
+    await dataSource.query('DELETE FROM merchant_order')
+    await dataSource.query(
+      `INSERT INTO merchant_order
+         ("tenantId", "merchantId", platform, "platformOrderId", side, "platformStatus", status,
+          asset, "assetAmount", "fiatCurrency", "fiatAmount", "paymentMethod",
+          "platformPaymentMethodId", "payeeIdentity", "payeeName", payable, "paymentDeadline",
+          "platformCreatedAt", "lastSyncedAt")
+       VALUES ($1, $2, 'BINANCE', 'source-1', 'BUY', 'PENDING_PAYMENT', 'PENDING_PAYMENT',
+               'USDT', 10, 'CNY', 100.00, 'ALIPAY', '901', 'payee@example.com', 'Payee', true,
+               now() + interval '10 minutes', now(), now())`,
+      [tenantId, merchantId],
+    )
     await dataSource.query(
       `INSERT INTO payment_order
          (id, "tenantId", "merchantId", "sourceType", "sourceBusinessNo", "paymentNo", amount,
@@ -123,6 +149,9 @@ describe('Payment order store database integration', () => {
         [orderId],
       ),
     ).resolves.toEqual([{ fromStatus: 'READY', toStatus: 'SUBMITTING' }])
+    await expect(
+      dataSource.query(`SELECT status FROM merchant_order WHERE "platformOrderId" = 'source-1'`),
+    ).resolves.toEqual([{ status: 'PAYMENT_PROCESSING' }])
   })
 
   it('scopes claims by tenant and does not change the order on a cross-tenant request', async () => {
@@ -147,5 +176,43 @@ describe('Payment order store database integration', () => {
     await expect(
       dataSource.query('SELECT status, "lastError" FROM payment_order WHERE id = $1', [orderId]),
     ).resolves.toEqual([{ status: 'SUCCESS', lastError: null }])
+  })
+
+  it('restores the merchant order when payment was definitely not submitted', async () => {
+    const claimed = await store.claim(tenantId, orderId)
+    await store.transition(claimed, PaymentOrderState.FAILED, {
+      errorMessage: '平台订单已过期',
+    })
+
+    await expect(
+      dataSource.query(
+        `SELECT status, "lastError" FROM merchant_order WHERE "platformOrderId" = 'source-1'`,
+      ),
+    ).resolves.toEqual([{ status: 'PENDING_PAYMENT', lastError: '平台订单已过期' }])
+    await expect(
+      dataSource.query(
+        `SELECT "fromStatus", "toStatus" FROM merchant_order_status_history
+         ORDER BY "createdAt"`,
+      ),
+    ).resolves.toEqual([
+      { fromStatus: 'PENDING_PAYMENT', toStatus: 'PAYMENT_PROCESSING' },
+      { fromStatus: 'PAYMENT_PROCESSING', toStatus: 'PENDING_PAYMENT' },
+    ])
+  })
+
+  it('restores the merchant order when reconciliation proves the payment failed', async () => {
+    const claimed = await store.claim(tenantId, orderId)
+    const unknown = await store.transition(claimed, PaymentOrderState.UNKNOWN, {
+      errorMessage: '支付结果暂时未知',
+    })
+    await store.transition(unknown, PaymentOrderState.FAILED, {
+      errorMessage: '支付宝原单不存在',
+    })
+
+    await expect(
+      dataSource.query(
+        `SELECT status, "lastError" FROM merchant_order WHERE "platformOrderId" = 'source-1'`,
+      ),
+    ).resolves.toEqual([{ status: 'PENDING_PAYMENT', lastError: '支付宝原单不存在' }])
   })
 })

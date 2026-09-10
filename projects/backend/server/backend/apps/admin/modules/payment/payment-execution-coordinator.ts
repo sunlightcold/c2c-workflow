@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common'
+import { ConflictException, Inject, Injectable } from '@nestjs/common'
 import { PaymentExecutionStatus, type PaymentExecutionResult } from './payment-adapter.types'
 import { PaymentOrderState } from './payment-order-state-machine'
 import { PaymentNotSubmittedError, PlatformFundsExceptionError } from './payment-execution.errors'
@@ -13,6 +13,7 @@ export interface ExecutablePaymentOrder {
 }
 
 export interface PaymentOrderStore {
+  get: (tenantId: string, orderId: string) => Promise<ExecutablePaymentOrder>
   claim: (tenantId: string, orderId: string) => Promise<ExecutablePaymentOrder>
   transition: (
     order: ExecutablePaymentOrder,
@@ -64,6 +65,24 @@ export class PaymentExecutionCoordinator {
     return this.confirmPlatform(paid)
   }
 
+  async reconcile(tenantId: string, orderId: string): Promise<ExecutablePaymentOrder> {
+    const order = await this.store.get(tenantId, orderId)
+    if (![PaymentOrderState.PROCESSING, PaymentOrderState.UNKNOWN].includes(order.status)) {
+      throw new ConflictException('只有处理中或结果未知的支付订单可以回查')
+    }
+    let result: PaymentExecutionResult
+    try {
+      result = await this.executor.query(order)
+    } catch (error) {
+      return this.store.transition(order, PaymentOrderState.UNKNOWN, {
+        errorMessage: this.errorMessage(error),
+      })
+    }
+    const paid = await this.applyPaymentResult(order, result)
+    if (paid.status !== PaymentOrderState.SUCCESS) return paid
+    return this.confirmPlatform(paid)
+  }
+
   async confirmPlatform(order: ExecutablePaymentOrder): Promise<ExecutablePaymentOrder> {
     const pending =
       order.status === PaymentOrderState.PLATFORM_CONFIRM_PENDING
@@ -97,6 +116,6 @@ export class PaymentExecutionCoordinator {
   }
 
   private errorMessage(error: unknown) {
-    return error instanceof Error ? error.message : String(error)
+    return (error instanceof Error ? error.message : String(error)).slice(0, 512)
   }
 }
