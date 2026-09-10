@@ -1,21 +1,31 @@
 /// <reference types="jest" />
 
 import {
+  MerchantEntity,
   MerchantOrderEntity,
   MerchantOrderStatusHistoryEntity,
+  PaymentBatchEntity,
+  PaymentBatchItemEntity,
+  PaymentBatchStatusHistoryEntity,
+  PaymentExecutionMode,
   PaymentOrderEntity,
   PaymentOrderStatus,
   PaymentOrderStatusHistoryEntity,
+  PaymentSourceType,
 } from '@/apps/admin/database'
 import {
   C2C_FOUNDATION_IDS,
   migrateC2cBusinessFoundation,
 } from '@/apps/admin/database/migrations/c2c-business-foundation.migration'
 import { migrateC2cPaymentOrders } from '@/apps/admin/database/migrations/c2c-payment-orders.migration'
+import { migrateC2cPaymentBatches } from '@/apps/admin/database/migrations/c2c-payment-batches.migration'
 import { migrateC2cPaymentRouting } from '@/apps/admin/database/migrations/c2c-payment-routing.migration'
 import { migrateC2cMerchantPlatformCredentials } from '@/apps/admin/database/migrations/c2c-merchant-platform-credentials.migration'
+import { migrateC2cMerchantAccountOperations } from '@/apps/admin/database/migrations/c2c-merchant-account-operations.migration'
 import { migrateC2cMerchantOrders } from '@/apps/admin/database/migrations/c2c-merchant-orders.migration'
 import { PaymentOrderState } from '@/apps/admin/modules/payment/payment-order-state-machine'
+import { PaymentOrderService } from '@/apps/admin/modules/payment/payment-order.service'
+import { C2cPaymentCancellationService } from '@/apps/admin/modules/payment/c2c-payment-cancellation.service'
 import { TypeOrmPaymentOrderStore } from '@/apps/admin/modules/payment/typeorm-payment-order.store'
 import developmentConfig from '@/config/development'
 import { ConflictException } from '@nestjs/common'
@@ -33,6 +43,8 @@ describe('Payment order store database integration', () => {
   let adminDataSource: DataSource
   let dataSource: DataSource
   let store: TypeOrmPaymentOrderStore
+  let paymentOrders: PaymentOrderService
+  let cancellation: C2cPaymentCancellationService
 
   beforeAll(async () => {
     adminDataSource = new DataSource({
@@ -58,10 +70,14 @@ describe('Payment order store database integration', () => {
       synchronize: false,
       logging: false,
       entities: [
+        MerchantEntity,
         MerchantOrderEntity,
         MerchantOrderStatusHistoryEntity,
         PaymentOrderEntity,
         PaymentOrderStatusHistoryEntity,
+        PaymentBatchEntity,
+        PaymentBatchItemEntity,
+        PaymentBatchStatusHistoryEntity,
       ],
       extra: { options: `-c search_path=${schema},public` },
     })
@@ -71,10 +87,12 @@ describe('Payment order store database integration', () => {
       await migrateC2cPaymentOrders(manager)
       await migrateC2cPaymentRouting(manager)
       await migrateC2cMerchantPlatformCredentials(manager)
+      await migrateC2cMerchantAccountOperations(manager)
       await migrateC2cMerchantOrders(manager)
+      await migrateC2cPaymentBatches(manager)
       await manager.query(
-        `INSERT INTO merchant (id, "tenantId", code, name, platform)
-         VALUES ($1, $2, 'merchant-1', 'Merchant 1', 'BINANCE')`,
+        `INSERT INTO merchant (id, "tenantId", code, name, platform, "apiBaseUrl")
+         VALUES ($1, $2, 'merchant-1', 'Merchant 1', 'BINANCE', 'http://127.0.0.1:13002')`,
         [merchantId, tenantId],
       )
       await manager.query(
@@ -97,9 +115,19 @@ describe('Payment order store database integration', () => {
       )
     })
     store = new TypeOrmPaymentOrderStore(dataSource)
+    paymentOrders = new PaymentOrderService(
+      dataSource.getRepository(PaymentOrderEntity),
+      dataSource.getRepository(MerchantEntity),
+      { resolve: jest.fn() },
+      dataSource,
+    )
+    cancellation = new C2cPaymentCancellationService(dataSource)
   })
 
   beforeEach(async () => {
+    await dataSource.query('DELETE FROM payment_batch_status_history')
+    await dataSource.query('DELETE FROM payment_batch_item')
+    await dataSource.query('DELETE FROM payment_batch')
     await dataSource.query('DELETE FROM payment_order_status_history')
     await dataSource.query('DELETE FROM payment_order')
     await dataSource.query('DELETE FROM merchant_order_status_history')
@@ -214,5 +242,120 @@ describe('Payment order store database integration', () => {
         `SELECT status, "lastError" FROM merchant_order WHERE "platformOrderId" = 'source-1'`,
       ),
     ).resolves.toEqual([{ status: 'PENDING_PAYMENT', lastError: '支付宝原单不存在' }])
+  })
+
+  it('cancels a merchant order and its ready payment in one transaction', async () => {
+    const [{ id: merchantOrderId }] = await dataSource.query<Array<{ id: string }>>(
+      `SELECT id FROM merchant_order WHERE "platformOrderId" = 'source-1'`,
+    )
+
+    await cancellation.cancel(tenantId, {
+      merchantId,
+      merchantOrderId,
+      operator: 'admin',
+      reason: '收款资料有误',
+      sourceBusinessNo: 'source-1',
+    })
+
+    await expect(
+      dataSource.query(`SELECT status FROM merchant_order WHERE id = $1`, [merchantOrderId]),
+    ).resolves.toEqual([{ status: 'CANCELLED' }])
+    await expect(
+      dataSource.query(`SELECT status FROM payment_order WHERE id = $1`, [orderId]),
+    ).resolves.toEqual([{ status: 'CANCELLED' }])
+    await expect(
+      dataSource.query(
+        `SELECT "toStatus", reason FROM payment_order_status_history WHERE "paymentOrderId" = $1`,
+        [orderId],
+      ),
+    ).resolves.toEqual([{ toStatus: 'CANCELLED', reason: 'admin: 收款资料有误' }])
+  })
+
+  it('removes a queued payment from its unsubmitted batch before cancelling it', async () => {
+    const [{ id: merchantOrderId }] = await dataSource.query<Array<{ id: string }>>(
+      `SELECT id FROM merchant_order WHERE "platformOrderId" = 'source-1'`,
+    )
+    const batchId = '00000000-0000-4000-8000-000000000106'
+    await dataSource.query(
+      `INSERT INTO payment_batch
+         (id, "tenantId", "merchantId", "batchNo", "paymentAccountId",
+          "paymentAccountChannelId", currency, "totalCount", "totalAmount", status)
+       VALUES ($1, $2, $3, 'BATCH-CANCEL-1', $4, $5, 'CNY', 1, 100.00, 'READY')`,
+      [batchId, tenantId, merchantId, accountId, accountChannelId],
+    )
+    await dataSource.query(
+      `INSERT INTO payment_batch_item
+         ("tenantId", "merchantId", "batchId", "paymentOrderId", amount, status)
+       VALUES ($1, $2, $3, $4, 100.00, 'QUEUED')`,
+      [tenantId, merchantId, batchId, orderId],
+    )
+
+    await cancellation.cancel(tenantId, {
+      merchantId,
+      merchantOrderId,
+      operator: 'admin',
+      reason: '订单无需继续',
+      sourceBusinessNo: 'source-1',
+    })
+
+    await expect(
+      dataSource.query(
+        `SELECT status, "totalCount", "totalAmount"::text FROM payment_batch WHERE id = $1`,
+        [batchId],
+      ),
+    ).resolves.toEqual([{ status: 'CANCELLED', totalCount: 1, totalAmount: '100.00' }])
+    await expect(
+      dataSource.query(`SELECT status FROM payment_batch_item WHERE "batchId" = $1`, [batchId]),
+    ).resolves.toEqual([{ status: 'CANCELLED' }])
+  })
+
+  it('rejects cancellation after the funding request has been submitted', async () => {
+    const [{ id: merchantOrderId }] = await dataSource.query<Array<{ id: string }>>(
+      `SELECT id FROM merchant_order WHERE "platformOrderId" = 'source-1'`,
+    )
+    await dataSource.query(`UPDATE payment_order SET status = 'SUBMITTING' WHERE id = $1`, [
+      orderId,
+    ])
+    await dataSource.query(
+      `UPDATE merchant_order SET status = 'PAYMENT_PROCESSING' WHERE id = $1`,
+      [merchantOrderId],
+    )
+
+    await expect(
+      cancellation.cancel(tenantId, {
+        merchantId,
+        merchantOrderId,
+        operator: 'admin',
+        reason: '误操作',
+        sourceBusinessNo: 'source-1',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException)
+    await expect(
+      dataSource.query(`SELECT status FROM payment_order WHERE id = $1`, [orderId]),
+    ).resolves.toEqual([{ status: 'SUBMITTING' }])
+  })
+
+  it('rolls back payment creation when the merchant order was cancelled concurrently', async () => {
+    await dataSource.query('DELETE FROM payment_order')
+    await dataSource.query(
+      `UPDATE merchant_order SET status = 'CANCELLED' WHERE "platformOrderId" = 'source-1'`,
+    )
+
+    await expect(
+      paymentOrders.create(tenantId, {
+        merchantId,
+        sourceType: PaymentSourceType.C2C_BUY,
+        sourceBusinessNo: 'source-1',
+        amount: '100.00',
+        currency: 'CNY',
+        paymentMethod: 'ALIPAY',
+        executionMode: PaymentExecutionMode.INSTANT,
+        payeeIdentity: 'payee@example.com',
+        payeeName: 'Payee',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException)
+    await expect(
+      dataSource.query('SELECT COUNT(*)::integer AS count FROM payment_order'),
+    ).resolves.toEqual([{ count: 0 }])
   })
 })

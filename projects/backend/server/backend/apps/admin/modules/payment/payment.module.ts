@@ -41,6 +41,9 @@ import {
 } from './payment-batch-execution-coordinator'
 import { AlipayBatchPaymentExecutor } from './alipay-batch-payment.executor'
 import { TypeOrmPaymentBatchStore } from './typeorm-payment-batch.store'
+import { C2cMerchantPaymentController } from './c2c-merchant-payment.controller'
+import { C2cMerchantPaymentService } from './c2c-merchant-payment.service'
+import { C2cPaymentCancellationService } from './c2c-payment-cancellation.service'
 
 @Module({
   imports: [
@@ -54,12 +57,14 @@ import { TypeOrmPaymentBatchStore } from './typeorm-payment-batch.store'
       PaymentBatchItemEntity,
     ]),
   ],
-  controllers: [PaymentOrderController, PaymentBatchController],
+  controllers: [PaymentOrderController, PaymentBatchController, C2cMerchantPaymentController],
   providers: [
     PaymentPlanResolver,
     { provide: PAYMENT_PLAN_RESOLVER, useExisting: PaymentPlanResolver },
     PaymentOrderService,
     PaymentBatchService,
+    C2cMerchantPaymentService,
+    C2cPaymentCancellationService,
     TypeOrmPaymentBatchStore,
     { provide: PAYMENT_BATCH_STORE, useExisting: TypeOrmPaymentBatchStore },
     TypeOrmPaymentOrderStore,

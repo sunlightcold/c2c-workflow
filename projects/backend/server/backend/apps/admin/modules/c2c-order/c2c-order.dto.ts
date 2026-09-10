@@ -1,7 +1,17 @@
 import { MerchantOrderStatus } from '@admin/database'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
-import { IsEnum, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator'
+import {
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator'
 import { TenantContextDto } from '../business/business.dto'
 
 export class MerchantOrderListDto extends TenantContextDto {
@@ -13,6 +23,28 @@ export class MerchantOrderListDto extends TenantContextDto {
   @IsOptional()
   @IsEnum(MerchantOrderStatus)
   status?: MerchantOrderStatus
+
+  @ApiPropertyOptional({ description: '平台订单号，支持模糊查询' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  platformOrderId?: string
+
+  @ApiPropertyOptional({ enum: ['ALIPAY'] })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  paymentMethod?: string
+
+  @ApiPropertyOptional({ description: '平台订单开始时间，ISO 8601' })
+  @IsOptional()
+  @IsDateString()
+  startTime?: string
+
+  @ApiPropertyOptional({ description: '平台订单结束时间，ISO 8601' })
+  @IsOptional()
+  @IsDateString()
+  endTime?: string
 
   @ApiPropertyOptional({ default: 1 })
   @Type(() => Number)

@@ -3,6 +3,8 @@ import {
   MerchantOrderEntity,
   MerchantOrderStatusHistoryEntity,
   MerchantOrderSyncCheckpointEntity,
+  PaymentOrderEntity,
+  PaymentOrderStatusHistoryEntity,
 } from '@admin/database'
 import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
@@ -23,6 +25,8 @@ import { C2cOrderService } from './c2c-order.service'
       MerchantOrderEntity,
       MerchantOrderStatusHistoryEntity,
       MerchantOrderSyncCheckpointEntity,
+      PaymentOrderEntity,
+      PaymentOrderStatusHistoryEntity,
     ]),
   ],
   controllers: [C2cOrderController],

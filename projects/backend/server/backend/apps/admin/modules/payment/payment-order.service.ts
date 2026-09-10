@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto'
 import {
   BusinessStatus,
   MerchantEntity,
+  MerchantOrderEntity,
+  MerchantOrderStatus,
   PaymentBatchItemEntity,
   PaymentExecutionMode,
   PaymentOrderEntity,
@@ -17,7 +19,7 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { DataSource, QueryFailedError, Repository } from 'typeorm'
+import { DataSource, type EntityManager, QueryFailedError, Repository } from 'typeorm'
 import {
   PAYMENT_PLAN_RESOLVER,
   type PaymentPlanResolverPort,
@@ -107,6 +109,7 @@ export class PaymentOrderService {
     try {
       return await this.dataSource.transaction(async (manager) => {
         const saved = await manager.save(PaymentOrderEntity, order)
+        await this.assertC2cOrderStillPayable(manager, saved)
         await manager.insert(PaymentOrderStatusHistoryEntity, {
           tenantId,
           merchantId: saved.merchantId,
@@ -177,6 +180,23 @@ export class PaymentOrderService {
       executionMode: input.executionMode,
       routingKey: `${input.sourceType}:${input.sourceBusinessNo}`,
     })
+  }
+
+  private async assertC2cOrderStillPayable(
+    manager: EntityManager,
+    paymentOrder: PaymentOrderEntity,
+  ): Promise<void> {
+    if (paymentOrder.sourceType !== PaymentSourceType.C2C_BUY) return
+    const merchantOrder = await manager.getRepository(MerchantOrderEntity).findOne({
+      where: {
+        tenantId: paymentOrder.tenantId,
+        merchantId: paymentOrder.merchantId,
+        platformOrderId: paymentOrder.sourceBusinessNo,
+        status: MerchantOrderStatus.PENDING_PAYMENT,
+      },
+      lock: { mode: 'pessimistic_write' },
+    })
+    if (!merchantOrder) throw new ConflictException('商家订单已不可创建支付')
   }
 
   private routeFields(route: ResolvedPaymentPlan | null) {

@@ -21,7 +21,7 @@ import {
   PaymentSourceType,
 } from '@admin/database'
 import { ConflictException, Injectable } from '@nestjs/common'
-import { DataSource, EntityManager, In } from 'typeorm'
+import { DataSource, EntityManager, In, Not } from 'typeorm'
 import type { AlipayBatchDetail, AlipayBatchResponse } from './alipay-batch.adapter'
 import { normalizeCnyAmount, PaymentExecutionStatus } from './payment-adapter.types'
 import type {
@@ -50,7 +50,12 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
       throw new ConflictException('支付批次当前状态不允许提交或回查')
     }
     const items = await this.dataSource.getRepository(PaymentBatchItemEntity).find({
-      where: { batchId: batch.id, tenantId, merchantId: batch.merchantId },
+      where: {
+        batchId: batch.id,
+        tenantId,
+        merchantId: batch.merchantId,
+        status: Not(PaymentBatchItemStatus.CANCELLED),
+      },
       order: { id: 'ASC' },
     })
     const orders = await this.dataSource.getRepository(PaymentOrderEntity).find({
@@ -373,7 +378,12 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
 
   private async lockItemsAndOrders(manager: EntityManager, batch: PaymentBatchEntity) {
     const items = await manager.getRepository(PaymentBatchItemEntity).find({
-      where: { batchId: batch.id, tenantId: batch.tenantId, merchantId: batch.merchantId },
+      where: {
+        batchId: batch.id,
+        tenantId: batch.tenantId,
+        merchantId: batch.merchantId,
+        status: Not(PaymentBatchItemStatus.CANCELLED),
+      },
       order: { id: 'ASC' },
       lock: { mode: 'pessimistic_write' },
     })

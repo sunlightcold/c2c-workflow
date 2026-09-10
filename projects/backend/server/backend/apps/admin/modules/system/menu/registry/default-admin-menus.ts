@@ -51,6 +51,9 @@ const businessPages: BusinessPageDefinition[] = [
     actions: [
       ['read', '查询'],
       ['sync', '同步'],
+      ['pay', '创建支付'],
+      ['confirm_paid', '补偿确认'],
+      ['cancel', '作废'],
     ],
   },
   {

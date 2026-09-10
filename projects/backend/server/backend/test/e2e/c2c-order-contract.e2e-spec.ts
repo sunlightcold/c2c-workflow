@@ -2,6 +2,8 @@ import { C2cOrderController } from '@/apps/admin/modules/c2c-order/c2c-order.con
 import { C2cOrderService } from '@/apps/admin/modules/c2c-order/c2c-order.service'
 import { C2cOrderSyncService } from '@/apps/admin/modules/c2c-order/c2c-order-sync.service'
 import { BusinessScopeService } from '@/apps/admin/modules/business/business-scope.service'
+import { C2cMerchantPaymentController } from '@/apps/admin/modules/payment/c2c-merchant-payment.controller'
+import { C2cMerchantPaymentService } from '@/apps/admin/modules/payment/c2c-merchant-payment.service'
 import type { INestApplication } from '@nestjs/common'
 import request from 'supertest'
 import { createAdminContractTestApp, expectWrappedSuccess } from './helpers/admin-contract-test-app'
@@ -18,17 +20,78 @@ describe('C2C merchant order API contract (e2e)', () => {
   const scope = { resolveTenantId: jest.fn().mockReturnValue('tenant-1') }
   const orders = { list: jest.fn(), detail: jest.fn() }
   const sync = { sync: jest.fn() }
+  const payment = { cancel: jest.fn(), confirmPaid: jest.fn(), create: jest.fn() }
 
   beforeAll(async () => {
     app = await createAdminContractTestApp({
-      controllers: [C2cOrderController],
+      controllers: [C2cOrderController, C2cMerchantPaymentController],
       path: 'sys',
       providers: [
         { provide: BusinessScopeService, useValue: scope },
         { provide: C2cOrderService, useValue: orders },
         { provide: C2cOrderSyncService, useValue: sync },
+        { provide: C2cMerchantPaymentService, useValue: payment },
       ],
     })
+  })
+
+  it('creates a payment from a scoped merchant order without accepting payee fields', async () => {
+    payment.create.mockResolvedValue({ id: 'payment-1', status: 'READY' })
+    const response = await request(app.getHttpServer())
+      .post('/v1/sys/merchant-orders/00000000-0000-4000-8000-000000000030/payment')
+      .send({
+        tenantId: '00000000-0000-4000-8000-000000000010',
+        merchantId: '00000000-0000-4000-8000-000000000020',
+        executionMode: 'BATCH',
+      })
+      .expect(201)
+
+    expectWrappedSuccess(response.body)
+    expect(payment.create).toHaveBeenCalledWith(
+      'tenant-1',
+      '00000000-0000-4000-8000-000000000020',
+      '00000000-0000-4000-8000-000000000030',
+      'BATCH',
+    )
+  })
+
+  it('retries platform paid confirmation through the merchant order', async () => {
+    payment.confirmPaid.mockResolvedValue({ id: 'payment-1', status: 'COMPLETED' })
+
+    await request(app.getHttpServer())
+      .post('/v1/sys/merchant-orders/00000000-0000-4000-8000-000000000030/confirm-paid')
+      .send({
+        tenantId: '00000000-0000-4000-8000-000000000010',
+        merchantId: '00000000-0000-4000-8000-000000000020',
+      })
+      .expect(201)
+
+    expect(payment.confirmPaid).toHaveBeenCalledWith(
+      'tenant-1',
+      '00000000-0000-4000-8000-000000000020',
+      '00000000-0000-4000-8000-000000000030',
+    )
+  })
+
+  it('cancels an unsubmitted merchant payment with an audit reason', async () => {
+    payment.cancel.mockResolvedValue({ id: 'order-1', status: 'CANCELLED' })
+
+    await request(app.getHttpServer())
+      .post('/v1/sys/merchant-orders/00000000-0000-4000-8000-000000000030/cancel')
+      .send({
+        tenantId: '00000000-0000-4000-8000-000000000010',
+        merchantId: '00000000-0000-4000-8000-000000000020',
+        reason: '收款资料有误',
+      })
+      .expect(201)
+
+    expect(payment.cancel).toHaveBeenCalledWith(
+      'tenant-1',
+      '00000000-0000-4000-8000-000000000020',
+      '00000000-0000-4000-8000-000000000030',
+      expect.any(String),
+      '收款资料有误',
+    )
   })
 
   beforeEach(() => jest.clearAllMocks())
@@ -63,9 +126,6 @@ describe('C2C merchant order API contract (e2e)', () => {
       .query({ tenantId: '00000000-0000-4000-8000-000000000010' })
       .expect(201)
     expectWrappedSuccess(response.body)
-    expect(sync.sync).toHaveBeenCalledWith(
-      'tenant-1',
-      '00000000-0000-4000-8000-000000000020',
-    )
+    expect(sync.sync).toHaveBeenCalledWith('tenant-1', '00000000-0000-4000-8000-000000000020')
   })
 })
