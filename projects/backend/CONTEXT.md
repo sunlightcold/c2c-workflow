@@ -56,6 +56,22 @@
 代理商名下的一个 C2C 经营单元，创建时必须且只能选择一个交易平台（币安或欧易）。同一经营主体跨平台经营时分别创建 C2C Merchant，订单、凭据和同步状态不能跨商家混用。
 _Avoid_: Platform Account, Merchant Platform Account
 
+## Payment Order
+
+由 C2C 买币订单、机器人手工支付或退款申请产生的一笔独立付款业务。Payment Order 在提交前锁定本次使用的支付账号与账号通道，后续结果始终归属于同一笔付款业务。
+
+## Locked Payment Combination
+
+Payment Order 已选定的支付账号与该账号下支付通道的组合。组合在资金请求提交后不可更换；即使相关配置随后停用，系统仍须使用原组合查询和收口既有请求。
+
+## Payment Batch
+
+将同一所属单位、商家、Locked Payment Combination 和币种下的多笔 Payment Order 合并形成的一次支付业务。Payment Batch 只负责共同提交与结果汇总，不改变每笔 Payment Order 的独立结果。
+
+## Payment Batch Item
+
+Payment Batch 中一笔 Payment Order 的支付明细。每个明细独立记录处理结果，并通过 Payment Order 业务单号与支付平台逐笔结果对应。
+
 ## Object Storage Center
 
 平台维护的对象存储基础设施能力。它管理多个 S3-compatible 存储渠道，并为系统和 app 的具体存储用途提供渠道绑定；它不是文件浏览器，也不负责跨渠道迁移或自动故障切换。

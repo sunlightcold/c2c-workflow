@@ -33,6 +33,14 @@ import { TypeOrmPaymentOrderStore } from './typeorm-payment-order.store'
 import { TypeOrmPaymentPreflightStore } from './typeorm-payment-preflight.store'
 import { PaymentBatchController } from './payment-batch.controller'
 import { PaymentBatchService } from './payment-batch.service'
+import {
+  PAYMENT_BATCH_EXECUTOR,
+  PAYMENT_BATCH_PREFLIGHT,
+  PAYMENT_BATCH_STORE,
+  PaymentBatchExecutionCoordinator,
+} from './payment-batch-execution-coordinator'
+import { AlipayBatchPaymentExecutor } from './alipay-batch-payment.executor'
+import { TypeOrmPaymentBatchStore } from './typeorm-payment-batch.store'
 
 @Module({
   imports: [
@@ -52,11 +60,14 @@ import { PaymentBatchService } from './payment-batch.service'
     { provide: PAYMENT_PLAN_RESOLVER, useExisting: PaymentPlanResolver },
     PaymentOrderService,
     PaymentBatchService,
+    TypeOrmPaymentBatchStore,
+    { provide: PAYMENT_BATCH_STORE, useExisting: TypeOrmPaymentBatchStore },
     TypeOrmPaymentOrderStore,
     { provide: PAYMENT_ORDER_STORE, useExisting: TypeOrmPaymentOrderStore },
     TypeOrmPaymentPreflightStore,
     { provide: PAYMENT_PREFLIGHT_STORE, useExisting: TypeOrmPaymentPreflightStore },
     C2cPaymentPreflightVerifier,
+    { provide: PAYMENT_BATCH_PREFLIGHT, useExisting: C2cPaymentPreflightVerifier },
     AlipayGatewayFactory,
     AlipayAccountGatewayProvider,
     {
@@ -68,6 +79,9 @@ import { PaymentBatchService } from './payment-batch.service'
     C2cPlatformPaymentConfirmer,
     { provide: PLATFORM_PAYMENT_CONFIRMER, useExisting: C2cPlatformPaymentConfirmer },
     PaymentExecutionCoordinator,
+    AlipayBatchPaymentExecutor,
+    { provide: PAYMENT_BATCH_EXECUTOR, useExisting: AlipayBatchPaymentExecutor },
+    PaymentBatchExecutionCoordinator,
   ],
   exports: [
     C2cPaymentPreflightVerifier,
@@ -76,6 +90,7 @@ import { PaymentBatchService } from './payment-batch.service'
     PaymentExecutionCoordinator,
     PaymentOrderService,
     PaymentBatchService,
+    PaymentBatchExecutionCoordinator,
     PAYMENT_ORDER_STORE,
     PAYMENT_PLAN_RESOLVER,
   ],

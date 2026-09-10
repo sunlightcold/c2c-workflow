@@ -4,6 +4,7 @@ import { PaymentOrderService } from '@/apps/admin/modules/payment/payment-order.
 import { PaymentExecutionCoordinator } from '@/apps/admin/modules/payment/payment-execution-coordinator'
 import { PaymentBatchController } from '@/apps/admin/modules/payment/payment-batch.controller'
 import { PaymentBatchService } from '@/apps/admin/modules/payment/payment-batch.service'
+import { PaymentBatchExecutionCoordinator } from '@/apps/admin/modules/payment/payment-batch-execution-coordinator'
 import { ConflictException, type INestApplication } from '@nestjs/common'
 import request from 'supertest'
 import {
@@ -25,6 +26,7 @@ describe('Payment order API contract (e2e)', () => {
   const orders = { create: jest.fn(), rematch: jest.fn() }
   const execution = { reconcile: jest.fn() }
   const batches = { create: jest.fn() }
+  const batchExecution = { submit: jest.fn(), reconcile: jest.fn() }
 
   beforeAll(async () => {
     app = await createAdminContractTestApp({
@@ -35,6 +37,7 @@ describe('Payment order API contract (e2e)', () => {
         { provide: PaymentOrderService, useValue: orders },
         { provide: PaymentExecutionCoordinator, useValue: execution },
         { provide: PaymentBatchService, useValue: batches },
+        { provide: PaymentBatchExecutionCoordinator, useValue: batchExecution },
       ],
     })
   })
@@ -156,5 +159,25 @@ describe('Payment order API contract (e2e)', () => {
 
     expectWrappedError(response.body, 400)
     expect(batches.create).not.toHaveBeenCalled()
+  })
+
+  it('submits and reconciles a payment batch in the resolved tenant', async () => {
+    const batchId = '00000000-0000-4000-8000-000000000041'
+    batchExecution.submit.mockResolvedValue({ id: batchId, status: 'PROCESSING' })
+    batchExecution.reconcile.mockResolvedValue({ id: batchId, status: 'SUCCESS' })
+
+    const submitted = await request(app.getHttpServer())
+      .post(`/v1/sys/payment-batches/${batchId}/submit`)
+      .send({ tenantId: '00000000-0000-4000-8000-000000000010' })
+      .expect(201)
+    const reconciled = await request(app.getHttpServer())
+      .post(`/v1/sys/payment-batches/${batchId}/reconcile`)
+      .send({ tenantId: '00000000-0000-4000-8000-000000000010' })
+      .expect(201)
+
+    expectWrappedSuccess(submitted.body)
+    expectWrappedSuccess(reconciled.body)
+    expect(batchExecution.submit).toHaveBeenCalledWith('tenant-1', batchId)
+    expect(batchExecution.reconcile).toHaveBeenCalledWith('tenant-1', batchId)
   })
 })

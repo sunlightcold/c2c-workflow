@@ -156,6 +156,32 @@ describe('C2cPaymentPreflightVerifier', () => {
     expect(okx.getOrderDetail).not.toHaveBeenCalled()
   })
 
+  it('accepts an unchanged payable platform order before an Alipay password-protected batch claim', async () => {
+    const batchOrder = {
+      ...order,
+      status: PaymentOrderStatus.READY,
+      executionMode: PaymentExecutionMode.BATCH,
+    }
+    store.load.mockResolvedValue({
+      order: batchOrder,
+      ...configuration,
+      merchantOrder: {
+        ...configuration.merchantOrder,
+        status: MerchantOrderStatus.PENDING_PAYMENT,
+      },
+      channel: {
+        ...configuration.channel,
+        adapterCode: PaymentAdapterCode.ALIPAY_BATCH,
+        executionMode: PaymentExecutionMode.BATCH,
+      },
+    })
+
+    await expect(verifier.verifyBatch('tenant-1', 'payment-1', now)).resolves.toMatchObject({
+      order: batchOrder,
+      platformOrder: { platformOrderId: 'platform-order-1' },
+    })
+  })
+
   it('reads an OKX order with the active merchant credential', async () => {
     const okxConfiguration = {
       ...configuration,

@@ -128,8 +128,47 @@ export class C2cPaymentPreflightVerifier {
   ) {}
 
   async verify(tenantId: string, orderId: string, now = new Date()): Promise<VerifiedC2cPayment> {
+    return this.verifyFor(tenantId, orderId, now, {
+      orderStatus: PaymentOrderStatus.SUBMITTING,
+      merchantOrderStatus: MerchantOrderStatus.PAYMENT_PROCESSING,
+      adapterCode: PaymentAdapterCode.ALIPAY_MERCHANT_TRANSFER,
+      executionMode: PaymentExecutionMode.INSTANT,
+      channelError: '支付通道不支持即时商家转账',
+    })
+  }
+
+  async verifyBatch(
+    tenantId: string,
+    orderId: string,
+    now = new Date(),
+  ): Promise<VerifiedC2cPayment> {
+    return this.verifyFor(tenantId, orderId, now, {
+      orderStatus: PaymentOrderStatus.READY,
+      merchantOrderStatus: MerchantOrderStatus.PENDING_PAYMENT,
+      adapterCode: PaymentAdapterCode.ALIPAY_BATCH,
+      executionMode: PaymentExecutionMode.BATCH,
+      channelError: '支付通道不支持支付宝批量有密',
+    })
+  }
+
+  loadContext(tenantId: string, orderId: string): Promise<PaymentPreflightConfiguration> {
+    return this.store.load(tenantId, orderId)
+  }
+
+  private async verifyFor(
+    tenantId: string,
+    orderId: string,
+    now: Date,
+    expected: {
+      orderStatus: PaymentOrderStatus
+      merchantOrderStatus: MerchantOrderStatus
+      adapterCode: PaymentAdapterCode
+      executionMode: PaymentExecutionMode
+      channelError: string
+    },
+  ): Promise<VerifiedC2cPayment> {
     const context = await this.store.load(tenantId, orderId)
-    this.verifyLocal(context, now)
+    this.verifyLocal(context, now, expected)
     let platformOrder: C2cBuyOrderDetail
     try {
       const secret = await this.secretResolver.resolve(context.credential.credentialRef)
@@ -150,19 +189,25 @@ export class C2cPaymentPreflightVerifier {
     }
   }
 
-  loadContext(tenantId: string, orderId: string): Promise<PaymentPreflightConfiguration> {
-    return this.store.load(tenantId, orderId)
-  }
-
-  private verifyLocal(context: PaymentPreflightConfiguration, now: Date): void {
+  private verifyLocal(
+    context: PaymentPreflightConfiguration,
+    now: Date,
+    expected: {
+      orderStatus: PaymentOrderStatus
+      merchantOrderStatus: MerchantOrderStatus
+      adapterCode: PaymentAdapterCode
+      executionMode: PaymentExecutionMode
+      channelError: string
+    },
+  ): void {
     const { order, merchant, merchantOrder, credential, plan, account, accountChannel, channel } =
       context
     this.require(order.sourceType === PaymentSourceType.C2C_BUY, '支付订单不是 C2C 买币来源')
-    this.require(order.status === PaymentOrderStatus.SUBMITTING, '支付订单未处于提交中状态')
+    this.require(order.status === expected.orderStatus, '支付订单状态不允许执行当前支付方式')
     this.require(merchant.status === BusinessStatus.ACTIVE, '商家已停用')
     this.require(
-      merchantOrder.status === MerchantOrderStatus.PAYMENT_PROCESSING,
-      '商家订单未进入支付处理状态',
+      merchantOrder.status === expected.merchantOrderStatus,
+      '商家订单状态不允许执行当前支付方式',
     )
     this.require(merchantOrder.payable, '商家订单当前不可付款')
     this.require(credential.status === BusinessStatus.ACTIVE, '商家平台凭据已停用')
@@ -190,10 +235,10 @@ export class C2cPaymentPreflightVerifier {
     this.require(
       context.paymentPlatform.code === 'ALIPAY' &&
         order.paymentMethod === 'ALIPAY' &&
-        channel.adapterCode === PaymentAdapterCode.ALIPAY_MERCHANT_TRANSFER &&
-        channel.executionMode === PaymentExecutionMode.INSTANT &&
-        order.executionMode === PaymentExecutionMode.INSTANT,
-      '支付通道不支持即时商家转账',
+        channel.adapterCode === expected.adapterCode &&
+        channel.executionMode === expected.executionMode &&
+        order.executionMode === expected.executionMode,
+      expected.channelError,
     )
     this.require(this.sameAmount(order.amount, merchantOrder.fiatAmount), '商家订单金额已变化')
     this.require(order.currency === merchantOrder.fiatCurrency, '商家订单币种已变化')
