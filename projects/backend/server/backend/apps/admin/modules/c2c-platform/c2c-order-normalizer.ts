@@ -188,7 +188,7 @@ function normalizeNumericStatus(value: unknown): C2cBuyOrderStatus {
     '3': C2cBuyOrderStatus.DISPUTED,
     '4': C2cBuyOrderStatus.COMPLETED,
     '6': C2cBuyOrderStatus.CANCELLED,
-    '7': C2cBuyOrderStatus.CANCELLED,
+    '7': C2cBuyOrderStatus.EXPIRED,
   }
   return statuses[text(value)] ?? C2cBuyOrderStatus.UNKNOWN
 }
@@ -199,6 +199,7 @@ function normalizeOkxStatus(input: Record<string, unknown>): C2cBuyOrderStatus {
   const process = text(input.orderProcessStatus)
   if (status === 'completed' || process === '4') return C2cBuyOrderStatus.COMPLETED
   if (status === 'cancelled' || process === '3') return C2cBuyOrderStatus.CANCELLED
+  if (status === 'expired') return C2cBuyOrderStatus.EXPIRED
   if (payment === 'confirmed') return C2cBuyOrderStatus.PAID
   if (status === 'new' && payment === 'unpaid') return C2cBuyOrderStatus.PENDING_PAYMENT
   return C2cBuyOrderStatus.UNKNOWN

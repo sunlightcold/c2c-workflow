@@ -36,6 +36,7 @@ export enum C2cBuyOrderStatus {
   DISPUTED = 'DISPUTED',
   COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED',
+  EXPIRED = 'EXPIRED',
   UNKNOWN = 'UNKNOWN',
 }
 

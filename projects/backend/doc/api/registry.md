@@ -10,5 +10,6 @@
 | AI 平台能力 | `system/ai` | `/v1/sys/ai/*` | [main/system-ai-api.md](main/system-ai-api.md) |
 | C2C 业务配置 | `business` | `/v1/sys/tenants`、`/v1/sys/merchants`、`/v1/sys/payment-*` | [main/c2c-business-config.md](main/c2c-business-config.md) |
 | C2C 支付订单 | `payment` | `/v1/sys/payment-orders/*` | [main/c2c-payment-orders.md](main/c2c-payment-orders.md) |
+| C2C 商家订单 | `c2c-order` | `/v1/sys/merchant-orders/*`、`/v1/sys/merchants/*/orders/sync` | [main/c2c-merchant-orders.md](main/c2c-merchant-orders.md) |
 
 新增 Controller 时必须同步更新本表、对应契约文档和 contract test。

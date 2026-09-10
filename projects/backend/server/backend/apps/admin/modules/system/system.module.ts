@@ -16,6 +16,7 @@ import { AiModule } from './ai'
 import { BusinessModule } from '../business'
 import { C2cPlatformModule } from '../c2c-platform'
 import { PaymentModule } from '../payment'
+import { C2cOrderModule } from '../c2c-order'
 
 const modules = [
   CredentialModule,
@@ -32,6 +33,7 @@ const modules = [
   BusinessModule,
   C2cPlatformModule,
   PaymentModule,
+  C2cOrderModule,
 ]
 
 @Module({

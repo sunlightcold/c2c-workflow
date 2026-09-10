@@ -152,6 +152,7 @@ export class OkxWebPrivateClient {
       DISPUTED: 3,
       COMPLETED: 4,
       CANCELLED: 6,
+      EXPIRED: 7,
     }
     return values[status] ?? -1
   }

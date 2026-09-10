@@ -256,4 +256,38 @@ describe('C2C buy-order clients', () => {
       payable: true,
     })
   })
+
+  it('keeps expired orders distinct from cancelled orders', async () => {
+    http.request.mockResolvedValue({
+      success: true,
+      code: '000000',
+      data: [
+        {
+          orderNumber: 'BIN-EXPIRED',
+          orderStatus: 7,
+          tradeType: 'BUY',
+          asset: 'USDT',
+          fiat: 'CNY',
+          amount: '1',
+          totalPrice: '7',
+          createTime: 1_787_586_752_664,
+        },
+      ],
+    })
+
+    const result = await binance.listOrders(
+      { apiKey: 'key', secretKey: 'secret', clientType: 'WEB', timeoutMs: 5000 },
+      {
+        tradeType: 'BUY',
+        asset: 'USDT',
+        startDate: 1,
+        endDate: 2,
+        page: 1,
+        rows: 20,
+        orderStatusList: [7],
+      },
+    )
+
+    expect(result.items[0].status).toBe('EXPIRED')
+  })
 })

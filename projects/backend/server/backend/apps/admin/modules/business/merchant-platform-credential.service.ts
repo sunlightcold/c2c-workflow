@@ -27,6 +27,13 @@ export interface MerchantPlatformCredentialView {
   credentialConfigured: true
 }
 
+export interface ActiveMerchantPlatformCredentialReference {
+  credentialRef: string
+  clientType: string | null
+  xUserId: string | null
+  requestTimeoutMs: number
+}
+
 @Injectable()
 export class MerchantPlatformCredentialService {
   constructor(
@@ -83,6 +90,26 @@ export class MerchantPlatformCredentialService {
       )
       return this.toView(credential)
     })
+  }
+
+  async getActiveReference(
+    tenantId: string,
+    merchantId: string,
+  ): Promise<ActiveMerchantPlatformCredentialReference> {
+    const credential = await this.credentialRepository
+      .createQueryBuilder('credential')
+      .addSelect('credential.credentialRef')
+      .where('credential.tenantId = :tenantId', { tenantId })
+      .andWhere('credential.merchantId = :merchantId', { merchantId })
+      .andWhere('credential.status = :status', { status: BusinessStatus.ACTIVE })
+      .getOne()
+    if (!credential) throw new BadRequestException('商家未配置生效的平台凭据')
+    return {
+      credentialRef: credential.credentialRef,
+      clientType: credential.clientType,
+      xUserId: credential.xUserId,
+      requestTimeoutMs: credential.requestTimeoutMs,
+    }
   }
 
   private async requireMerchant(tenantId: string, merchantId: string): Promise<void> {
