@@ -3,6 +3,7 @@ import { adminMigrations } from './index'
 describe('admin migration registry', () => {
   it('registers deployment migrations in version order', () => {
     expect(adminMigrations.map((Migration) => new Migration().name)).toEqual([
+      'SystemFoundation1784000000000',
       'TutorialCenter1785000000000',
       'ObjectStorageCenter1785001000000',
       'ObjectStoragePurposePrefix1785002000000',

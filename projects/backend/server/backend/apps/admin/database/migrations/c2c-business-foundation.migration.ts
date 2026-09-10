@@ -1,4 +1,5 @@
 import type { EntityManager, MigrationInterface, QueryRunner } from 'typeorm'
+import { ensureSystemUserTenantForeignKey } from './system-foundation.migration'
 
 const MIGRATION_LOCK_ID = 1_789_000_000
 const TABLES = [
@@ -164,6 +165,7 @@ export async function migrateC2cBusinessFoundation(manager: EntityManager): Prom
       C2C_FOUNDATION_IDS.alipayPlatform,
     ],
   )
+  await ensureSystemUserTenantForeignKey(manager)
 }
 
 export async function readC2cBusinessFoundationState(manager: EntityManager) {

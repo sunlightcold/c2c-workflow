@@ -61,10 +61,12 @@ Compose 会等待 PostgreSQL 健康检查通过，启动一次性 `migrate` 服�
 6. `lint:server`、`typecheck:server`、`test:server`、`test:integration` 和 `build` 通过。
 7. `output/volumes/apps/migrate/main.js` 与 `output/compose.yaml` 已检查。
 
-## C2C 迁移顺序
+## 迁移顺序
 
-1. `C2cBusinessFoundation1789000000000`：所属单位、商家和支付配置。
-2. `C2cPaymentOrders1789001000000`：支付订单、支付尝试和状态历史。
-3. `C2cPaymentRouting1789002000000`：待配置状态、可空路由快照、支付方式和执行方式。
-4. `C2cMerchantPlatformCredentials1789003000000`：按商家隔离、单版本生效的平台凭据引用。
-5. `C2cMerchantOrders1789004000000`：买币商家订单、状态历史和每商家同步检查点。
+1. `SystemFoundation1784000000000`：后台用户、角色、菜单、任务、日志和文件基础表。
+2. `C2cBusinessFoundation1789000000000`：所属单位、商家和支付配置，并建立后台用户的所属单位外键。
+3. `C2cPaymentOrders1789001000000`：支付订单、支付尝试和状态历史。
+4. `C2cPaymentRouting1789002000000`：待配置状态、可空路由快照、支付方式和执行方式。
+5. `C2cMerchantPlatformCredentials1789003000000`：按商家隔离、单版本生效的平台凭据引用。
+6. `C2cMerchantOrders1789004000000`：买币商家订单、状态历史和每商家同步检查点。
+7. `C2cPaymentBatches1789005000000`：批量支付、批次明细和状态历史。

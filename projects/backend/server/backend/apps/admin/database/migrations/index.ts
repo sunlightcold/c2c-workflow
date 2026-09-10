@@ -1,4 +1,5 @@
 import type { MigrationInterface } from 'typeorm'
+import { SystemFoundation1784000000000 } from './system-foundation.migration'
 import { TutorialCenter1785000000000 } from './tutorial-center.migration'
 import { TutorialContentStoragePurpose1785005000000 } from './tutorial-content-storage-purpose.migration'
 import { AiGateway1785005500000 } from './ai-gateway.migration'
@@ -17,6 +18,7 @@ import { C2cPaymentBatches1789005000000 } from './c2c-payment-batches.migration'
 export type AdminMigrationConstructor = new () => MigrationInterface
 
 export const adminMigrations: AdminMigrationConstructor[] = [
+  SystemFoundation1784000000000,
   TutorialCenter1785000000000,
   ObjectStorageCenter1785001000000,
   ObjectStoragePurposePrefix1785002000000,

@@ -8,6 +8,7 @@ describe('migration data source', () => {
       const migrations = dataSource.options.migrations as Array<new () => { name: string }>
 
       expect(migrations.map((Migration) => new Migration().name)).toEqual([
+        'SystemFoundation1784000000000',
         'TutorialCenter1785000000000',
         'ObjectStorageCenter1785001000000',
         'ObjectStoragePurposePrefix1785002000000',

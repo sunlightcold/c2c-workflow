@@ -5,6 +5,23 @@ import developmentConfig from '@/config/development'
 import { DataSource } from 'typeorm'
 
 describe('Deployment migrations database integration', () => {
+  const expectedMigrationNames = [
+    'SystemFoundation1784000000000',
+    'TutorialCenter1785000000000',
+    'ObjectStorageCenter1785001000000',
+    'ObjectStoragePurposePrefix1785002000000',
+    'TutorialContentStoragePurpose1785005000000',
+    'AiGateway1785005500000',
+    'AiGatewayChannelCapacity1785005600000',
+    'ClientErrorEvents1785008000000',
+    'AiCallLogs1787001000000',
+    'C2cBusinessFoundation1789000000000',
+    'C2cPaymentOrders1789001000000',
+    'C2cPaymentRouting1789002000000',
+    'C2cMerchantPlatformCredentials1789003000000',
+    'C2cMerchantOrders1789004000000',
+    'C2cPaymentBatches1789005000000',
+  ]
   const { postgres } = developmentConfig.admin
   const schema = `deployment_migrations_test_${process.pid}_${Date.now()}`
 
@@ -57,40 +74,46 @@ describe('Deployment migrations database integration', () => {
     const applied = await dataSource.runMigrations()
     const repeated = await dataSource.runMigrations()
 
-    expect(applied.map(({ name }) => name)).toEqual([
-      'TutorialCenter1785000000000',
-      'ObjectStorageCenter1785001000000',
-      'ObjectStoragePurposePrefix1785002000000',
-      'TutorialContentStoragePurpose1785005000000',
-      'AiGateway1785005500000',
-      'AiGatewayChannelCapacity1785005600000',
-      'ClientErrorEvents1785008000000',
-      'AiCallLogs1787001000000',
-      'C2cBusinessFoundation1789000000000',
-      'C2cPaymentOrders1789001000000',
-      'C2cPaymentRouting1789002000000',
-      'C2cMerchantPlatformCredentials1789003000000',
-      'C2cMerchantOrders1789004000000',
-      'C2cPaymentBatches1789005000000',
-    ])
+    expect(applied.map(({ name }) => name)).toEqual(expectedMigrationNames)
     expect(repeated).toEqual([])
     await expect(
       dataSource.query(`SELECT name FROM schema_migrations ORDER BY timestamp`),
-    ).resolves.toEqual([
-      { name: 'TutorialCenter1785000000000' },
-      { name: 'ObjectStorageCenter1785001000000' },
-      { name: 'ObjectStoragePurposePrefix1785002000000' },
-      { name: 'TutorialContentStoragePurpose1785005000000' },
-      { name: 'AiGateway1785005500000' },
-      { name: 'AiGatewayChannelCapacity1785005600000' },
-      { name: 'ClientErrorEvents1785008000000' },
-      { name: 'AiCallLogs1787001000000' },
-      { name: 'C2cBusinessFoundation1789000000000' },
-      { name: 'C2cPaymentOrders1789001000000' },
-      { name: 'C2cPaymentRouting1789002000000' },
-      { name: 'C2cMerchantPlatformCredentials1789003000000' },
-      { name: 'C2cMerchantOrders1789004000000' },
-      { name: 'C2cPaymentBatches1789005000000' },
-    ])
+    ).resolves.toEqual(expectedMigrationNames.map((name) => ({ name })))
+    await expect(
+      dataSource.query<{ table_name: string }[]>(
+        `SELECT table_name
+         FROM information_schema.tables
+         WHERE table_schema = current_schema()
+           AND table_name = ANY($1)
+         ORDER BY table_name`,
+        [
+          [
+            'sys_access_token',
+            'sys_log',
+            'sys_menu',
+            'sys_online_user',
+            'sys_params',
+            'sys_role',
+            'sys_role_menu',
+            'sys_static_file',
+            'sys_task',
+            'sys_task_log',
+            'sys_user',
+            'sys_user_file',
+            'sys_user_role',
+          ],
+        ],
+      ),
+    ).resolves.toHaveLength(13)
+    await expect(
+      dataSource.query<{ constraint_name: string }[]>(
+        `SELECT constraint_name
+         FROM information_schema.table_constraints
+         WHERE table_schema = current_schema()
+           AND table_name = 'sys_user'
+           AND constraint_name = 'fk_sys_user_tenant'
+           AND constraint_type = 'FOREIGN KEY'`,
+      ),
+    ).resolves.toEqual([{ constraint_name: 'fk_sys_user_tenant' }])
   })
 })
