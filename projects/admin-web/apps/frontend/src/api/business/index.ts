@@ -25,12 +25,32 @@ export namespace BusinessApi {
   }
 
   export interface Merchant {
+    apiBaseUrl: string;
+    authMode: 'API_KEY' | 'WEB_COOKIE' | null;
+    autoAppealDelayMinutes: number;
+    autoAppealEnabled: boolean;
+    botCode: null | string;
+    c2cChatOrderCompletedEnabled: boolean;
+    c2cChatOrderCompletedMessage: null | string;
+    c2cChatOrderCreatedEnabled: boolean;
+    c2cChatOrderCreatedMessage: null | string;
+    c2cChatOrderPaidEnabled: boolean;
+    c2cChatOrderPaidMessage: null | string;
+    chatId: null | string;
     code: string;
     createdAt: string;
+    credentialConfigured: boolean;
+    description: null | string;
     externalMerchantId: null | string;
     id: string;
     name: string;
+    orderStatusList: number[];
+    overlapSeconds: number;
+    pageSize: number;
+    paidConfirmIntervalMaxMs: number;
+    paidConfirmIntervalMinMs: number;
     platform: MerchantPlatform;
+    requestTimeoutMs: number;
     status: BusinessStatus;
     tenantId: string;
     updatedAt: string;
@@ -194,6 +214,58 @@ export namespace BusinessApi {
     pageSize: number;
   }
 
+  export interface MerchantQuery extends PageQuery {
+    accountCode?: string;
+    accountName?: string;
+    externalMerchantId?: string;
+    platform?: MerchantPlatform;
+    status?: BusinessStatus;
+  }
+
+  export interface CreateMerchantInput extends TenantContext {
+    apiBaseUrl?: string;
+    apiKey?: string;
+    authorization?: string;
+    autoAppealDelayMinutes?: number;
+    autoAppealEnabled?: boolean;
+    botCode?: string;
+    c2cChatOrderCompletedEnabled?: boolean;
+    c2cChatOrderCompletedMessage?: string;
+    c2cChatOrderCreatedEnabled?: boolean;
+    c2cChatOrderCreatedMessage?: string;
+    c2cChatOrderPaidEnabled?: boolean;
+    c2cChatOrderPaidMessage?: string;
+    chatId?: string;
+    clientType?: string;
+    code: string;
+    description?: string;
+    externalMerchantId: string;
+    name: string;
+    orderStatusList?: number[];
+    overlapSeconds?: number;
+    pageSize?: number;
+    paidConfirmIntervalMaxMs?: number;
+    paidConfirmIntervalMinMs?: number;
+    platform: MerchantPlatform;
+    requestTimeoutMs?: number;
+    secretKey?: string;
+    sessionCookie?: string;
+    xUserId?: string;
+  }
+
+  export type UpdateMerchantInput = Partial<
+    Omit<
+      CreateMerchantInput,
+      | 'apiKey'
+      | 'authorization'
+      | 'code'
+      | 'platform'
+      | 'secretKey'
+      | 'sessionCookie'
+    >
+  > &
+    TenantContext;
+
   export interface PaymentOrderQuery extends PageQuery {
     executionMode?: PaymentExecutionMode;
     merchantId?: string;
@@ -250,14 +322,43 @@ export const setTenantStatusApi = (
     method: 'PATCH',
   });
 
-export const getMerchantsApi = (params: BusinessApi.TenantContext) =>
-  requestClient.get<BusinessApi.Merchant[]>('/sys/merchants', { params });
-export const createMerchantApi = (
-  data: BusinessApi.TenantContext &
-    Pick<BusinessApi.Merchant, 'code' | 'name' | 'platform'> & {
-      externalMerchantId?: string;
-    },
-) => requestClient.post<BusinessApi.Merchant>('/sys/merchants', data);
+export async function filterMerchantsApi(params: BusinessApi.MerchantQuery) {
+  return toPagination<BusinessApi.Merchant>(
+    await requestClient.get('/sys/merchants', { params }),
+  );
+}
+export async function getMerchantsApi(params: BusinessApi.TenantContext) {
+  const result = await filterMerchantsApi({
+    ...params,
+    page: 1,
+    pageSize: 100,
+  });
+  return result.items;
+}
+export const createMerchantApi = (data: BusinessApi.CreateMerchantInput) =>
+  requestClient.post<BusinessApi.Merchant>('/sys/merchants', data);
+export const updateMerchantApi = (
+  id: string,
+  data: BusinessApi.UpdateMerchantInput,
+) => requestClient.put<BusinessApi.Merchant>(`/sys/merchants/${id}`, data);
+export const setMerchantStatusApi = (
+  id: string,
+  status: BusinessApi.BusinessStatus,
+  tenantId?: string,
+) =>
+  requestClient.request<BusinessApi.Merchant>(`/sys/merchants/${id}/status`, {
+    data: { status },
+    method: 'PATCH',
+    params: { tenantId },
+  });
+export const deleteMerchantApi = (id: string, tenantId?: string) =>
+  requestClient.delete(`/sys/merchants/${id}`, { params: { tenantId } });
+export const testMerchantConnectionApi = (id: string, tenantId?: string) =>
+  requestClient.post<{ platform: BusinessApi.MerchantPlatform; success: true }>(
+    `/sys/merchants/${id}/test`,
+    undefined,
+    { params: { tenantId } },
+  );
 export const getMerchantCredentialsApi = (
   id: string,
   params: BusinessApi.TenantContext,
@@ -271,9 +372,12 @@ export const getMerchantCredentialsApi = (
 export const rotateMerchantCredentialApi = (
   id: string,
   data: BusinessApi.TenantContext & {
+    apiKey?: string;
+    authorization?: string;
     clientType?: string;
-    credentialRef: string;
     requestTimeoutMs?: number;
+    secretKey?: string;
+    sessionCookie?: string;
     xUserId?: string;
   },
 ) =>

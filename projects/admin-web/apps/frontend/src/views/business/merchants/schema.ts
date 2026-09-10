@@ -1,0 +1,299 @@
+import type { Rule } from '@form-create/ant-design-vue';
+
+import type { FormModalOptions } from '#/hooks';
+
+import { merchantPlatformOptions } from '../shared/business-ui';
+
+type Platform = 'BINANCE' | 'OKX';
+type SelectOption = { label: string; value: string };
+
+const formOption = {
+  appendValue: false,
+  form: { layout: 'vertical' as const },
+  submitBtn: false,
+};
+const required = (message: string) => [
+  { message, required: true, trigger: 'blur' },
+];
+const binanceFields = ['apiKey', 'secretKey', 'clientType', 'xUserId'];
+const okxFields = ['authorization', 'sessionCookie'];
+const automationFields = [
+  'botCode',
+  'chatId',
+  'c2cChatOrderCreatedEnabled',
+  'c2cChatOrderCreatedMessage',
+  'c2cChatOrderPaidEnabled',
+  'c2cChatOrderPaidMessage',
+  'c2cChatOrderCompletedEnabled',
+  'c2cChatOrderCompletedMessage',
+  'autoAppealEnabled',
+  'autoAppealDelayMinutes',
+];
+
+function textRule(
+  field: string,
+  title: string,
+  requiredMessage?: string,
+): Rule {
+  return {
+    field,
+    props: { maxlength: title === '备注' ? 500 : 128 },
+    title,
+    type: title === '备注' ? 'textarea' : 'input',
+    validate: requiredMessage ? required(requiredMessage) : undefined,
+    value: '',
+  };
+}
+
+function numberRule(
+  field: string,
+  title: string,
+  value: number,
+  min: number,
+  max: number,
+  step?: number,
+): Rule {
+  return {
+    field,
+    props: { max, min, step },
+    title,
+    type: 'inputNumber',
+    value,
+  };
+}
+
+function secretRule(field: string, title: string): Rule {
+  return {
+    field,
+    props: { autocomplete: 'new-password', placeholder: `请输入 ${title}` },
+    title,
+    type: 'inputPassword',
+    validate: required(`请输入 ${title}`),
+    value: '',
+  };
+}
+
+function settings(platform: Platform): Rule[] {
+  const hideAutomation = platform !== 'BINANCE';
+  return [
+    textRule('name', '账号名称', '请输入账号名称'),
+    textRule('externalMerchantId', '平台商家编号', '请输入平台商家编号'),
+    {
+      ...textRule('apiBaseUrl', 'API 地址', '请输入平台 API 地址'),
+      value:
+        platform === 'BINANCE'
+          ? 'https://api.binance.com'
+          : 'https://www.okx.com',
+    },
+    numberRule('pageSize', '每页同步笔数', 20, 1, 100),
+    numberRule('overlapSeconds', '同步重叠秒数', 120, 0, 3600),
+    {
+      field: 'orderStatusList',
+      options: [{ label: '待付款', value: 1 }],
+      props: { mode: 'multiple', placeholder: '请选择同步订单状态' },
+      title: '同步订单状态',
+      type: 'select',
+      validate: required('请选择同步订单状态'),
+      value: [1],
+    },
+    numberRule(
+      'requestTimeoutMs',
+      '请求超时（毫秒）',
+      15_000,
+      1000,
+      60_000,
+      1000,
+    ),
+    numberRule(
+      'paidConfirmIntervalMinMs',
+      '付款确认最小间隔（毫秒）',
+      platform === 'OKX' ? 2000 : 0,
+      0,
+      60_000,
+      100,
+    ),
+    numberRule(
+      'paidConfirmIntervalMaxMs',
+      '付款确认最大间隔（毫秒）',
+      platform === 'OKX' ? 3000 : 0,
+      0,
+      60_000,
+      100,
+    ),
+    { ...textRule('botCode', '支付机器人编码'), hidden: hideAutomation },
+    { ...textRule('chatId', 'Telegram 群组 ID'), hidden: hideAutomation },
+    {
+      field: 'c2cChatOrderCreatedEnabled',
+      hidden: hideAutomation,
+      title: '下单后发送聊天消息',
+      type: 'switch',
+      value: false,
+    },
+    {
+      ...textRule('c2cChatOrderCreatedMessage', '下单后消息'),
+      hidden: hideAutomation,
+      props: { maxlength: 500, rows: 3, showCount: true },
+      type: 'textarea',
+      value: '您好，请确认订单由您本人发起，并使用本人实名收款账户。',
+    },
+    {
+      field: 'c2cChatOrderPaidEnabled',
+      hidden: hideAutomation,
+      title: '付款后发送聊天消息',
+      type: 'switch',
+      value: false,
+    },
+    {
+      ...textRule('c2cChatOrderPaidMessage', '付款后消息'),
+      hidden: hideAutomation,
+      props: { maxlength: 500, rows: 3, showCount: true },
+      type: 'textarea',
+      value: '您好，我方已完成付款，请核实到账后及时放币。',
+    },
+    {
+      field: 'c2cChatOrderCompletedEnabled',
+      hidden: hideAutomation,
+      title: '完成后发送聊天消息',
+      type: 'switch',
+      value: false,
+    },
+    {
+      ...textRule('c2cChatOrderCompletedMessage', '完成后消息'),
+      hidden: hideAutomation,
+      props: { maxlength: 500, rows: 3, showCount: true },
+      type: 'textarea',
+      value: '感谢您的配合，本次交易已顺利完成。',
+    },
+    {
+      field: 'autoAppealEnabled',
+      hidden: hideAutomation,
+      title: '付款超时自动申诉',
+      type: 'switch',
+      value: false,
+    },
+    {
+      ...numberRule(
+        'autoAppealDelayMinutes',
+        '付款后等待时间（分钟）',
+        18,
+        1,
+        1440,
+      ),
+      hidden: hideAutomation,
+    },
+    textRule('description', '备注'),
+  ];
+}
+
+export function createMerchantAccountModalOptions(
+  platform: Platform = 'BINANCE',
+): FormModalOptions {
+  const binance = platform === 'BINANCE';
+  return {
+    props: { centered: true, title: '新增商家账号', width: 760 },
+    formProps: {
+      option: formOption,
+      rule: [
+        textRule('code', '账号编码', '请输入账号编码'),
+        {
+          field: 'platform',
+          options: merchantPlatformOptions,
+          title: '交易平台',
+          type: 'select',
+          update: (value, _rule, api, { origin }) => {
+            if (origin !== 'change') return;
+            const isBinance = value === 'BINANCE';
+            api.hidden(!isBinance, binanceFields);
+            api.hidden(isBinance, okxFields);
+            api.hidden(!isBinance, automationFields);
+            api.setValue(
+              'apiBaseUrl',
+              isBinance ? 'https://api.binance.com' : 'https://www.okx.com',
+            );
+            api.setValue('paidConfirmIntervalMinMs', isBinance ? 0 : 2000);
+            api.setValue('paidConfirmIntervalMaxMs', isBinance ? 0 : 3000);
+          },
+          validate: required('请选择交易平台'),
+          value: platform,
+        },
+        { ...secretRule('apiKey', 'API Key'), hidden: !binance },
+        { ...secretRule('secretKey', 'Secret Key'), hidden: !binance },
+        {
+          ...textRule('clientType', '客户端类型'),
+          hidden: !binance,
+          value: 'WEB',
+        },
+        { ...textRule('xUserId', 'X-User-ID'), hidden: !binance },
+        { ...secretRule('authorization', 'Authorization'), hidden: binance },
+        { ...secretRule('sessionCookie', 'Cookie'), hidden: binance },
+        ...settings(platform),
+      ],
+    },
+  };
+}
+
+export function editMerchantAccountModalOptions(
+  platform: Platform,
+): FormModalOptions {
+  return {
+    props: { centered: true, title: '编辑商家账号', width: 760 },
+    formProps: { option: formOption, rule: settings(platform) },
+  };
+}
+
+export function rotateMerchantCredentialModalOptions(
+  platform: Platform,
+): FormModalOptions {
+  const rules =
+    platform === 'BINANCE'
+      ? [
+          secretRule('apiKey', 'API Key'),
+          secretRule('secretKey', 'Secret Key'),
+          { ...textRule('clientType', '客户端类型'), value: 'WEB' },
+          textRule('xUserId', 'X-User-ID'),
+        ]
+      : [
+          secretRule('authorization', 'Authorization'),
+          secretRule('sessionCookie', 'Cookie'),
+        ];
+  return {
+    props: { centered: true, title: '更新平台凭据', width: 620 },
+    formProps: {
+      option: formOption,
+      rule: [
+        ...rules,
+        numberRule(
+          'requestTimeoutMs',
+          '请求超时（毫秒）',
+          15_000,
+          1000,
+          60_000,
+          1000,
+        ),
+      ],
+    },
+  };
+}
+
+export function createPaymentPlanModalOptions(
+  routes: SelectOption[],
+): FormModalOptions {
+  return {
+    props: { centered: true, title: '新增支付方案' },
+    formProps: {
+      option: formOption,
+      rule: [
+        {
+          field: 'routeKey',
+          options: routes,
+          title: '支付账号与通道',
+          type: 'select',
+          validate: required('请选择支付账号与通道'),
+          value: '',
+        },
+        numberRule('priority', '使用顺序', 100, 1, 1000),
+        numberRule('weight', '分配比例', 100, 1, 100),
+      ],
+    },
+  };
+}
