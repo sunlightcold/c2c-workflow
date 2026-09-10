@@ -27,12 +27,14 @@ export class PaymentBatchController {
 
   @Get()
   @Permission(PaymentBatchPermissions.READ)
+  @ApiOperation({ summary: '分页查询支付批次' })
   list(@Query() dto: PaymentBatchListDto, @User() actor: AuthUser) {
     return this.batches.list(this.scope.resolveTenantId(actor, dto.tenantId), dto)
   }
 
   @Get(':id')
   @Permission(PaymentBatchPermissions.READ)
+  @ApiOperation({ summary: '查询支付批次详情' })
   detail(
     @Param('id', ParseUUIDPipe) id: string,
     @Query() dto: PaymentTenantContextDto,

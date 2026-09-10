@@ -41,30 +41,35 @@ export class BusinessController {
 
   @Get('tenants')
   @Permission(TenantPermissions.READ)
+  @ApiOperation({ summary: '查询所属单位' })
   listTenants() {
     return this.tenants.list()
   }
 
   @Post('tenants')
   @Permission(TenantPermissions.CREATE)
+  @ApiOperation({ summary: '创建代理商所属单位' })
   createTenant(@Body() dto: CreateTenantDto) {
     return this.tenants.create({ ...dto, timezone: dto.timezone ?? 'Asia/Shanghai' })
   }
 
   @Patch('tenants/:id/status')
   @Permission(TenantPermissions.UPDATE)
+  @ApiOperation({ summary: '修改所属单位状态' })
   setTenantStatus(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetTenantStatusDto) {
     return this.tenants.setStatus(id, dto.status)
   }
 
   @Get('merchants')
   @Permission(MerchantPermissions.READ)
+  @ApiOperation({ summary: '查询商家' })
   listMerchants(@Query() dto: TenantContextDto, @User() actor: AuthUser) {
     return this.merchants.list(this.scope.resolveTenantId(actor, dto.tenantId))
   }
 
   @Post('merchants')
   @Permission(MerchantPermissions.CREATE)
+  @ApiOperation({ summary: '创建商家' })
   createMerchant(@Body() dto: CreateMerchantDto, @User() actor: AuthUser) {
     const { tenantId, ...input } = dto
     return this.merchants.create(this.scope.resolveTenantId(actor, tenantId), input)
@@ -72,6 +77,7 @@ export class BusinessController {
 
   @Get('merchants/:id/platform-credentials')
   @Permission(MerchantPermissions.READ)
+  @ApiOperation({ summary: '查询商家平台凭据版本' })
   listMerchantPlatformCredentials(
     @Param('id', ParseUUIDPipe) id: string,
     @Query() dto: TenantContextDto,
@@ -82,6 +88,7 @@ export class BusinessController {
 
   @Post('merchants/:id/platform-credentials')
   @Permission(MerchantPermissions.CREDENTIAL)
+  @ApiOperation({ summary: '更新商家平台凭据' })
   rotateMerchantPlatformCredential(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: RotateMerchantPlatformCredentialDto,
@@ -93,6 +100,7 @@ export class BusinessController {
 
   @Post('payment-accounts')
   @Permission(PaymentPermissions.CREATE)
+  @ApiOperation({ summary: '创建支付账号' })
   createPaymentAccount(@Body() dto: CreatePaymentAccountDto, @User() actor: AuthUser) {
     const { tenantId, ...input } = dto
     return this.payments.createAccount(this.scope.resolveTenantId(actor, tenantId), input)
@@ -100,24 +108,28 @@ export class BusinessController {
 
   @Get('payment-platforms')
   @Permission(PaymentPermissions.READ)
+  @ApiOperation({ summary: '查询支付平台及通道目录' })
   listPaymentCatalog() {
     return this.payments.listCatalog()
   }
 
   @Get('payment-accounts')
   @Permission(PaymentPermissions.READ)
+  @ApiOperation({ summary: '查询支付账号' })
   listPaymentAccounts(@Query() dto: TenantContextDto, @User() actor: AuthUser) {
     return this.payments.listAccounts(this.scope.resolveTenantId(actor, dto.tenantId))
   }
 
   @Get('payment-plans')
   @Permission(PaymentPermissions.READ)
+  @ApiOperation({ summary: '查询商家支付方案' })
   listPaymentPlans(@Query() dto: PaymentPlanListDto, @User() actor: AuthUser) {
     return this.payments.listPlans(this.scope.resolveTenantId(actor, dto.tenantId), dto.merchantId)
   }
 
   @Post('payment-accounts/:id/channels')
   @Permission(PaymentPermissions.BIND)
+  @ApiOperation({ summary: '开通支付账号通道' })
   openPaymentChannel(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: OpenPaymentAccountChannelDto,

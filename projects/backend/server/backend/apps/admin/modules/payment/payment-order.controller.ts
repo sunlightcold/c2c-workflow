@@ -30,12 +30,14 @@ export class PaymentOrderController {
 
   @Get()
   @Permission(PaymentOrderPermissions.READ)
+  @ApiOperation({ summary: '分页查询支付订单' })
   list(@Query() dto: PaymentOrderListDto, @User() actor: AuthUser) {
     return this.orders.list(this.scope.resolveTenantId(actor, dto.tenantId), dto)
   }
 
   @Get(':id')
   @Permission(PaymentOrderPermissions.READ)
+  @ApiOperation({ summary: '查询支付订单详情' })
   detail(
     @Param('id', ParseUUIDPipe) id: string,
     @Query() dto: PaymentTenantContextDto,

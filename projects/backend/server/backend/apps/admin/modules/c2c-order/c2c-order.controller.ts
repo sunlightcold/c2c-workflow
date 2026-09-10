@@ -22,12 +22,14 @@ export class C2cOrderController {
 
   @Get('merchant-orders')
   @Permission(MerchantOrderPermissions.READ)
+  @ApiOperation({ summary: '分页查询买币商家订单' })
   list(@Query() dto: MerchantOrderListDto, @User() actor: AuthUser) {
     return this.orders.list(this.scope.resolveTenantId(actor, dto.tenantId), dto)
   }
 
   @Get('merchant-orders/:id')
   @Permission(MerchantOrderPermissions.READ)
+  @ApiOperation({ summary: '查询买币商家订单详情' })
   detail(
     @Param('id', ParseUUIDPipe) id: string,
     @Query() dto: MerchantOrderDetailDto,
