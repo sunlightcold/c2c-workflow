@@ -5,6 +5,7 @@ import {
   type C2cHttpTransport,
   type C2cListInput,
 } from './c2c-platform.types'
+import { normalizeOkxDetail, normalizeOkxSummary } from './c2c-order-normalizer'
 
 const OKX_ORIGIN = 'https://www.okx.com'
 
@@ -29,7 +30,10 @@ export class OkxWebPrivateClient {
 
   async listOrders(credentials: OkxWebPrivateCredentials, input: C2cListInput) {
     if (input.tradeType !== 'BUY') throw new Error('欧易 C2C 仅支持 BUY 买币订单')
-    const response = await this.get<unknown[]>(credentials, '/v4/c2c/order/getOrderList', {
+    const response = await this.get<
+      | Record<string, unknown>[]
+      | { items?: Record<string, unknown>[]; orders?: Record<string, unknown>[]; total?: number }
+    >(credentials, '/v4/c2c/order/getOrderList', {
       orderType: 'pending',
       startTime: String(input.startDate),
       endTime: String(input.endDate),
@@ -38,7 +42,20 @@ export class OkxWebPrivateClient {
       pageIndex: String(input.page),
       t: String(Date.now()),
     })
-    return response.data ?? []
+    const data = response.data
+    const rawItems = Array.isArray(data) ? data : (data?.items ?? data?.orders ?? [])
+    const items = rawItems
+      .filter((item) => String(item.side ?? 'buy').toLowerCase() === 'buy')
+      .map(normalizeOkxSummary)
+      .filter(
+        (item) =>
+          !input.orderStatusList.length ||
+          input.orderStatusList.includes(this.toNumericStatus(item.status)),
+      )
+    return {
+      items,
+      total: Array.isArray(data) ? items.length : Number(data?.total ?? items.length),
+    }
   }
 
   async getOrderDetail(credentials: OkxWebPrivateCredentials, orderId: string) {
@@ -48,7 +65,7 @@ export class OkxWebPrivateClient {
       { t: String(Date.now()) },
     )
     if (!response.data) throw new Error(response.msg ?? '欧易 C2C 订单详情无效')
-    return response.data
+    return normalizeOkxDetail(response.data, orderId)
   }
 
   async checkAntiFraud(credentials: OkxWebPrivateCredentials, orderId: string, fiat: string) {
@@ -126,5 +143,16 @@ export class OkxWebPrivateClient {
   private orderId(value: string) {
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(value)) throw new Error('欧易 C2C 订单 ID 无效')
     return encodeURIComponent(value)
+  }
+
+  private toNumericStatus(status: string) {
+    const values: Record<string, number> = {
+      PENDING_PAYMENT: 1,
+      PAID: 2,
+      DISPUTED: 3,
+      COMPLETED: 4,
+      CANCELLED: 6,
+    }
+    return values[status] ?? -1
   }
 }

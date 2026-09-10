@@ -29,3 +29,40 @@ export interface C2cCapabilities {
   markOrderAsPaid: boolean
   sellOrders: boolean
 }
+
+export enum C2cBuyOrderStatus {
+  PENDING_PAYMENT = 'PENDING_PAYMENT',
+  PAID = 'PAID',
+  DISPUTED = 'DISPUTED',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+  UNKNOWN = 'UNKNOWN',
+}
+
+export interface C2cBuyOrderSummary {
+  platformOrderId: string
+  side: 'BUY'
+  status: C2cBuyOrderStatus
+  asset: string
+  assetAmount: string
+  fiatCurrency: string
+  fiatAmount: string
+  createdAt: string
+}
+
+export interface C2cBuyOrderDetail extends Omit<C2cBuyOrderSummary, 'assetAmount'> {
+  assetAmount: string | null
+  platformPaymentMethodId: string
+  paymentMethod: string
+  payeeIdentity: string
+  payeeName: string
+  identityName: string
+  payable: boolean
+  paymentDeadline?: string
+  updatedAt?: string
+}
+
+export interface C2cBuyOrderPage {
+  items: C2cBuyOrderSummary[]
+  total: number
+}

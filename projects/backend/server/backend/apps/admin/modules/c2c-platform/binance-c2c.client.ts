@@ -6,6 +6,7 @@ import {
   type C2cHttpTransport,
   type C2cListInput,
 } from './c2c-platform.types'
+import { normalizeBinanceDetail, normalizeBinanceSummary } from './c2c-order-normalizer'
 
 const BINANCE_ORIGIN = 'https://api.binance.com'
 
@@ -25,13 +26,25 @@ interface BinanceEnvelope<T> {
   total?: number
 }
 
+interface BinanceListEnvelope<T> extends BinanceEnvelope<T> {
+  total?: number
+}
+
 @Injectable()
 export class BinanceC2cClient {
   constructor(@Inject(C2C_HTTP_TRANSPORT) private readonly http: C2cHttpTransport) {}
 
   async listOrders(credentials: BinanceCredentials, input: C2cListInput) {
     if (input.tradeType !== 'BUY') throw new Error('币安 C2C 仅支持 BUY 买币订单')
-    return this.post<unknown[]>(credentials, '/sapi/v1/c2c/orderMatch/listOrders', input)
+    const response = await this.postList<Record<string, unknown>[]>(
+      credentials,
+      '/sapi/v1/c2c/orderMatch/listOrders',
+      input,
+    )
+    return {
+      items: response.data.map(normalizeBinanceSummary),
+      total: Number(response.total ?? response.data.length),
+    }
   }
 
   async getOrderDetail(credentials: BinanceCredentials, orderNumber: string) {
@@ -40,7 +53,7 @@ export class BinanceC2cClient {
       '/sapi/v1/c2c/orderMatch/getUserOrderDetail',
       { adOrderNo: orderNumber },
     )
-    return response.data
+    return normalizeBinanceDetail(response.data, orderNumber)
   }
 
   markOrderAsPaid(credentials: BinanceCredentials, orderNumber: string, payId: number) {
@@ -56,6 +69,18 @@ export class BinanceC2cClient {
   }
 
   private async post<T>(credentials: BinanceCredentials, path: string, body: unknown) {
+    return this.request<BinanceEnvelope<T>>(credentials, path, body)
+  }
+
+  private async postList<T>(credentials: BinanceCredentials, path: string, body: unknown) {
+    return this.request<BinanceListEnvelope<T>>(credentials, path, body)
+  }
+
+  private async request<T extends BinanceEnvelope<unknown>>(
+    credentials: BinanceCredentials,
+    path: string,
+    body: unknown,
+  ) {
     const query = new URLSearchParams({
       recvWindow: '5000',
       timestamp: String(Date.now()),
@@ -67,7 +92,7 @@ export class BinanceC2cClient {
       clientType: credentials.clientType,
     }
     if (credentials.xUserId) headers['x-user-id'] = credentials.xUserId
-    const response = await this.http.request<BinanceEnvelope<T>>({
+    const response = await this.http.request<T>({
       method: 'POST',
       url: `${BINANCE_ORIGIN}${path}?${query}&signature=${signature}`,
       headers,

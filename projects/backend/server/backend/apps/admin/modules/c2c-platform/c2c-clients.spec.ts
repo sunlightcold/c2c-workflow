@@ -63,7 +63,23 @@ describe('C2C buy-order clients', () => {
   })
 
   it('keeps OKX private requests on the fixed origin and fixed paths', async () => {
-    http.request.mockResolvedValue({ code: 0, data: { id: '123', side: 'buy' } })
+    http.request.mockResolvedValue({
+      code: 0,
+      data: {
+        id: '123',
+        side: 'buy',
+        orderStatus: 'new',
+        paymentStatus: 'unpaid',
+        baseAmount: '1',
+        baseCurrency: 'USDT',
+        quoteAmount: '7',
+        quoteCurrency: 'CNY',
+        createdDate: 1_787_586_752_664,
+        receiptAccountId: '1',
+        sellerReceiptAccount: { id: '1', accountName: 'Payee', accountNo: 'account' },
+        detailUser: { realName: 'Payee', kycVerified: true },
+      },
+    })
     await okx.getOrderDetail({ cookie: 'session', authorization: 'token', timeoutMs: 5000 }, '123')
     expect(http.request).toHaveBeenCalledWith(
       expect.objectContaining({ method: 'GET', url: 'https://www.okx.com/v3/c2c/orders/123' }),
@@ -79,5 +95,165 @@ describe('C2C buy-order clients', () => {
       ),
     ).rejects.toThrow('receiptAccountId')
     expect(http.request).not.toHaveBeenCalled()
+  })
+
+  it('normalizes Binance list and detail responses to one buy-order contract', async () => {
+    http.request
+      .mockResolvedValueOnce({
+        success: true,
+        code: '000000',
+        total: 1,
+        data: [
+          {
+            orderNumber: 'BIN-1',
+            orderStatus: 1,
+            tradeType: 'BUY',
+            asset: 'USDT',
+            fiat: 'CNY',
+            amount: '10',
+            totalPrice: '70.00',
+            createTime: 1_787_586_752_664,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        code: '000000',
+        data: {
+          orderNumber: 'BIN-1',
+          orderStatus: 1,
+          tradeType: 'BUY',
+          asset: 'USDT',
+          fiatUnit: 'CNY',
+          totalPrice: '70.00',
+          createTime: 1_787_586_752_664,
+          selectedPayId: '2',
+          sellerName: 'Zhang San',
+          payMethods: [
+            {
+              id: '2',
+              identifier: 'ALIPAY',
+              tradeMethodName: 'Alipay',
+              fields: [
+                { fieldContentType: 'payee', fieldValue: 'Zhang San' },
+                { fieldContentType: 'pay_account', fieldValue: 'payee@example.com' },
+              ],
+            },
+          ],
+        },
+      })
+    const credentials = { apiKey: 'key', secretKey: 'secret', clientType: 'WEB', timeoutMs: 5000 }
+
+    await expect(
+      binance.listOrders(credentials, {
+        tradeType: 'BUY',
+        asset: 'USDT',
+        startDate: 1,
+        endDate: 2,
+        page: 1,
+        rows: 20,
+        orderStatusList: [1],
+      }),
+    ).resolves.toEqual({
+      items: [
+        expect.objectContaining({
+          platformOrderId: 'BIN-1',
+          side: 'BUY',
+          fiatAmount: '70.00',
+          fiatCurrency: 'CNY',
+          status: 'PENDING_PAYMENT',
+        }),
+      ],
+      total: 1,
+    })
+    await expect(binance.getOrderDetail(credentials, 'BIN-1')).resolves.toMatchObject({
+      platformOrderId: 'BIN-1',
+      platformPaymentMethodId: '2',
+      paymentMethod: 'ALIPAY',
+      payeeIdentity: 'payee@example.com',
+      payeeName: 'Zhang San',
+      identityName: 'Zhang San',
+      payable: true,
+    })
+  })
+
+  it('normalizes OKX list envelopes and keeps its internal order id for detail calls', async () => {
+    http.request
+      .mockResolvedValueOnce({
+        code: 0,
+        data: {
+          total: 1,
+          items: [
+            {
+              id: 'OKX-INTERNAL-1',
+              publicTradingOrderId: 'PUBLIC-1',
+              side: 'buy',
+              orderStatus: 'new',
+              orderProcessStatus: 2,
+              paymentStatus: 'unpaid',
+              baseAmount: '10.00',
+              baseCurrency: 'usdt',
+              quoteAmount: '70.00',
+              quoteCurrency: 'cny',
+              createdDate: 1_787_586_752_664,
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        code: 0,
+        data: {
+          id: 'OKX-INTERNAL-1',
+          side: 'buy',
+          orderStatus: 'new',
+          orderProcessStatus: 2,
+          paymentStatus: 'unpaid',
+          baseAmount: '10.00',
+          baseCurrency: 'usdt',
+          quoteAmount: '70.00',
+          quoteCurrency: 'cny',
+          createdDate: 1_787_586_752_664,
+          receiptAccountId: '25990076',
+          sellerReceiptAccount: {
+            id: '25990076',
+            accountName: 'Li Si',
+            accountNo: 'payee@example.com',
+            type: 'aliPay',
+            bankCode: 'ALIPAY',
+          },
+          detailUser: { realName: 'Li Si', kycVerified: true },
+        },
+      })
+    const credentials = { cookie: 'session', authorization: 'token', timeoutMs: 5000 }
+
+    await expect(
+      okx.listOrders(credentials, {
+        tradeType: 'BUY',
+        asset: 'USDT',
+        startDate: 1,
+        endDate: 2,
+        page: 1,
+        rows: 20,
+        orderStatusList: [1],
+      }),
+    ).resolves.toEqual({
+      items: [
+        expect.objectContaining({
+          platformOrderId: 'OKX-INTERNAL-1',
+          side: 'BUY',
+          status: 'PENDING_PAYMENT',
+        }),
+      ],
+      total: 1,
+    })
+    await expect(okx.getOrderDetail(credentials, 'OKX-INTERNAL-1')).resolves.toMatchObject({
+      platformOrderId: 'OKX-INTERNAL-1',
+      platformPaymentMethodId: '25990076',
+      paymentMethod: 'ALIPAY',
+      payeeIdentity: 'payee@example.com',
+      payeeName: 'Li Si',
+      identityName: 'Li Si',
+      payable: true,
+    })
   })
 })
