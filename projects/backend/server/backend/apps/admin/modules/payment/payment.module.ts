@@ -1,4 +1,9 @@
-import { MerchantEntity, PaymentOrderEntity } from '@admin/database'
+import {
+  MerchantEntity,
+  PaymentBatchEntity,
+  PaymentBatchItemEntity,
+  PaymentOrderEntity,
+} from '@admin/database'
 import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { BusinessModule } from '../business'
@@ -26,19 +31,27 @@ import { PaymentOrderController } from './payment-order.controller'
 import { PAYMENT_PLAN_RESOLVER, PaymentPlanResolver } from './payment-plan-resolver'
 import { TypeOrmPaymentOrderStore } from './typeorm-payment-order.store'
 import { TypeOrmPaymentPreflightStore } from './typeorm-payment-preflight.store'
+import { PaymentBatchController } from './payment-batch.controller'
+import { PaymentBatchService } from './payment-batch.service'
 
 @Module({
   imports: [
     BusinessModule,
     C2cOrderModule,
     C2cPlatformModule,
-    TypeOrmModule.forFeature([MerchantEntity, PaymentOrderEntity]),
+    TypeOrmModule.forFeature([
+      MerchantEntity,
+      PaymentOrderEntity,
+      PaymentBatchEntity,
+      PaymentBatchItemEntity,
+    ]),
   ],
-  controllers: [PaymentOrderController],
+  controllers: [PaymentOrderController, PaymentBatchController],
   providers: [
     PaymentPlanResolver,
     { provide: PAYMENT_PLAN_RESOLVER, useExisting: PaymentPlanResolver },
     PaymentOrderService,
+    PaymentBatchService,
     TypeOrmPaymentOrderStore,
     { provide: PAYMENT_ORDER_STORE, useExisting: TypeOrmPaymentOrderStore },
     TypeOrmPaymentPreflightStore,
@@ -62,6 +75,7 @@ import { TypeOrmPaymentPreflightStore } from './typeorm-payment-preflight.store'
     PLATFORM_PAYMENT_CONFIRMER,
     PaymentExecutionCoordinator,
     PaymentOrderService,
+    PaymentBatchService,
     PAYMENT_ORDER_STORE,
     PAYMENT_PLAN_RESOLVER,
   ],

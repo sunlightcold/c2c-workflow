@@ -2,6 +2,8 @@ import { BusinessScopeService } from '@/apps/admin/modules/business/business-sco
 import { PaymentOrderController } from '@/apps/admin/modules/payment/payment-order.controller'
 import { PaymentOrderService } from '@/apps/admin/modules/payment/payment-order.service'
 import { PaymentExecutionCoordinator } from '@/apps/admin/modules/payment/payment-execution-coordinator'
+import { PaymentBatchController } from '@/apps/admin/modules/payment/payment-batch.controller'
+import { PaymentBatchService } from '@/apps/admin/modules/payment/payment-batch.service'
 import { ConflictException, type INestApplication } from '@nestjs/common'
 import request from 'supertest'
 import {
@@ -22,15 +24,17 @@ describe('Payment order API contract (e2e)', () => {
   const scope = { resolveTenantId: jest.fn().mockReturnValue('tenant-1') }
   const orders = { create: jest.fn(), rematch: jest.fn() }
   const execution = { reconcile: jest.fn() }
+  const batches = { create: jest.fn() }
 
   beforeAll(async () => {
     app = await createAdminContractTestApp({
-      controllers: [PaymentOrderController],
+      controllers: [PaymentOrderController, PaymentBatchController],
       path: 'sys',
       providers: [
         { provide: BusinessScopeService, useValue: scope },
         { provide: PaymentOrderService, useValue: orders },
         { provide: PaymentExecutionCoordinator, useValue: execution },
+        { provide: PaymentBatchService, useValue: batches },
       ],
     })
   })
@@ -125,5 +129,32 @@ describe('Payment order API contract (e2e)', () => {
       .expect(409)
 
     expectWrappedError(response.body, 409)
+  })
+
+  it('creates a payment batch in the resolved tenant', async () => {
+    const paymentOrderIds = [
+      '00000000-0000-4000-8000-000000000031',
+      '00000000-0000-4000-8000-000000000032',
+    ]
+    batches.create.mockResolvedValue({ batch: { id: 'batch-1', status: 'READY' }, items: [] })
+
+    const response = await request(app.getHttpServer())
+      .post('/v1/sys/payment-batches')
+      .send({ tenantId: '00000000-0000-4000-8000-000000000010', paymentOrderIds })
+      .expect(201)
+
+    expectWrappedSuccess(response.body)
+    expect(batches.create).toHaveBeenCalledWith('tenant-1', paymentOrderIds)
+  })
+
+  it('rejects duplicate payment orders before creating a batch', async () => {
+    const paymentOrderId = '00000000-0000-4000-8000-000000000031'
+    const response = await request(app.getHttpServer())
+      .post('/v1/sys/payment-batches')
+      .send({ paymentOrderIds: [paymentOrderId, paymentOrderId] })
+      .expect(400)
+
+    expectWrappedError(response.body, 400)
+    expect(batches.create).not.toHaveBeenCalled()
   })
 })

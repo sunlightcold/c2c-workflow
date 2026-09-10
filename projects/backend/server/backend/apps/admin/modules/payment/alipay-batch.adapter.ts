@@ -8,7 +8,7 @@ import {
   sumCnyAmounts,
 } from './payment-adapter.types'
 
-type BatchStatus =
+export type AlipayBatchStatus =
   | 'INIT'
   | 'WAIT_PAY'
   | 'DEALING'
@@ -18,14 +18,31 @@ type BatchStatus =
   | 'INVALID'
   | 'DISUSE'
 
-interface BatchResponse {
+export type AlipayBatchDetailStatus = 'INIT' | 'WAIT_PAY' | 'DEALING' | 'SUCCESS' | 'FAIL'
+
+export interface AlipayBatchDetail {
+  outBizNo: string
+  detailId: string
+  alipayOrderNo?: string
+  status: AlipayBatchDetailStatus
+  transAmount: string
+  errorCode?: string
+  errorMsg?: string
+}
+
+export interface AlipayBatchResponse {
   code: string
   msg?: string
+  subCode?: string
   subMsg?: string
-  outBatchNo: string
+  outBatchNo?: string
   batchTransId?: string
-  status?: BatchStatus
-  batchStatus?: BatchStatus
+  status?: AlipayBatchStatus
+  batchStatus?: AlipayBatchStatus
+  totalAmount?: string
+  totalItemCount?: number
+  totalPageCount?: number
+  accDetailList?: AlipayBatchDetail[]
 }
 
 @Injectable()
@@ -40,9 +57,9 @@ export class AlipayBatchAdapter {
       payeeIdentity: string
       payeeName: string
     }>
-  }): Promise<PaymentExecutionResult<BatchResponse>> {
+  }): Promise<PaymentExecutionResult<AlipayBatchResponse>> {
     if (!input.items.length) throw new Error('支付批次不能为空')
-    const response = await this.gateway.execute<BatchResponse>('alipay.fund.batch.create', {
+    const response = await this.gateway.execute<AlipayBatchResponse>('alipay.fund.batch.create', {
       out_batch_no: input.batchNo,
       product_code: 'BATCH_PAY_V2',
       biz_scene: 'MESSAGE_BATCH_PAY',
@@ -60,25 +77,41 @@ export class AlipayBatchAdapter {
         },
       })),
     })
-    return this.mapResponse(response, response.status)
+    if (response.code === '10000') {
+      if (response.outBatchNo !== input.batchNo)
+        throw new Error('支付宝批次创建返回的业务单号不匹配')
+      if (!response.batchTransId) throw new Error('支付宝批次创建未返回批次流水号')
+    }
+    return this.mapCreateResponse(response)
   }
 
-  async query(batchNo: string): Promise<PaymentExecutionResult<BatchResponse>> {
-    const response = await this.gateway.execute<BatchResponse>('alipay.fund.batch.detail.query', {
-      out_batch_no: batchNo,
-      product_code: 'BATCH_PAY_V2',
-      biz_scene: 'MESSAGE_BATCH_PAY',
-      page_num: 1,
-      page_size: 500,
-    })
-    if (response.outBatchNo !== batchNo) throw new Error('支付宝批次查询返回的业务单号不匹配')
-    return this.mapResponse(response, response.batchStatus)
+  async query(batchNo: string): Promise<PaymentExecutionResult<AlipayBatchResponse>> {
+    const details: AlipayBatchDetail[] = []
+    let pageNum = 1
+    let response: AlipayBatchResponse
+    while (true) {
+      response = await this.gateway.execute<AlipayBatchResponse>('alipay.fund.batch.detail.query', {
+        out_batch_no: batchNo,
+        product_code: 'BATCH_PAY_V2',
+        biz_scene: 'MESSAGE_BATCH_PAY',
+        page_num: pageNum,
+        page_size: 100,
+      })
+      if (response.code !== '10000') return this.mapQueryError(response)
+      if (response.outBatchNo !== batchNo) throw new Error('支付宝批次查询返回的业务单号不匹配')
+      details.push(...(response.accDetailList ?? []))
+      const totalPageCount = Number(response.totalPageCount)
+      if (!Number.isSafeInteger(totalPageCount) || totalPageCount <= pageNum) break
+      if (totalPageCount > 1000) throw new Error('支付宝批次查询页数超过系统限制')
+      pageNum += 1
+    }
+    const merged = { ...response, accDetailList: details }
+    return this.mapSuccessfulResponse(merged, response.batchStatus)
   }
 
-  private mapResponse(
-    response: BatchResponse,
-    status?: BatchStatus,
-  ): PaymentExecutionResult<BatchResponse> {
+  private mapCreateResponse(
+    response: AlipayBatchResponse,
+  ): PaymentExecutionResult<AlipayBatchResponse> {
     if (response.code !== '10000') {
       return {
         status: PaymentExecutionStatus.FAILED,
@@ -86,7 +119,24 @@ export class AlipayBatchAdapter {
         raw: response,
       }
     }
-    const mapped: Record<BatchStatus, PaymentExecutionStatus> = {
+    return this.mapSuccessfulResponse(response, response.status)
+  }
+
+  private mapQueryError(
+    response: AlipayBatchResponse,
+  ): PaymentExecutionResult<AlipayBatchResponse> {
+    return {
+      status: PaymentExecutionStatus.UNKNOWN,
+      errorMessage: response.subMsg ?? response.msg ?? '支付宝批次查询结果未知',
+      raw: response,
+    }
+  }
+
+  private mapSuccessfulResponse(
+    response: AlipayBatchResponse,
+    status?: AlipayBatchStatus,
+  ): PaymentExecutionResult<AlipayBatchResponse> {
+    const mapped: Record<AlipayBatchStatus, PaymentExecutionStatus> = {
       INIT: PaymentExecutionStatus.PROCESSING,
       WAIT_PAY: PaymentExecutionStatus.PROCESSING,
       DEALING: PaymentExecutionStatus.PROCESSING,

@@ -10,6 +10,7 @@
 | [client-error-api.md](client-error-api.md) | 客户端错误采集与管理 | `/v1/client-errors`、`/v1/sys/client-errors` |
 | [c2c-business-config.md](c2c-business-config.md) | 所属单位、商家、支付账号、通道和方案 | `/v1/sys` |
 | [c2c-payment-orders.md](c2c-payment-orders.md) | 支付订单创建与重新匹配 | `/v1/sys/payment-orders` |
+| [c2c-payment-batches.md](c2c-payment-batches.md) | 支付批次创建、提交与结果查询 | `/v1/sys/payment-batches` |
 | [c2c-merchant-orders.md](c2c-merchant-orders.md) | 买币商家订单、详情与同步 | `/v1/sys/merchant-orders`、`/v1/sys/merchants/*/orders/sync` |
 
 接口文档必须与 Controller、DTO、权限码、响应包装和 contract test 同步。

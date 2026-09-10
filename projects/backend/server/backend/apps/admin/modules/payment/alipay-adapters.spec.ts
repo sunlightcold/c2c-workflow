@@ -62,6 +62,68 @@ describe('Alipay payment adapters', () => {
     })
   })
 
+  it('queries every Alipay batch detail page and preserves per-item results', async () => {
+    gateway.execute
+      .mockResolvedValueOnce({
+        code: '10000',
+        outBatchNo: 'B1',
+        batchTransId: 'A1',
+        batchStatus: 'DEALING',
+        totalPageCount: 2,
+        accDetailList: [
+          {
+            outBizNo: 'P1',
+            detailId: 'D1',
+            alipayOrderNo: 'AO1',
+            status: 'SUCCESS',
+            transAmount: '10.20',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        code: '10000',
+        outBatchNo: 'B1',
+        batchTransId: 'A1',
+        batchStatus: 'PART_SUCCESS',
+        totalPageCount: 2,
+        accDetailList: [
+          {
+            outBizNo: 'P2',
+            detailId: 'D2',
+            status: 'FAIL',
+            transAmount: '2.30',
+            errorCode: 'PAYEE_NOT_EXIST',
+            errorMsg: 'Payee does not exist',
+          },
+        ],
+      })
+
+    const result = await batch.query('B1')
+
+    expect(result.raw.accDetailList).toEqual([
+      expect.objectContaining({ outBizNo: 'P1', status: 'SUCCESS' }),
+      expect.objectContaining({ outBizNo: 'P2', status: 'FAIL' }),
+    ])
+    expect(gateway.execute).toHaveBeenNthCalledWith(
+      2,
+      'alipay.fund.batch.detail.query',
+      expect.objectContaining({ page_num: 2, page_size: 100 }),
+    )
+  })
+
+  it('keeps non-terminal batch query errors unknown', async () => {
+    gateway.execute.mockResolvedValue({
+      code: '40004',
+      outBatchNo: 'B1',
+      subMsg: 'Gateway temporarily unavailable',
+    })
+
+    await expect(batch.query('B1')).resolves.toMatchObject({
+      status: PaymentExecutionStatus.UNKNOWN,
+      errorMessage: 'Gateway temporarily unavailable',
+    })
+  })
+
   it('uses the official merchant transfer create and query methods', async () => {
     gateway.execute
       .mockResolvedValueOnce({ code: '10000', outBizNo: 'P1', orderId: 'A1', status: 'DEALING' })
