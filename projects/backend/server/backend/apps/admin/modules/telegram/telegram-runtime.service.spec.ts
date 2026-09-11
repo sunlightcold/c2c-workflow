@@ -24,7 +24,7 @@ describe('TelegramRuntimeService', () => {
   const telegram = { sendMessage: jest.fn().mockResolvedValue(undefined) }
   const manualPayments = { prepare: jest.fn(), confirm: jest.fn(), cancel: jest.fn() }
   const batchPayments = { prepare: jest.fn(), confirm: jest.fn(), cancel: jest.fn() }
-  const queries = { query: jest.fn(), todayStats: jest.fn(), status: jest.fn() }
+  const queries = { query: jest.fn(), balance: jest.fn(), todayStats: jest.fn(), status: jest.fn() }
 
   beforeEach(() => jest.clearAllMocks())
 
@@ -223,6 +223,33 @@ describe('TelegramRuntimeService', () => {
     })
 
     expect(queries.todayStats).toHaveBeenCalledWith('tenant-1', 'merchant-1')
+  })
+
+  it('returns balances only for payment accounts linked to the authorized merchant', async () => {
+    authorization.authorize.mockResolvedValueOnce({
+      allowed: true,
+      capabilities: [TelegramCapability.BALANCE_QUERY],
+      group: { merchantId: 'merchant-1' },
+    })
+    queries.balance.mockResolvedValue('支付账号余额')
+    const runtime = new TelegramRuntimeService(
+      bots as never,
+      authorization as never,
+      telegram as never,
+      manualPayments as never,
+      batchPayments as never,
+      queries as never,
+    )
+
+    await runtime.handle({
+      botId: 'bot-1',
+      tenantId: 'tenant-1',
+      payload: {
+        message: { message_id: 17, chat: { id: -1001 }, from: { id: 88 }, text: '/balance' },
+      },
+    })
+
+    expect(queries.balance).toHaveBeenCalledWith('tenant-1', 'merchant-1')
   })
 
   it('returns the authorized bot and group status', async () => {

@@ -5,7 +5,13 @@ describe('TelegramQueryService', () => {
   const orders = { findOne: jest.fn() }
   const batches = { findOne: jest.fn() }
   const dataSource = { query: jest.fn() }
-  const service = new TelegramQueryService(orders as never, batches as never, dataSource as never)
+  const balances = { queryMerchantAccounts: jest.fn() }
+  const service = new TelegramQueryService(
+    orders as never,
+    batches as never,
+    dataSource as never,
+    balances as never,
+  )
 
   beforeEach(() => jest.clearAllMocks())
 
@@ -64,5 +70,23 @@ describe('TelegramQueryService', () => {
       'tenant-1',
       'merchant-1',
     ])
+  })
+
+  it('formats every payment account balance available to the merchant', async () => {
+    balances.queryMerchantAccounts.mockResolvedValue([
+      {
+        accountId: 'account-1',
+        accountName: '支付宝主账号',
+        availableAmount: '100.00',
+        freezeAmount: '20.00',
+        success: true,
+      },
+      { accountId: 'account-2', accountName: '支付宝备用账号', success: false },
+    ])
+
+    await expect(service.balance('tenant-1', 'merchant-1')).resolves.toBe(
+      '支付账号余额\n支付宝主账号：可用 100.00 CNY，冻结 20.00 CNY\n支付宝备用账号：查询失败',
+    )
+    expect(balances.queryMerchantAccounts).toHaveBeenCalledWith('tenant-1', 'merchant-1')
   })
 })

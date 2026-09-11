@@ -7,6 +7,7 @@ import {
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, Repository } from 'typeorm'
+import { PaymentAccountBalanceService } from '../payment/payment-account-balance.service'
 
 const ORDER_STATUS_LABELS: Record<PaymentOrderStatus, string> = {
   [PaymentOrderStatus.PENDING_CONFIG]: '待配置',
@@ -45,6 +46,7 @@ export class TelegramQueryService {
     @InjectRepository(PaymentBatchEntity)
     private readonly batches: Repository<PaymentBatchEntity>,
     private readonly dataSource: DataSource,
+    private readonly balances: PaymentAccountBalanceService,
   ) {}
 
   async query(tenantId: string, merchantId: string, businessNo: string): Promise<string> {
@@ -110,6 +112,19 @@ export class TelegramQueryService {
       `当前群组：${groupName}`,
       '机器人状态：启用',
       '群组状态：已绑定',
+    ].join('\n')
+  }
+
+  async balance(tenantId: string, merchantId: string): Promise<string> {
+    const balances = await this.balances.queryMerchantAccounts(tenantId, merchantId)
+    if (!balances.length) return '当前商家未配置可查询的支付宝支付账号'
+    return [
+      '支付账号余额',
+      ...balances.map((item) =>
+        item.success
+          ? `${item.accountName}：可用 ${item.availableAmount} CNY，冻结 ${item.freezeAmount} CNY`
+          : `${item.accountName}：查询失败`,
+      ),
     ].join('\n')
   }
 }

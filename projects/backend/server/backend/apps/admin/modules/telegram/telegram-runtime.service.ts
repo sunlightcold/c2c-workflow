@@ -92,6 +92,16 @@ export class TelegramRuntimeService {
       )
       return
     }
+    if (command === '/balance') {
+      await this.reply(
+        bot.tokenRef,
+        message,
+        authorization.capabilities.includes(TelegramCapability.BALANCE_QUERY)
+          ? await this.queries.balance(bot.tenantId, authorization.group.merchantId)
+          : '您没有查询支付账号余额的权限',
+      )
+      return
+    }
     if (command === '/stats') {
       await this.reply(
         bot.tokenRef,

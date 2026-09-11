@@ -44,6 +44,7 @@ import { TypeOrmPaymentBatchStore } from './typeorm-payment-batch.store'
 import { C2cMerchantPaymentController } from './c2c-merchant-payment.controller'
 import { C2cMerchantPaymentService } from './c2c-merchant-payment.service'
 import { C2cPaymentCancellationService } from './c2c-payment-cancellation.service'
+import { PaymentAccountBalanceService } from './payment-account-balance.service'
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { C2cPaymentCancellationService } from './c2c-payment-cancellation.servic
     { provide: PAYMENT_PLAN_RESOLVER, useExisting: PaymentPlanResolver },
     PaymentOrderService,
     PaymentBatchService,
+    PaymentAccountBalanceService,
     C2cMerchantPaymentService,
     C2cPaymentCancellationService,
     TypeOrmPaymentBatchStore,
@@ -87,6 +89,7 @@ import { C2cPaymentCancellationService } from './c2c-payment-cancellation.servic
     AlipayBatchPaymentExecutor,
     { provide: PAYMENT_BATCH_EXECUTOR, useExisting: AlipayBatchPaymentExecutor },
     PaymentBatchExecutionCoordinator,
+    PaymentAccountBalanceService,
   ],
   exports: [
     C2cPaymentPreflightVerifier,
