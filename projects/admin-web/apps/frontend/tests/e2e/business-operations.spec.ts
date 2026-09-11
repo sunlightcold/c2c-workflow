@@ -107,6 +107,20 @@ function ok(data: unknown) {
 
 test.beforeEach(async ({ page }) => {
   const errors: string[] = [];
+  let paymentPlans = [
+    {
+      currency: 'CNY',
+      id: '00000000-0000-4000-8000-000000000120',
+      merchantId: '00000000-0000-4000-8000-000000000020',
+      paymentAccountChannelId: '00000000-0000-4000-8000-000000000111',
+      paymentAccountId: '00000000-0000-4000-8000-000000000110',
+      priority: 100,
+      scene: 'C2C_BUY',
+      status: 'active',
+      tenantId,
+      weight: 100,
+    },
+  ];
   pageErrors.set(page, errors);
   page.on('pageerror', (error) => {
     errors.push(error.stack ?? error.message);
@@ -116,7 +130,35 @@ test.beforeEach(async ({ page }) => {
     const request = route.request();
     const url = new URL(request.url());
     const path = url.pathname.replace('/v1', '');
+    const paymentPlanMatch = path.match(
+      /^\/sys\/payment-plans\/([^/]+)(\/status)?$/,
+    );
     let data: unknown = null;
+
+    if (paymentPlanMatch) {
+      const planId = paymentPlanMatch[1];
+      const method = request.method();
+      const plan = paymentPlans.find(({ id }) => id === planId);
+      if (method === 'PUT' && plan) {
+        paymentPlans = paymentPlans.map((item) =>
+          item.id === planId ? { ...item, ...request.postDataJSON() } : item,
+        );
+        data = paymentPlans.find(({ id }) => id === planId);
+      } else if (method === 'PATCH' && plan && paymentPlanMatch[2]) {
+        paymentPlans = paymentPlans.map((item) =>
+          item.id === planId ? { ...item, ...request.postDataJSON() } : item,
+        );
+        data = paymentPlans.find(({ id }) => id === planId);
+      } else if (method === 'DELETE' && plan) {
+        paymentPlans = paymentPlans.filter(({ id }) => id !== planId);
+      }
+      await route.fulfill({
+        body: JSON.stringify(ok(data)),
+        contentType: 'application/json',
+        status: 200,
+      });
+      return;
+    }
 
     switch (path) {
       case '/auth/login': {
@@ -262,6 +304,10 @@ test.beforeEach(async ({ page }) => {
           pageSize: 20,
           total: 1,
         };
+        break;
+      }
+      case '/sys/payment-plans': {
+        data = paymentPlans;
         break;
       }
       case '/sys/payment-platforms': {
@@ -492,7 +538,6 @@ test('loads all second-level business pages under one menu', async ({
     fullPage: true,
     path: `node_modules/.e2e/screenshots/business-operations-${testInfo.project.name}.png`,
   });
-
   await page.goto('/business/payment-accounts');
   await page.getByLabel('选择经营单位').click();
   await page
@@ -577,6 +622,95 @@ test('loads all second-level business pages under one menu', async ({
     () => document.documentElement.scrollWidth > window.innerWidth,
   );
   expect(hasGlobalHorizontalOverflow).toBe(false);
+});
+
+test('manages payment plans inside the merchant configuration drawer', async ({
+  page,
+}) => {
+  await page.goto('/business/merchants');
+  await page.getByLabel('选择经营单位').click();
+  await page
+    .locator('.ant-select-item-option-content')
+    .getByText('总部自营（总部自营）', { exact: true })
+    .click();
+  await page.getByRole('button', { name: /搜\s*索/ }).click();
+  await page.getByRole('button', { name: /配\s*置/ }).click();
+
+  const drawer = page.locator('.ant-drawer-content:visible');
+  await drawer.getByRole('tab', { name: '支付方案' }).click();
+  const planTable = drawer.getByTestId('payment-plan-table');
+  await expect(planTable.getByText('总部支付宝主账号')).toBeVisible();
+  for (const actionName of [/编\s*辑/, /停\s*用/, /删\s*除/]) {
+    await expect(
+      planTable.getByRole('button', { name: actionName }),
+    ).toBeVisible();
+  }
+
+  await drawer.getByRole('button', { name: '新增方案' }).click();
+  const createDialog = page.getByRole('dialog', { name: '新增支付方案' });
+  await expect(createDialog).toBeVisible();
+  const createIsAboveDrawer = await page.evaluate(() => {
+    const modal = document.querySelector<HTMLElement>('.ant-modal-wrap');
+    const drawerRoot = document.querySelector<HTMLElement>('.ant-drawer');
+    if (!modal || !drawerRoot) return false;
+    return (
+      Number.parseInt(getComputedStyle(modal).zIndex, 10) >
+      Number.parseInt(getComputedStyle(drawerRoot).zIndex, 10)
+    );
+  });
+  expect(createIsAboveDrawer).toBe(true);
+  await createDialog.getByRole('button', { name: /取\s*消/ }).click();
+
+  await planTable.getByRole('button', { name: /编\s*辑/ }).click();
+  const editDialog = page.getByRole('dialog', { name: '编辑支付方案' });
+  await expect(editDialog).toBeVisible();
+  const priority = editDialog.getByRole('spinbutton', { name: /使用顺序/ });
+  await expect(priority).toHaveValue('100');
+  await priority.fill('20');
+  const updateRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'PUT' &&
+      request.url().includes('/v1/sys/payment-plans/'),
+  );
+  await editDialog.getByRole('button', { name: /确\s*定/ }).click();
+  const updatedPlanRequest = await updateRequest;
+  expect(updatedPlanRequest.postDataJSON()).toMatchObject({ priority: 20 });
+  await expect(planTable.getByText('20', { exact: true })).toBeVisible();
+
+  const statusRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'PATCH' && request.url().includes('/status'),
+  );
+  await planTable.getByRole('button', { name: /停\s*用/ }).click();
+  const updatedStatusRequest = await statusRequest;
+  expect(updatedStatusRequest.postDataJSON()).toEqual({ status: 'disabled' });
+  await expect(planTable.getByText('停用', { exact: true })).toBeVisible();
+
+  await planTable.getByRole('button', { name: /删\s*除/ }).click();
+  const confirmDialog = page.locator('.ant-modal-confirm:visible');
+  await expect(
+    confirmDialog.getByText('确认删除支付方案吗？', { exact: true }),
+  ).toBeVisible();
+  const confirmIsAboveDrawer = await page.evaluate(() => {
+    const confirm = document.querySelector<HTMLElement>(
+      '.ant-modal-root:has(.ant-modal-confirm) .ant-modal-wrap',
+    );
+    const drawerRoot = document.querySelector<HTMLElement>('.ant-drawer');
+    if (!confirm || !drawerRoot) return false;
+    return (
+      Number.parseInt(getComputedStyle(confirm).zIndex, 10) >
+      Number.parseInt(getComputedStyle(drawerRoot).zIndex, 10)
+    );
+  });
+  expect(confirmIsAboveDrawer).toBe(true);
+  const deleteRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'DELETE' &&
+      request.url().includes('/v1/sys/payment-plans/'),
+  );
+  await confirmDialog.getByRole('button', { name: /删\s*除/ }).click();
+  await deleteRequest;
+  await expect(planTable.getByText('总部支付宝主账号')).toHaveCount(0);
 });
 
 test('provides complete Telegram administration actions', async ({ page }) => {

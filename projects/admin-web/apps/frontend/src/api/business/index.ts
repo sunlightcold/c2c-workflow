@@ -147,6 +147,13 @@ export namespace BusinessApi {
     weight: number;
   }
 
+  export interface UpdatePaymentPlanInput extends TenantContext {
+    paymentAccountChannelId?: string;
+    paymentAccountId?: string;
+    priority?: number;
+    weight?: number;
+  }
+
   export interface StatusHistory {
     createdAt: string;
     fromStatus: null | string;
@@ -622,6 +629,26 @@ export const createPaymentPlanApi = (
       | 'weight'
     >,
 ) => requestClient.post<BusinessApi.PaymentPlan>('/sys/payment-plans', data);
+export const updatePaymentPlanApi = (
+  id: string,
+  data: BusinessApi.UpdatePaymentPlanInput,
+) =>
+  requestClient.put<BusinessApi.PaymentPlan>(`/sys/payment-plans/${id}`, data);
+export const setPaymentPlanStatusApi = (
+  id: string,
+  status: BusinessApi.BusinessStatus,
+  tenantId?: string,
+) =>
+  requestClient.request<BusinessApi.PaymentPlan>(
+    `/sys/payment-plans/${id}/status`,
+    {
+      data: { status },
+      method: 'PATCH',
+      params: { tenantId },
+    },
+  );
+export const deletePaymentPlanApi = (id: string, tenantId?: string) =>
+  requestClient.delete(`/sys/payment-plans/${id}`, { params: { tenantId } });
 
 export async function getMerchantOrdersApi(
   params: BusinessApi.MerchantOrderQuery,

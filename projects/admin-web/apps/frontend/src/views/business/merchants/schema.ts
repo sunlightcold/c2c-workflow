@@ -275,11 +275,12 @@ export function rotateMerchantCredentialModalOptions(
   };
 }
 
-export function createPaymentPlanModalOptions(
+function paymentPlanModalOptions(
+  title: string,
   routes: SelectOption[],
 ): FormModalOptions {
   return {
-    props: { centered: true, title: '新增支付方案' },
+    props: { centered: true, title, zIndex: 2100 },
     formProps: {
       option: formOption,
       rule: [
@@ -296,4 +297,16 @@ export function createPaymentPlanModalOptions(
       ],
     },
   };
+}
+
+export function createPaymentPlanModalOptions(
+  routes: SelectOption[],
+): FormModalOptions {
+  return paymentPlanModalOptions('新增支付方案', routes);
+}
+
+export function editPaymentPlanModalOptions(
+  routes: SelectOption[],
+): FormModalOptions {
+  return paymentPlanModalOptions('编辑支付方案', routes);
 }

@@ -11,15 +11,18 @@ import {
   createMerchantApi,
   createPaymentPlanApi,
   deleteMerchantApi,
+  deletePaymentPlanApi,
   filterMerchantsApi,
   getMerchantCredentialsApi,
   getPaymentAccountsApi,
   getPaymentPlansApi,
   rotateMerchantCredentialApi,
   setMerchantStatusApi,
+  setPaymentPlanStatusApi,
   syncMerchantOrdersApi,
   testMerchantConnectionApi,
   updateMerchantApi,
+  updatePaymentPlanApi,
 } from '#/api';
 import {
   confirmResourceAction,
@@ -41,6 +44,7 @@ import {
   createMerchantAccountModalOptions,
   createPaymentPlanModalOptions,
   editMerchantAccountModalOptions,
+  editPaymentPlanModalOptions,
   rotateMerchantCredentialModalOptions,
 } from './schema';
 
@@ -204,8 +208,9 @@ const [Grid, gridApi] = useResourceGrid<
     pageSize: page.pageSize,
   }),
   query: async (params) => {
-    selectedTenantId.value = params.tenantId ?? '';
-    if (!params.tenantId) {
+    const tenantId = params.tenantId ?? selectedTenantId.value;
+    selectedTenantId.value = tenantId;
+    if (!tenantId) {
       return {
         items: [],
         meta: {
@@ -217,13 +222,14 @@ const [Grid, gridApi] = useResourceGrid<
       };
     }
     const { pageIndex, ...query } = params;
-    return filterMerchantsApi({ ...query, page: pageIndex });
+    return filterMerchantsApi({ ...query, page: pageIndex, tenantId });
   },
 });
 const { FormModalRender, formModalClose, formModalShow } = useFormModal();
 
 async function selectTenant(tenantId: string) {
   selectedTenantId.value = tenantId;
+  await gridApi.formApi.setFieldValue('tenantId', tenantId);
   await gridApi.query();
 }
 
@@ -421,16 +427,7 @@ function rotateCredential() {
 function createPaymentPlan() {
   const merchant = selectedMerchant.value;
   if (!merchant) return;
-  const routes = paymentAccounts.value.flatMap((account) =>
-    account.status === 'active'
-      ? account.channels
-          .filter((channel) => channel.status === 'active')
-          .map((channel) => ({
-            label: `${account.name} · ${channel.channelName ?? channel.channelCode}`,
-            value: `${account.id}:${channel.id}`,
-          }))
-      : [],
-  );
+  const routes = paymentPlanRouteOptions();
   formModalShow(createPaymentPlanModalOptions(routes), {
     onOk: async (api) => {
       await api.validate();
@@ -455,14 +452,94 @@ function createPaymentPlan() {
           }),
         onSuccess: async () => {
           formModalClose();
-          paymentPlans.value = await getPaymentPlansApi({
-            merchantId: merchant.id,
-            tenantId: selectedTenantId.value,
-          });
+          await reloadPaymentPlans();
         },
         successMessage: '支付方案已新增',
       });
     },
+  });
+}
+
+function paymentPlanRouteOptions() {
+  return paymentAccounts.value.flatMap((account) =>
+    account.status === 'active'
+      ? account.channels
+          .filter((channel) => channel.status === 'active')
+          .map((channel) => ({
+            label: `${account.name} · ${channel.channelName ?? channel.channelCode}`,
+            value: `${account.id}:${channel.id}`,
+          }))
+      : [],
+  );
+}
+
+async function reloadPaymentPlans() {
+  const merchant = selectedMerchant.value;
+  if (!merchant) return;
+  paymentPlans.value = await getPaymentPlansApi({
+    merchantId: merchant.id,
+    tenantId: selectedTenantId.value,
+  });
+}
+
+async function editPaymentPlan(plan: BusinessApi.PaymentPlan) {
+  const [formApi] = await formModalShow(
+    editPaymentPlanModalOptions(paymentPlanRouteOptions()),
+    {
+      onOk: async (api) => {
+        await api.validate();
+        const data = api.formData() as {
+          priority: number;
+          routeKey: string;
+          weight: number;
+        };
+        const [paymentAccountId, paymentAccountChannelId] =
+          data.routeKey.split(':');
+        await runResourceAction({
+          action: () =>
+            updatePaymentPlanApi(plan.id, {
+              paymentAccountChannelId: paymentAccountChannelId!,
+              paymentAccountId: paymentAccountId!,
+              priority: data.priority,
+              tenantId: selectedTenantId.value,
+              weight: data.weight,
+            }),
+          onSuccess: async () => {
+            formModalClose();
+            await reloadPaymentPlans();
+          },
+          successMessage: '支付方案已更新',
+        });
+      },
+    },
+  );
+  formApi?.setValue({
+    priority: plan.priority,
+    routeKey: `${plan.paymentAccountId}:${plan.paymentAccountChannelId}`,
+    weight: plan.weight,
+  });
+}
+
+function togglePaymentPlanStatus(plan: BusinessApi.PaymentPlan) {
+  const status = plan.status === 'active' ? 'disabled' : 'active';
+  return runResourceAction({
+    action: () =>
+      setPaymentPlanStatusApi(plan.id, status, selectedTenantId.value),
+    onSuccess: reloadPaymentPlans,
+    successMessage: status === 'active' ? '支付方案已启用' : '支付方案已停用',
+  });
+}
+
+function removePaymentPlan(plan: BusinessApi.PaymentPlan) {
+  confirmResourceAction({
+    action: () => deletePaymentPlanApi(plan.id, selectedTenantId.value),
+    content: '已被支付订单使用的方案不能删除，只能停用。',
+    okButtonProps: { danger: true },
+    okText: '删除',
+    onSuccess: reloadPaymentPlans,
+    successMessage: '支付方案已删除',
+    title: '确认删除支付方案吗？',
+    zIndex: 2100,
   });
 }
 
@@ -653,10 +730,11 @@ onMounted(async () => {
             />
             <ATable
               :data-source="paymentPlans"
+              data-testid="payment-plan-table"
               :pagination="false"
               row-key="id"
               size="small"
-              :scroll="{ x: 620 }"
+              :scroll="{ x: 820 }"
             >
               <ATableColumn key="account" title="支付账号" :width="180">
                 <template #default="{ record }">
@@ -681,7 +759,45 @@ onMounted(async () => {
               <ATableColumn data-index="weight" title="分配比例" :width="100" />
               <ATableColumn key="status" title="状态" :width="90">
                 <template #default="{ record }">
-                  {{ businessStatusText(record.status) }}
+                  <ATag :color="businessStatusColor(record.status)">
+                    {{ businessStatusText(record.status) }}
+                  </ATag>
+                </template>
+              </ATableColumn>
+              <ATableColumn
+                key="action"
+                fixed="right"
+                title="操作"
+                :width="210"
+              >
+                <template #default="{ record }">
+                  <ASpace :size="4">
+                    <AButton
+                      v-access:code="['payment:account:bind']"
+                      size="small"
+                      type="link"
+                      @click="editPaymentPlan(record)"
+                    >
+                      编辑
+                    </AButton>
+                    <AButton
+                      v-access:code="['payment:account:bind']"
+                      size="small"
+                      type="link"
+                      @click="togglePaymentPlanStatus(record)"
+                    >
+                      {{ record.status === 'active' ? '停用' : '启用' }}
+                    </AButton>
+                    <AButton
+                      v-access:code="['payment:account:bind']"
+                      danger
+                      size="small"
+                      type="link"
+                      @click="removePaymentPlan(record)"
+                    >
+                      删除
+                    </AButton>
+                  </ASpace>
                 </template>
               </ATableColumn>
             </ATable>

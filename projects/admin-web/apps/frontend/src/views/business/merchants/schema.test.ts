@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createMerchantAccountModalOptions,
+  createPaymentPlanModalOptions,
   editMerchantAccountModalOptions,
+  editPaymentPlanModalOptions,
   rotateMerchantCredentialModalOptions,
 } from './schema';
 
@@ -50,5 +52,18 @@ describe('merchant account form schemas', () => {
       expect.arrayContaining(['authorization', 'sessionCookie']),
     );
     expect([...binance, ...okx]).not.toContain('credentialRef');
+  });
+
+  it('renders payment plan forms above the merchant configuration drawer', () => {
+    const routes = [
+      { label: '主账号 · 支付宝批量有密', value: 'account:channel' },
+    ];
+    const create = createPaymentPlanModalOptions(routes);
+    const edit = editPaymentPlanModalOptions(routes);
+
+    expect(create.props.zIndex).toBeGreaterThan(1000);
+    expect(edit.props.zIndex).toBe(create.props.zIndex);
+    expect(edit.props.title).toBe('编辑支付方案');
+    expect(fields(edit)).toEqual(['routeKey', 'priority', 'weight']);
   });
 });
