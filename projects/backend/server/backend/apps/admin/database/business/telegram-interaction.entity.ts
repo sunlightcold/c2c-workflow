@@ -11,6 +11,7 @@ export enum TelegramInteractionState {
 
 export enum TelegramInteractionAction {
   CREATE_MANUAL_PAYMENTS = 'CREATE_MANUAL_PAYMENTS',
+  SUBMIT_PAYMENT_BATCHES = 'SUBMIT_PAYMENT_BATCHES',
 }
 
 @Entity('telegram_interaction_context')

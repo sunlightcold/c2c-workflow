@@ -3,6 +3,7 @@ import {
   PaymentOrderEntity,
   PaymentSourceType,
   TelegramBotEntity,
+  TelegramInteractionAction,
   TelegramInteractionState,
 } from '@admin/database'
 import { Inject, Injectable } from '@nestjs/common'
@@ -73,6 +74,7 @@ export class TelegramManualPaymentService {
       return this.createPayments(input, accepted, errors)
     }
     const interaction = await this.interactions.create({
+      action: TelegramInteractionAction.CREATE_MANUAL_PAYMENTS,
       tenantId: input.bot.tenantId,
       botId: input.bot.id,
       groupId: input.authorization.group.id,
@@ -106,6 +108,7 @@ export class TelegramManualPaymentService {
   ): Promise<TelegramManualPaymentReply> {
     if (!this.canCreate(input.authorization)) return { text: '您没有创建支付订单的权限' }
     const interaction = await this.interactions.acquire({
+      action: TelegramInteractionAction.CREATE_MANUAL_PAYMENTS,
       id: input.interactionId,
       botId: input.bot.id,
       chatId: input.message.chatId,
@@ -126,6 +129,7 @@ export class TelegramManualPaymentService {
 
   cancel(input: ManualPaymentContext & { interactionId: string }) {
     return this.interactions.cancel({
+      action: TelegramInteractionAction.CREATE_MANUAL_PAYMENTS,
       id: input.interactionId,
       botId: input.bot.id,
       chatId: input.message.chatId,

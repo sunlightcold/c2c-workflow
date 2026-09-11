@@ -28,6 +28,7 @@ describe('migration data source', () => {
         'C2cTelegramAdministration1789008000000',
         'C2cTelegramUpdateInbox1789009000000',
         'C2cTelegramInteractions1789010000000',
+        'C2cTelegramBatchInteractions1789011000000',
       ])
     } finally {
       if (originalNodeEnv === undefined) delete process.env.NODE_ENV

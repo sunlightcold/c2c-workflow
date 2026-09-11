@@ -8,8 +8,9 @@ import {
 import { migrateC2cPaymentOrders } from '@/apps/admin/database/migrations/c2c-payment-orders.migration'
 import { migrateTelegramAdministration } from '@/apps/admin/database/migrations/c2c-telegram-administration.migration'
 import { migrateTelegramInteractions } from '@/apps/admin/database/migrations/c2c-telegram-interactions.migration'
+import { migrateTelegramBatchInteractions } from '@/apps/admin/database/migrations/c2c-telegram-batch-interactions.migration'
 import { TelegramInteractionService } from '@/apps/admin/modules/telegram/telegram-interaction.service'
-import { TelegramInteractionState } from '@admin/database'
+import { TelegramInteractionAction, TelegramInteractionState } from '@admin/database'
 import developmentConfig from '@/config/development'
 import { DataSource } from 'typeorm'
 
@@ -38,6 +39,8 @@ describe('Telegram interaction database integration', () => {
       await migrateTelegramAdministration(manager)
       await migrateTelegramInteractions(manager)
       await migrateTelegramInteractions(manager)
+      await migrateTelegramBatchInteractions(manager)
+      await migrateTelegramBatchInteractions(manager)
     })
   })
 
@@ -90,6 +93,7 @@ describe('Telegram interaction database integration', () => {
       botId,
       chatId: '-1001',
       telegramUserId: '88',
+      action: TelegramInteractionAction.CREATE_MANUAL_PAYMENTS,
     }
 
     await expect(service.acquire(input)).resolves.toMatchObject({

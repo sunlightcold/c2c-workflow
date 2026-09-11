@@ -19,6 +19,7 @@ import { C2cMerchantOrderAppeals1789007000000 } from './c2c-merchant-order-appea
 import { C2cTelegramAdministration1789008000000 } from './c2c-telegram-administration.migration'
 import { C2cTelegramUpdateInbox1789009000000 } from './c2c-telegram-update-inbox.migration'
 import { C2cTelegramInteractions1789010000000 } from './c2c-telegram-interactions.migration'
+import { C2cTelegramBatchInteractions1789011000000 } from './c2c-telegram-batch-interactions.migration'
 
 export type AdminMigrationConstructor = new () => MigrationInterface
 
@@ -43,4 +44,5 @@ export const adminMigrations: AdminMigrationConstructor[] = [
   C2cTelegramAdministration1789008000000,
   C2cTelegramUpdateInbox1789009000000,
   C2cTelegramInteractions1789010000000,
+  C2cTelegramBatchInteractions1789011000000,
 ]

@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, Repository } from 'typeorm'
 
 interface CreateTelegramInteractionInput {
+  action: TelegramInteractionAction
   botId: string
   chatId: string
   groupId: string
@@ -18,6 +19,7 @@ interface CreateTelegramInteractionInput {
 }
 
 interface AcquireTelegramInteractionInput {
+  action: TelegramInteractionAction
   botId: string
   chatId: string
   id: string
@@ -35,7 +37,7 @@ export class TelegramInteractionService {
   create(input: CreateTelegramInteractionInput) {
     const interaction = this.interactions.create({
       ...input,
-      action: TelegramInteractionAction.CREATE_MANUAL_PAYMENTS,
+      action: input.action,
       state: TelegramInteractionState.PENDING,
       expiresAt: new Date(Date.now() + 10 * 60 * 1000),
       lastError: null,
@@ -49,6 +51,7 @@ export class TelegramInteractionService {
        SET state = $5, "updatedAt" = now()
        WHERE id = $1 AND "botId" = $2 AND "chatId" = $3 AND "telegramUserId" = $4
          AND (state = $6 OR (state = $5 AND "updatedAt" < now() - interval '5 minutes'))
+         AND action = $7
          AND "expiresAt" > now()
        RETURNING *`,
       [
@@ -58,6 +61,7 @@ export class TelegramInteractionService {
         input.telegramUserId,
         TelegramInteractionState.SUBMITTING,
         TelegramInteractionState.PENDING,
+        input.action,
       ],
     )) as [TelegramInteractionContextEntity[], number]
     return rows[0] ?? null
@@ -81,7 +85,7 @@ export class TelegramInteractionService {
       `UPDATE telegram_interaction_context
        SET state = $5, "updatedAt" = now()
        WHERE id = $1 AND "botId" = $2 AND "chatId" = $3 AND "telegramUserId" = $4
-         AND state = $6`,
+         AND state = $6 AND action = $7`,
       [
         input.id,
         input.botId,
@@ -89,6 +93,7 @@ export class TelegramInteractionService {
         input.telegramUserId,
         TelegramInteractionState.CANCELLED,
         TelegramInteractionState.PENDING,
+        input.action,
       ],
     )) as [unknown[], number]
     return count > 0

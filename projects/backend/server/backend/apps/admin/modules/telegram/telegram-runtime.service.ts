@@ -6,6 +6,8 @@ import { TelegramApiClient } from './telegram-api.client'
 import { TelegramAuthorizationService } from './telegram-authorization.service'
 import { TelegramCapability } from './telegram-policy'
 import { TelegramManualPaymentService } from './telegram-manual-payment.service'
+import { TelegramBatchPaymentService } from './telegram-batch-payment.service'
+import { TelegramQueryService } from './telegram-query.service'
 
 interface TelegramUpdateInput {
   botId: string
@@ -42,6 +44,8 @@ export class TelegramRuntimeService {
     private readonly authorization: TelegramAuthorizationService,
     private readonly telegram: TelegramApiClient,
     private readonly manualPayments: TelegramManualPaymentService,
+    private readonly batchPayments: TelegramBatchPaymentService,
+    private readonly queries: TelegramQueryService,
   ) {}
 
   async handle(update: TelegramUpdateInput): Promise<void> {
@@ -74,6 +78,45 @@ export class TelegramRuntimeService {
       await this.reply(bot.tokenRef, message, '您没有权限使用当前机器人')
       return
     }
+    if (command === '/query') {
+      await this.reply(
+        bot.tokenRef,
+        message,
+        authorization.capabilities.includes(TelegramCapability.ORDER_QUERY)
+          ? await this.queries.query(
+              bot.tenantId,
+              authorization.group.merchantId,
+              this.commandArgument(message.text),
+            )
+          : '您没有查询支付订单的权限',
+      )
+      return
+    }
+    if (command === '/stats') {
+      await this.reply(
+        bot.tokenRef,
+        message,
+        authorization.capabilities.includes(TelegramCapability.PAYMENT_STATISTICS)
+          ? await this.queries.todayStats(bot.tenantId, authorization.group.merchantId)
+          : '您没有查看支付统计的权限',
+      )
+      return
+    }
+    if (command === '/status') {
+      await this.reply(
+        bot.tokenRef,
+        message,
+        authorization.capabilities.includes(TelegramCapability.BOT_STATUS_MANAGE)
+          ? this.queries.status(bot.code, authorization.group.name)
+          : '您没有查看机器人状态的权限',
+      )
+      return
+    }
+    if (command === '/submitbatch') {
+      const result = await this.batchPayments.prepare({ bot, authorization, message })
+      await this.reply(bot.tokenRef, message, result.text, result.replyMarkup)
+      return
+    }
     if (command !== '/help') {
       if (message.text.includes('\n')) {
         const result = await this.manualPayments.prepare({
@@ -97,14 +140,38 @@ export class TelegramRuntimeService {
   }
 
   private async handleCallback(bot: TelegramBotEntity, message: TelegramCallbackMessage) {
-    const match = /^payment:(confirm|cancel):([0-9a-f-]{36})$/.exec(message.data)
+    const match = /^(payment|batch):(confirm|cancel):([0-9a-f-]{36})$/.exec(message.data)
     if (!match) return
     const authorization = await this.authorization.authorize(bot, message.chatId, message.userId)
     if (!authorization.allowed) {
       await this.reply(bot.tokenRef, message, '您没有权限执行该操作')
       return
     }
-    const [, action, interactionId] = match
+    const [, type, action, interactionId] = match
+    if (type === 'batch') {
+      if (action === 'cancel') {
+        const cancelled = await this.batchPayments.cancel({
+          interactionId,
+          bot,
+          authorization,
+          message,
+        })
+        await this.reply(
+          bot.tokenRef,
+          message,
+          cancelled ? '已取消，本次未提交支付批次' : '该批次确认已处理或已失效',
+        )
+        return
+      }
+      const result = await this.batchPayments.confirm({
+        interactionId,
+        bot,
+        authorization,
+        message,
+      })
+      await this.reply(bot.tokenRef, message, result.text)
+      return
+    }
     if (action === 'cancel') {
       const cancelled = await this.manualPayments.cancel({
         interactionId,
@@ -126,6 +193,10 @@ export class TelegramRuntimeService {
       message,
     })
     await this.reply(bot.tokenRef, message, result.text)
+  }
+
+  private commandArgument(text: string): string {
+    return text.split(/\s+/).slice(1).join(' ').trim()
   }
 
   private reply(

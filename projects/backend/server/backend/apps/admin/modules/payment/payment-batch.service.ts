@@ -14,6 +14,7 @@ import {
   PaymentExecutionMode,
   PaymentOrderEntity,
   PaymentOrderStatus,
+  PaymentSourceType,
   PaymentPlatformEntity,
 } from '@admin/database'
 import {
@@ -31,9 +32,66 @@ export interface PaymentBatchView {
   items: PaymentBatchItemEntity[]
 }
 
+export interface ReadyPaymentBatchGroup {
+  paymentOrderIds: string[]
+  totalAmount: string
+}
+
 @Injectable()
 export class PaymentBatchService {
   constructor(private readonly dataSource: DataSource) {}
+
+  async findReadyGroups(
+    tenantId: string,
+    merchantId: string,
+    sourceType: PaymentSourceType,
+  ): Promise<ReadyPaymentBatchGroup[]> {
+    const orders = await this.dataSource
+      .getRepository(PaymentOrderEntity)
+      .createQueryBuilder('payment_order')
+      .where('payment_order."tenantId" = :tenantId', { tenantId })
+      .andWhere('payment_order."merchantId" = :merchantId', { merchantId })
+      .andWhere('payment_order."sourceType" = :sourceType', { sourceType })
+      .andWhere('payment_order.status = :status', { status: PaymentOrderStatus.READY })
+      .andWhere('payment_order."executionMode" = :executionMode', {
+        executionMode: PaymentExecutionMode.BATCH,
+      })
+      .andWhere('payment_order."paymentMethod" = :paymentMethod', {
+        paymentMethod: 'ALIPAY',
+      })
+      .andWhere('payment_order.currency = :currency', { currency: 'CNY' })
+      .andWhere('payment_order."paymentAccountId" IS NOT NULL')
+      .andWhere('payment_order."paymentAccountChannelId" IS NOT NULL')
+      .andWhere(
+        `NOT EXISTS (
+          SELECT 1 FROM payment_batch_item active_item
+          WHERE active_item."paymentOrderId" = payment_order.id
+            AND active_item.status IN (:...activeItemStatuses)
+        )`,
+        {
+          activeItemStatuses: [
+            PaymentBatchItemStatus.QUEUED,
+            PaymentBatchItemStatus.SUBMITTING,
+            PaymentBatchItemStatus.PROCESSING,
+            PaymentBatchItemStatus.UNKNOWN,
+          ],
+        },
+      )
+      .orderBy('payment_order."createdAt"', 'ASC')
+      .take(500)
+      .getMany()
+    const groups = new Map<string, PaymentOrderEntity[]>()
+    for (const order of orders) {
+      const key = [order.paymentAccountId, order.paymentAccountChannelId, order.currency].join(':')
+      const group = groups.get(key) ?? []
+      group.push(order)
+      groups.set(key, group)
+    }
+    return [...groups.values()].map((group) => ({
+      paymentOrderIds: group.map(({ id }) => id),
+      totalAmount: sumCnyAmounts(group.map(({ amount }) => amount)),
+    }))
+  }
 
   async list(tenantId: string, input: PaymentBatchListDto) {
     const [items, total] = await this.dataSource.getRepository(PaymentBatchEntity).findAndCount({

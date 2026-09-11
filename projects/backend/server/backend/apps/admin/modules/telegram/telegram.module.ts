@@ -1,5 +1,7 @@
 import {
   MerchantEntity,
+  PaymentBatchEntity,
+  PaymentOrderEntity,
   SysUserEntity,
   TelegramBotEntity,
   TelegramGroupEntity,
@@ -26,6 +28,8 @@ import { TelegramWebhookController } from './telegram-webhook.controller'
 import { TelegramRuntimeService } from './telegram-runtime.service'
 import { TelegramInteractionService } from './telegram-interaction.service'
 import { TelegramManualPaymentService } from './telegram-manual-payment.service'
+import { TelegramBatchPaymentService } from './telegram-batch-payment.service'
+import { TelegramQueryService } from './telegram-query.service'
 
 @Module({
   imports: [
@@ -33,6 +37,8 @@ import { TelegramManualPaymentService } from './telegram-manual-payment.service'
     PaymentModule,
     TypeOrmModule.forFeature([
       MerchantEntity,
+      PaymentBatchEntity,
+      PaymentOrderEntity,
       SysUserEntity,
       TelegramBotEntity,
       TelegramGroupEntity,
@@ -56,6 +62,8 @@ import { TelegramManualPaymentService } from './telegram-manual-payment.service'
     TelegramRuntimeService,
     TelegramInteractionService,
     TelegramManualPaymentService,
+    TelegramBatchPaymentService,
+    TelegramQueryService,
   ],
   exports: [
     TelegramBotService,

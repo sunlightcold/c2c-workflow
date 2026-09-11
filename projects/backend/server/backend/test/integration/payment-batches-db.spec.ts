@@ -14,6 +14,7 @@ import {
   PaymentChannelEntity,
   PaymentOrderEntity,
   PaymentOrderStatusHistoryEntity,
+  PaymentSourceType,
   PaymentPlatformEntity,
 } from '@/apps/admin/database'
 import {
@@ -212,6 +213,23 @@ describe('Payment batch migration database integration', () => {
         [result.batch.id],
       ),
     ).resolves.toEqual([{ fromStatus: null, toStatus: 'READY' }])
+  })
+
+  it('offers only unbatched ready orders to automatic batch submission', async () => {
+    await expect(
+      service.findReadyGroups(tenantId, merchantId, PaymentSourceType.BOT_MANUAL),
+    ).resolves.toEqual([{ paymentOrderIds: [orderId], totalAmount: '100.00' }])
+    const created = await service.create(tenantId, [orderId])
+
+    await expect(
+      service.findReadyGroups(tenantId, merchantId, PaymentSourceType.BOT_MANUAL),
+    ).resolves.toEqual([])
+    await dataSource.query(`UPDATE payment_batch_item SET status = 'FAILED' WHERE "batchId" = $1`, [
+      created.batch.id,
+    ])
+    await expect(
+      service.findReadyGroups(tenantId, merchantId, PaymentSourceType.BOT_MANUAL),
+    ).resolves.toEqual([{ paymentOrderIds: [orderId], totalAmount: '100.00' }])
   })
 
   it('lists and reads only payment batches from the requested tenant', async () => {
