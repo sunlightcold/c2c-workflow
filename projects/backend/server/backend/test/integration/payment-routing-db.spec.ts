@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 
 import {
+  BusinessStatus,
   MerchantEntity,
   MerchantPaymentPlanEntity,
   PaymentAccountChannelEntity,
@@ -206,6 +207,36 @@ describe('Payment routing database integration', () => {
     )
   })
 
+  it('updates, disables and deletes an unused payment plan only inside its tenant', async () => {
+    const otherTenantId = '00000000-0000-4000-8000-000000000999'
+    const plan = await paymentConfig.createPlan(tenantId, {
+      merchantId,
+      paymentAccountId: instantAccountId,
+      paymentAccountChannelId: instantAccountChannelId,
+      scene: 'REFUND',
+      currency: 'CNY',
+      priority: 100,
+      weight: 100,
+    })
+
+    await expect(
+      paymentConfig.updatePlan(otherTenantId, plan.id, { priority: 20 }),
+    ).rejects.toThrow('支付方案不存在')
+    await expect(paymentConfig.removePlan(otherTenantId, plan.id)).rejects.toThrow('支付方案不存在')
+
+    await expect(
+      paymentConfig.updatePlan(tenantId, plan.id, { priority: 20, weight: 60 }),
+    ).resolves.toMatchObject({ priority: 20, weight: 60 })
+    await expect(
+      paymentConfig.setPlanStatus(tenantId, plan.id, BusinessStatus.DISABLED),
+    ).resolves.toMatchObject({ status: BusinessStatus.DISABLED })
+
+    await paymentConfig.removePlan(tenantId, plan.id)
+    await expect(
+      dataSource.getRepository(MerchantPaymentPlanEntity).findOneBy({ id: plan.id, tenantId }),
+    ).resolves.toBeNull()
+  })
+
   it('creates one order when the same source is requested concurrently', async () => {
     const input = {
       merchantId,
@@ -244,6 +275,25 @@ describe('Payment routing database integration', () => {
         [results[0].id],
       ),
     ).resolves.toEqual([{ fromStatus: null, toStatus: 'READY' }])
+  })
+
+  it('rejects deleting a payment plan referenced by an order', async () => {
+    const order = await orders.create(tenantId, {
+      merchantId,
+      sourceType: PaymentSourceType.BOT_MANUAL,
+      sourceBusinessNo: 'manual-plan-reference-1',
+      amount: '88.00',
+      currency: 'CNY',
+      paymentMethod: 'ALIPAY',
+      executionMode: PaymentExecutionMode.BATCH,
+      payeeIdentity: 'payee@example.com',
+      payeeName: 'Payee',
+    })
+
+    expect(order.paymentPlanId).not.toBeNull()
+    await expect(paymentConfig.removePlan(tenantId, order.paymentPlanId!)).rejects.toThrow(
+      '支付方案已被支付订单使用，不能删除，可停用该方案',
+    )
   })
 
   it('lists and reads only payment orders from the requested tenant', async () => {
