@@ -386,10 +386,12 @@ export namespace BusinessApi {
     chatId: null | string;
     chatType: null | string;
     createdAt: string;
+    description: null | string;
     id: string;
     merchantId: string;
     name: string;
     notificationsEnabled: boolean;
+    notificationEvents: string[];
     paymentScene: PaymentSourceType;
     tenantId: string;
     updatedAt: string;
@@ -414,6 +416,11 @@ export namespace BusinessApi {
     telegramUserId: string;
     telegramUsername: null | string;
     userId: number;
+  }
+  export interface TelegramEligibleUser {
+    id: number;
+    nickname: string;
+    username: string;
   }
 }
 
@@ -762,7 +769,13 @@ export interface TelegramPageQuery extends BusinessApi.TenantContext {
   page: number;
   pageSize: number;
 }
-export async function getTelegramBotsApi(params: TelegramPageQuery) {
+export async function getTelegramBotsApi(
+  params: TelegramPageQuery & {
+    code?: string;
+    name?: string;
+    status?: BusinessApi.BusinessStatus;
+  },
+) {
   return toPagination<BusinessApi.TelegramBot>(
     await requestClient.get('/sys/tg/bots', { params }),
   );
@@ -770,6 +783,7 @@ export async function getTelegramBotsApi(params: TelegramPageQuery) {
 export const createTelegramBotApi = (
   data: BusinessApi.TenantContext & {
     batchSubmitRequireConfirmation?: boolean;
+    botType: BusinessApi.TelegramBotType;
     capabilities: BusinessApi.TelegramCapability[];
     code: string;
     description?: string;
@@ -780,6 +794,21 @@ export const createTelegramBotApi = (
     webhookUrl?: string;
   },
 ) => requestClient.post<BusinessApi.TelegramBot>('/sys/tg/bots', data);
+export const updateTelegramBotApi = (
+  id: string,
+  data: BusinessApi.TenantContext &
+    Partial<{
+      batchSubmitRequireConfirmation: boolean;
+      botType: BusinessApi.TelegramBotType;
+      capabilities: BusinessApi.TelegramCapability[];
+      description: string;
+      name: string;
+      paymentOrderRequireConfirmation: boolean;
+      tokenRef: string;
+      webhookSecretRef: string;
+      webhookUrl: string;
+    }>,
+) => requestClient.put<BusinessApi.TelegramBot>(`/sys/tg/bots/${id}`, data);
 export const setTelegramBotStatusApi = (
   id: string,
   status: BusinessApi.BusinessStatus,
@@ -797,28 +826,161 @@ export async function getTelegramGroupsApi(
     bindingState?: BusinessApi.TelegramGroupBindingState;
     botId?: string;
     merchantId?: string;
+    name?: string;
   },
 ) {
   return toPagination<BusinessApi.TelegramGroup>(
     await requestClient.get('/sys/tg/groups', { params }),
   );
 }
+export const createTelegramGroupApi = (
+  data: BusinessApi.TenantContext & {
+    botId: string;
+    capabilities: BusinessApi.TelegramCapability[];
+    description?: string;
+    merchantId: string;
+    name: string;
+    notificationEvents?: string[];
+    notificationsEnabled?: boolean;
+    paymentScene: 'BOT_MANUAL' | 'C2C_BUY';
+  },
+) =>
+  requestClient.post<BusinessApi.TelegramGroup & { verificationCode: string }>(
+    '/sys/tg/groups',
+    data,
+  );
+export const updateTelegramGroupApi = (
+  id: string,
+  data: BusinessApi.TenantContext &
+    Partial<{
+      botId: string;
+      capabilities: BusinessApi.TelegramCapability[];
+      description: string;
+      merchantId: string;
+      name: string;
+      notificationEvents: string[];
+      notificationsEnabled: boolean;
+      paymentScene: 'BOT_MANUAL' | 'C2C_BUY';
+    }>,
+) => requestClient.put<BusinessApi.TelegramGroup>(`/sys/tg/groups/${id}`, data);
+export const approveTelegramGroupApi = (
+  id: string,
+  data: BusinessApi.TenantContext & {
+    chatId: string;
+    chatName?: string;
+    chatType?: 'group' | 'supergroup';
+  },
+) =>
+  requestClient.post<BusinessApi.TelegramGroup>(
+    `/sys/tg/groups/${id}/approve`,
+    data,
+  );
+export const unbindTelegramGroupApi = (id: string, tenantId?: string) =>
+  requestClient.delete(`/sys/tg/groups/${id}`, { params: { tenantId } });
 export async function getTelegramMembersApi(
   params: TelegramPageQuery & {
     groupId?: string;
     role?: BusinessApi.TelegramGroupRole;
+    status?: BusinessApi.BusinessStatus;
+    telegramUserId?: string;
   },
 ) {
   return toPagination<BusinessApi.TelegramMember>(
     await requestClient.get('/sys/tg/members', { params }),
   );
 }
+export const createTelegramMemberApi = (
+  data: BusinessApi.TenantContext & {
+    capabilities: BusinessApi.TelegramCapability[];
+    displayName?: string;
+    groupId: string;
+    role: BusinessApi.TelegramGroupRole;
+    telegramUserId: string;
+    telegramUsername?: string;
+    userId: number;
+  },
+) => requestClient.post<BusinessApi.TelegramMember>('/sys/tg/members', data);
+export const updateTelegramMemberApi = (
+  id: string,
+  data: BusinessApi.TenantContext &
+    Partial<{
+      capabilities: BusinessApi.TelegramCapability[];
+      displayName: string;
+      role: BusinessApi.TelegramGroupRole;
+      telegramUserId: string;
+      telegramUsername: string;
+    }>,
+) =>
+  requestClient.put<BusinessApi.TelegramMember>(`/sys/tg/members/${id}`, data);
+export const setTelegramMemberStatusApi = (
+  id: string,
+  status: BusinessApi.BusinessStatus,
+  tenantId?: string,
+) =>
+  requestClient.request(`/sys/tg/members/${id}/status`, {
+    method: 'PATCH',
+    params: { tenantId },
+    data: { status },
+  });
+export const deleteTelegramMemberApi = (id: string, tenantId?: string) =>
+  requestClient.delete(`/sys/tg/members/${id}`, { params: { tenantId } });
+export const getTelegramMemberEligibleUsersApi = (tenantId?: string) =>
+  requestClient.get<BusinessApi.TelegramEligibleUser[]>(
+    '/sys/tg/members/eligible-users',
+    { params: { tenantId } },
+  );
 export async function getTelegramSuperAdminsApi(
   params: TelegramPageQuery & {
     scopeType?: BusinessApi.TelegramSuperAdminScopeType;
+    status?: BusinessApi.BusinessStatus;
+    telegramUserId?: string;
   },
 ) {
   return toPagination<BusinessApi.TelegramSuperAdmin>(
     await requestClient.get('/sys/tg/super-admins', { params }),
   );
 }
+export const createTelegramSuperAdminApi = (
+  data: BusinessApi.TenantContext & {
+    groupIds: string[];
+    scopeType: BusinessApi.TelegramSuperAdminScopeType;
+    telegramUserId: string;
+    telegramUsername?: string;
+    userId: number;
+  },
+) =>
+  requestClient.post<BusinessApi.TelegramSuperAdmin>(
+    '/sys/tg/super-admins',
+    data,
+  );
+export const updateTelegramSuperAdminApi = (
+  id: string,
+  data: BusinessApi.TenantContext &
+    Partial<{
+      groupIds: string[];
+      scopeType: BusinessApi.TelegramSuperAdminScopeType;
+      telegramUserId: string;
+      telegramUsername: string;
+    }>,
+) =>
+  requestClient.put<BusinessApi.TelegramSuperAdmin>(
+    `/sys/tg/super-admins/${id}`,
+    data,
+  );
+export const setTelegramSuperAdminStatusApi = (
+  id: string,
+  status: BusinessApi.BusinessStatus,
+  tenantId?: string,
+) =>
+  requestClient.request(`/sys/tg/super-admins/${id}/status`, {
+    method: 'PATCH',
+    params: { tenantId },
+    data: { status },
+  });
+export const deleteTelegramSuperAdminApi = (id: string, tenantId?: string) =>
+  requestClient.delete(`/sys/tg/super-admins/${id}`, { params: { tenantId } });
+export const getTelegramSuperAdminEligibleUsersApi = (tenantId?: string) =>
+  requestClient.get<BusinessApi.TelegramEligibleUser[]>(
+    '/sys/tg/super-admins/eligible-users',
+    { params: { tenantId } },
+  );

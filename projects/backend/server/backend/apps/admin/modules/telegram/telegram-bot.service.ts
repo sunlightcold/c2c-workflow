@@ -6,7 +6,7 @@ import {
 } from '@admin/database'
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { ILike, In, Repository } from 'typeorm'
+import { In, Repository } from 'typeorm'
 import type { CreateTelegramBotDto, TelegramBotListDto, UpdateTelegramBotDto } from './telegram.dto'
 import {
   assertBotCapabilities,
@@ -24,23 +24,20 @@ export class TelegramBotService {
   ) {}
 
   async list(tenantId: string, input: TelegramBotListDto) {
-    const [items, total] = await this.bots.findAndCount({
-      where: {
-        tenantId,
-        ...(input.name ? { name: ILike(`%${input.name}%`) } : {}),
-        ...(input.code ? { code: ILike(`%${input.code}%`) } : {}),
-        ...(input.status ? { status: input.status } : {}),
-      },
-      order: { createdAt: 'DESC' },
-      skip: (input.page - 1) * input.pageSize,
-      take: input.pageSize,
-    })
+    const query = this.bots
+      .createQueryBuilder('bot')
+      .addSelect(['bot.tokenRef', 'bot.webhookSecretRef'])
+      .where('bot."tenantId" = :tenantId', { tenantId })
+    if (input.name) query.andWhere('bot.name ILIKE :name', { name: `%${input.name}%` })
+    if (input.code) query.andWhere('bot.code ILIKE :code', { code: `%${input.code}%` })
+    if (input.status) query.andWhere('bot.status = :status', { status: input.status })
+    const [items, total] = await query
+      .orderBy('bot.createdAt', 'DESC')
+      .skip((input.page - 1) * input.pageSize)
+      .take(input.pageSize)
+      .getManyAndCount()
     return {
-      items: items.map((item) => ({
-        ...item,
-        tokenConfigured: true,
-        webhookSecretConfigured: true,
-      })),
+      items: items.map((item) => this.publicView(item)),
       total,
       page: input.page,
       pageSize: input.pageSize,

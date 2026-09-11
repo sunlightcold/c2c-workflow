@@ -32,6 +32,30 @@ const pages = [
     '/business/payment-batches',
     'payment:batch',
   ],
+  [
+    '机器人实例',
+    '/business/telegram-bots',
+    '/business/telegram-bots',
+    'telegram:bot',
+  ],
+  [
+    '群组绑定',
+    '/business/telegram-groups',
+    '/business/telegram-groups',
+    'telegram:group',
+  ],
+  [
+    '群组成员',
+    '/business/telegram-members',
+    '/business/telegram-members',
+    'telegram:member',
+  ],
+  [
+    '超级管理员',
+    '/business/telegram-super-admins',
+    '/business/telegram-super-admins',
+    'telegram:superAdmin',
+  ],
 ] as const;
 
 const permissions = [
@@ -58,6 +82,23 @@ const permissions = [
   'payment:batch:create',
   'payment:batch:submit',
   'payment:batch:retry',
+  'telegram:bot:read',
+  'telegram:bot:create',
+  'telegram:bot:update',
+  'telegram:bot:delete',
+  'telegram:group:read',
+  'telegram:group:create',
+  'telegram:group:update',
+  'telegram:group:approve',
+  'telegram:group:unbind',
+  'telegram:member:read',
+  'telegram:member:create',
+  'telegram:member:update',
+  'telegram:member:delete',
+  'telegram:superAdmin:read',
+  'telegram:superAdmin:create',
+  'telegram:superAdmin:update',
+  'telegram:superAdmin:delete',
 ];
 
 function ok(data: unknown) {
@@ -170,7 +211,21 @@ test.beforeEach(async ({ page }) => {
         break;
       }
       case '/sys/merchants': {
-        data = { items: [], page: 1, pageSize: 100, total: 0 };
+        data = {
+          items: [
+            {
+              accountCode: 'BINANCE_MAIN',
+              id: '00000000-0000-4000-8000-000000000020',
+              name: '币安主账号',
+              platform: 'BINANCE',
+              status: 'active',
+              tenantId,
+            },
+          ],
+          page: 1,
+          pageSize: 100,
+          total: 1,
+        };
         break;
       }
       case '/sys/payment-accounts': {
@@ -254,6 +309,106 @@ test.beforeEach(async ({ page }) => {
         ];
         break;
       }
+      case '/sys/tg/bots': {
+        data = {
+          items: [
+            {
+              batchSubmitRequireConfirmation: true,
+              botType: 'PAYMENT',
+              capabilities: ['MANUAL_PAYMENT', 'PAYMENT_BATCH_SUBMIT'],
+              code: 'PAYMENT_MAIN',
+              createdAt: '2026-09-10T08:00:00.000Z',
+              description: null,
+              id: '00000000-0000-4000-8000-000000000201',
+              language: 'zh-CN',
+              name: '总部支付机器人',
+              paymentOrderRequireConfirmation: true,
+              status: 'active',
+              tenantId,
+              tokenConfigured: true,
+              updatedAt: '2026-09-10T08:00:00.000Z',
+              webhookSecretConfigured: true,
+              webhookUrl:
+                'http://127.0.0.1:13001/v1/webhooks/telegram/PAYMENT_MAIN',
+            },
+          ],
+          page: 1,
+          pageSize: 20,
+          total: 1,
+        };
+        break;
+      }
+      case '/sys/tg/groups': {
+        data = {
+          items: [
+            {
+              bindingState: 'PENDING',
+              botId: '00000000-0000-4000-8000-000000000201',
+              capabilities: ['MANUAL_PAYMENT'],
+              chatId: null,
+              chatType: null,
+              createdAt: '2026-09-10T08:00:00.000Z',
+              id: '00000000-0000-4000-8000-000000000202',
+              merchantId: '00000000-0000-4000-8000-000000000020',
+              name: '总部支付群',
+              notificationsEnabled: true,
+              paymentScene: 'BOT_MANUAL',
+              tenantId,
+              updatedAt: '2026-09-10T08:00:00.000Z',
+              verifiedAt: null,
+            },
+          ],
+          page: 1,
+          pageSize: 20,
+          total: 1,
+        };
+        break;
+      }
+      case '/sys/tg/members': {
+        data = {
+          items: [
+            {
+              capabilities: ['MANUAL_PAYMENT'],
+              displayName: '值班员',
+              groupId: '00000000-0000-4000-8000-000000000202',
+              id: '00000000-0000-4000-8000-000000000203',
+              role: 'OPERATOR',
+              status: 'active',
+              telegramUserId: '123456789',
+              telegramUsername: 'operator',
+              userId: 2,
+            },
+          ],
+          page: 1,
+          pageSize: 20,
+          total: 1,
+        };
+        break;
+      }
+      case '/sys/tg/members/eligible-users':
+      case '/sys/tg/super-admins/eligible-users': {
+        data = [{ id: 2, nickname: '平台运营', username: 'operator' }];
+        break;
+      }
+      case '/sys/tg/super-admins': {
+        data = {
+          items: [
+            {
+              groupIds: ['00000000-0000-4000-8000-000000000202'],
+              id: '00000000-0000-4000-8000-000000000204',
+              scopeType: 'SPECIFIED_GROUPS',
+              status: 'active',
+              telegramUserId: '987654321',
+              telegramUsername: 'supervisor',
+              userId: 3,
+            },
+          ],
+          page: 1,
+          pageSize: 20,
+          total: 1,
+        };
+        break;
+      }
       case '/sys/users/info': {
         data = {
           actorType: 'PLATFORM',
@@ -288,7 +443,7 @@ test.afterEach(async ({ page }) => {
   expect(pageErrors.get(page) ?? []).toEqual([]);
 });
 
-test('loads the six second-level business pages under one menu', async ({
+test('loads all second-level business pages under one menu', async ({
   page,
 }, testInfo) => {
   if (testInfo.project.name === 'desktop-chromium') {
@@ -409,9 +564,78 @@ test('loads the six second-level business pages under one menu', async ({
     .click();
   await expect(
     page.getByRole('button', { name: '新增手工支付' }),
-  ).toBeDisabled();
+  ).toBeEnabled();
+  await page.getByRole('button', { name: '新增手工支付' }).click();
+  const createPaymentDialog = page.getByRole('dialog', {
+    name: '新增手工支付',
+  });
+  await expect(createPaymentDialog).toBeVisible();
+  await expect(
+    createPaymentDialog.getByText('币安主账号 · 币安', { exact: true }),
+  ).toBeVisible();
   const hasGlobalHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,
   );
   expect(hasGlobalHorizontalOverflow).toBe(false);
+});
+
+test('provides complete Telegram administration actions', async ({ page }) => {
+  const assertions = [
+    {
+      create: '新增机器人',
+      editDialog: '编辑支付机器人',
+      path: '/business/telegram-bots',
+      rowText: '总部支付机器人',
+    },
+    {
+      create: '新增群组绑定',
+      editDialog: '编辑群组绑定',
+      path: '/business/telegram-groups',
+      rowText: '总部支付群',
+    },
+    {
+      create: '新增群组成员',
+      editDialog: '编辑群组成员',
+      path: '/business/telegram-members',
+      rowText: '123456789',
+    },
+    {
+      create: '新增超级管理员',
+      editDialog: '编辑超级管理员',
+      path: '/business/telegram-super-admins',
+      rowText: '987654321',
+    },
+  ] as const;
+
+  for (const assertion of assertions) {
+    await page.goto(assertion.path);
+    await expect(
+      page.getByText(assertion.rowText, { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: assertion.create }),
+    ).toBeEnabled();
+    await page.getByRole('button', { name: /编\s*辑/ }).click();
+    await expect(
+      page.getByRole('dialog', { name: assertion.editDialog }),
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth > window.innerWidth,
+      ),
+    ).toBe(false);
+  }
+
+  await page.goto('/business/telegram-groups');
+  await expect(page.getByRole('button', { name: /审\s*批/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /解\s*绑/ })).toBeVisible();
+
+  await page.goto('/business/telegram-members');
+  await expect(page.getByRole('button', { name: /停\s*用/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /移\s*除/ })).toBeVisible();
+
+  await page.goto('/business/telegram-super-admins');
+  await expect(page.getByRole('button', { name: /停\s*用/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /移\s*除/ })).toBeVisible();
 });

@@ -12,6 +12,7 @@ import {
   deleteTelegramBotApi,
   getTelegramBotsApi,
   setTelegramBotStatusApi,
+  updateTelegramBotApi,
 } from '#/api';
 import {
   confirmResourceAction,
@@ -25,22 +26,21 @@ import {
   businessStatusOptions,
   businessStatusText,
 } from '../shared/business-ui';
+import {
+  telegramBotTypeOptions,
+  telegramBotTypeText,
+  telegramCapabilityOptions,
+} from '../shared/telegram-ui';
 import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 
 const { fixedTenantId, loadDefaultTenantId, tenantOptions } =
   useBusinessTenantFilter();
 const selectedTenantId = ref('');
-const capabilityOptions = [
-  { label: '订单查询', value: 'ORDER_QUERY' },
-  { label: '余额查询', value: 'BALANCE_QUERY' },
-  { label: '获取回单', value: 'RECEIPT_QUERY' },
-  { label: '手工支付', value: 'MANUAL_PAYMENT' },
-  { label: '支付宝批量支付', value: 'ALIPAY_BATCH_PAYMENT' },
-  { label: '提交支付批次', value: 'PAYMENT_BATCH_SUBMIT' },
-  { label: 'C2C 订单支付', value: 'C2C_ORDER_PAYMENT' },
-  { label: 'C2C 订单申诉', value: 'C2C_APPEAL' },
-  { label: '支付统计', value: 'PAYMENT_STATISTICS' },
-];
+
+type BotQueryParams = Omit<Parameters<typeof getTelegramBotsApi>[0], 'page'> & {
+  pageIndex: number;
+};
+
 const formOptions: VbenFormProps = {
   commonConfig: { labelWidth: 86 },
   schema: [
@@ -49,196 +49,308 @@ const formOptions: VbenFormProps = {
       fieldName: 'tenantId',
       label: '经营单位',
       componentProps: () => ({
-        options: tenantOptions,
-        disabled: Boolean(fixedTenantId.value),
-        showSearch: true,
         allowClear: false,
+        'aria-label': '选择经营单位',
+        disabled: Boolean(fixedTenantId.value),
         onChange: (value: string) => {
           selectedTenantId.value = value;
           void gridApi.query();
         },
+        options: tenantOptions,
+        showSearch: true,
       }),
     },
     {
       component: 'Input',
+      componentProps: { placeholder: '请输入编码' },
       fieldName: 'code',
       label: '机器人编码',
-      componentProps: { placeholder: '请输入编码' },
     },
     {
       component: 'Input',
+      componentProps: { placeholder: '请输入名称' },
       fieldName: 'name',
       label: '机器人名称',
-      componentProps: { placeholder: '请输入名称' },
     },
     {
       component: 'Select',
+      componentProps: { allowClear: true, options: businessStatusOptions },
       fieldName: 'status',
       label: '状态',
-      componentProps: { options: businessStatusOptions, allowClear: true },
     },
   ],
   wrapperClass: '2xl:grid-cols-4 xl:grid-cols-3 lg:grid-cols-2 md:grid-cols-1',
 };
+
 const gridOptions: VxeTableGridOptions<BusinessApi.TelegramBot> = {
   columns: [
-    { type: 'seq', width: 60 },
-    { field: 'code', title: '编码', width: 150 },
-    { field: 'name', title: '名称', minWidth: 180 },
+    { align: 'center', type: 'seq', width: 60 },
+    { field: 'code', title: '机器人编码', width: 160 },
+    { field: 'name', minWidth: 180, title: '机器人名称' },
+    {
+      field: 'botType',
+      formatter: ({ cellValue }) =>
+        telegramBotTypeText(cellValue as BusinessApi.TelegramBotType),
+      title: '机器人类型',
+      width: 120,
+    },
     {
       field: 'capabilities',
-      title: '已启用能力',
-      minWidth: 220,
       formatter: ({ cellValue }) => `${(cellValue as string[]).length} 项`,
+      title: '已启用能力',
+      width: 120,
     },
     {
       field: 'tokenConfigured',
-      title: 'Token',
-      width: 100,
-      formatter: ({ cellValue }) => (cellValue ? '已配置' : '未配置'),
+      slots: { default: 'secret' },
+      title: '密钥配置',
+      width: 120,
     },
-    { field: 'status', title: '状态', slots: { default: 'status' }, width: 90 },
+    { field: 'status', slots: { default: 'status' }, title: '状态', width: 90 },
     {
       field: 'actions',
-      title: '操作',
-      slots: { default: 'actions' },
       fixed: 'right',
-      width: 190,
+      slots: { default: 'actions' },
+      title: '操作',
+      width: 230,
     },
   ],
 };
+
 const [Grid, gridApi] = useResourceGrid<
   BusinessApi.TelegramBot,
   Record<string, unknown>,
-  { pageIndex: number; pageSize: number }
+  BotQueryParams
 >({
   formOptions,
   gridOptions,
   mapQueryParams: ({ formValues, page }) => ({
     ...formValues,
-    page: page.currentPage,
+    pageIndex: page.currentPage,
     pageSize: page.pageSize,
     tenantId: selectedTenantId.value,
   }),
-  query: (params) =>
-    getTelegramBotsApi({
-      ...params,
-      tenantId: selectedTenantId.value,
-      page: params.page as number,
-      pageSize: params.pageSize as number,
-    }),
+  query: ({ pageIndex, ...params }) =>
+    getTelegramBotsApi({ ...params, page: pageIndex }),
 });
+
 const { FormModalRender, formModalClose, formModalShow } = useFormModal();
-function openCreate() {
-  formModalShow(
-    {
-      props: { title: '新增支付机器人', width: 620 },
-      formProps: {
-        rule: [
+
+function botFormRules(editing = false) {
+  return [
+    ...(editing
+      ? []
+      : [
           {
             field: 'code',
             title: '机器人编码',
             type: 'input',
-            validate: [{ required: true, message: '请输入编码' }],
+            validate: [
+              { message: '请输入机器人编码', required: true, trigger: 'blur' },
+            ],
           },
-          {
-            field: 'name',
-            title: '机器人名称',
-            type: 'input',
-            validate: [{ required: true, message: '请输入名称' }],
-          },
-          {
-            field: 'botType',
-            title: '机器人类型',
-            type: 'select',
-            props: {
-              options: [
-                { label: '支付机器人', value: 'PAYMENT' },
-                { label: '商家机器人', value: 'MERCHANT' },
-                { label: '总部机器人', value: 'HQ' },
-              ],
-            },
-            validate: [{ required: true, message: '请选择机器人类型' }],
-          },
-          {
-            field: 'tokenRef',
-            title: 'Token 引用',
-            type: 'input',
-            props: { placeholder: 'env://TELEGRAM_TOKEN' },
-            validate: [{ required: true, message: '请输入 Secret 引用' }],
-          },
-          {
-            field: 'capabilities',
-            title: '机器人能力',
-            type: 'select',
-            props: { mode: 'multiple', options: capabilityOptions },
-            validate: [{ required: true, message: '请选择至少一项能力' }],
-          },
-        ],
-      },
+        ]),
+    {
+      field: 'name',
+      title: '机器人名称',
+      type: 'input',
+      validate: [
+        { message: '请输入机器人名称', required: true, trigger: 'blur' },
+      ],
     },
+    {
+      field: 'botType',
+      props: { options: telegramBotTypeOptions },
+      title: '机器人类型',
+      type: 'select',
+      validate: [
+        { message: '请选择机器人类型', required: true, trigger: 'change' },
+      ],
+    },
+    {
+      field: 'tokenRef',
+      props: {
+        placeholder: editing
+          ? '不修改请留空'
+          : '例如 env://TELEGRAM_PAYMENT_TOKEN',
+      },
+      title: editing ? '更新 Token 引用' : 'Token 引用',
+      type: 'input',
+      validate: editing
+        ? []
+        : [{ message: '请输入 Token 引用', required: true, trigger: 'blur' }],
+    },
+    {
+      field: 'webhookSecretRef',
+      props: { placeholder: editing ? '不修改请留空' : '选填 Secret 引用' },
+      title: 'Webhook Secret 引用',
+      type: 'input',
+    },
+    {
+      field: 'webhookUrl',
+      props: {
+        placeholder: 'https://example.com/v1/webhooks/telegram/机器人编码',
+      },
+      title: 'Webhook 地址',
+      type: 'input',
+    },
+    {
+      field: 'capabilities',
+      props: { mode: 'multiple', options: telegramCapabilityOptions },
+      title: '机器人能力',
+      type: 'select',
+      validate: [
+        { message: '请选择至少一项能力', required: true, trigger: 'change' },
+      ],
+    },
+    {
+      field: 'paymentOrderRequireConfirmation',
+      title: '支付二次确认',
+      type: 'switch',
+      value: true,
+    },
+    {
+      field: 'batchSubmitRequireConfirmation',
+      title: '批次二次确认',
+      type: 'switch',
+      value: true,
+    },
+    {
+      field: 'description',
+      props: { maxlength: 500, rows: 3, showCount: true },
+      title: '备注',
+      type: 'textarea',
+    },
+  ];
+}
+
+function botModalOptions(title: string, editing = false) {
+  return {
+    formProps: {
+      option: { form: { layout: 'vertical' as const }, submitBtn: false },
+      rule: botFormRules(editing),
+    },
+    props: { centered: true, title, width: 680 },
+  };
+}
+
+function cleanOptionalSecrets<T extends Record<string, unknown>>(data: T) {
+  const value = { ...data };
+  for (const key of [
+    'description',
+    'tokenRef',
+    'webhookSecretRef',
+    'webhookUrl',
+  ]) {
+    if (value[key] === '') delete value[key];
+  }
+  return value;
+}
+
+function openCreate() {
+  formModalShow(botModalOptions('新增支付机器人'), {
+    onOk: async (api) => {
+      await api.validate();
+      const data = cleanOptionalSecrets(api.formData());
+      await runResourceAction({
+        action: () =>
+          createTelegramBotApi({
+            ...(data as Parameters<typeof createTelegramBotApi>[0]),
+            tenantId: selectedTenantId.value,
+          }),
+        onSuccess: async () => {
+          formModalClose();
+          await gridApi.query();
+        },
+        successMessage: '机器人已创建',
+      });
+    },
+  });
+}
+
+async function openEdit(row: BusinessApi.TelegramBot) {
+  const [formApi] = await formModalShow(
+    botModalOptions('编辑支付机器人', true),
     {
       onOk: async (api) => {
         await api.validate();
+        const data = cleanOptionalSecrets(api.formData());
         await runResourceAction({
           action: () =>
-            createTelegramBotApi({
-              ...api.formData(),
+            updateTelegramBotApi(row.id, {
+              ...(data as Parameters<typeof updateTelegramBotApi>[1]),
               tenantId: selectedTenantId.value,
-            } as never),
+            }),
           onSuccess: async () => {
             formModalClose();
             await gridApi.query();
           },
-          successMessage: '机器人已创建',
+          successMessage: '机器人已更新',
         });
       },
     },
   );
+  formApi?.setValue({
+    batchSubmitRequireConfirmation: row.batchSubmitRequireConfirmation,
+    botType: row.botType,
+    capabilities: row.capabilities,
+    description: row.description ?? '',
+    name: row.name,
+    paymentOrderRequireConfirmation: row.paymentOrderRequireConfirmation,
+    tokenRef: '',
+    webhookSecretRef: '',
+    webhookUrl: row.webhookUrl ?? '',
+  });
 }
+
 function toggle(row: BusinessApi.TelegramBot) {
+  const status = row.status === 'active' ? 'disabled' : 'active';
   return runResourceAction({
     action: () =>
-      setTelegramBotStatusApi(
-        row.id,
-        row.status === 'active' ? 'disabled' : 'active',
-        selectedTenantId.value,
-      ),
+      setTelegramBotStatusApi(row.id, status, selectedTenantId.value),
     onSuccess: () => gridApi.query(),
-    successMessage: '状态已更新',
+    successMessage: status === 'active' ? '机器人已启用' : '机器人已停用',
   });
 }
+
 function remove(row: BusinessApi.TelegramBot) {
   return confirmResourceAction({
-    title: `确认删除“${row.name}”吗？`,
-    content: '已有群组记录的机器人不能删除，只能停用。',
-    okText: '删除',
-    okButtonProps: { danger: true },
     action: () => deleteTelegramBotApi(row.id, selectedTenantId.value),
+    content: '已有群组记录的机器人不能删除，只能停用。',
+    okButtonProps: { danger: true },
+    okText: '删除',
     onSuccess: () => gridApi.query(),
     successMessage: '机器人已删除',
+    title: `确认删除“${row.name}”吗？`,
   });
 }
+
 onMounted(async () => {
   selectedTenantId.value = (await loadDefaultTenantId()) || '';
-  if (selectedTenantId.value) {
-    await gridApi.formApi.setFieldValue('tenantId', selectedTenantId.value);
-    await gridApi.query();
-  }
+  if (!selectedTenantId.value) return;
+  await gridApi.formApi.setFieldValue('tenantId', selectedTenantId.value);
+  await gridApi.query();
 });
 </script>
+
 <template>
   <Page auto-content-height>
     <Grid>
       <template #toolbar-actions>
         <AButton
           v-access:code="['telegram:bot:create']"
-          type="primary"
+          :disabled="!selectedTenantId"
           size="small"
+          type="primary"
           @click="openCreate"
         >
           新增机器人
         </AButton>
+      </template>
+      <template #secret="{ row }">
+        <ATag :color="row.tokenConfigured ? 'success' : 'warning'">
+          {{ row.tokenConfigured ? '已配置' : '未配置' }}
+        </ATag>
       </template>
       <template #status="{ row }">
         <ATag :color="businessStatusColor(row.status)">
@@ -246,20 +358,25 @@ onMounted(async () => {
         </ATag>
       </template>
       <template #actions="{ row }">
-        <ASpace>
+        <ASpace :size="4">
           <AButton
             v-access:code="['telegram:bot:update']"
             size="small"
-            type="link"
+            @click="openEdit(row)"
+          >
+            编辑
+          </AButton>
+          <AButton
+            v-access:code="['telegram:bot:update']"
+            size="small"
             @click="toggle(row)"
           >
             {{ row.status === 'active' ? '停用' : '启用' }}
           </AButton>
           <AButton
             v-access:code="['telegram:bot:delete']"
-            size="small"
-            type="link"
             danger
+            size="small"
             @click="remove(row)"
           >
             删除

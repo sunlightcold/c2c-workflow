@@ -16,6 +16,7 @@ import { TelegramGroupService } from './telegram-group.service'
 import { TelegramMemberService } from './telegram-member.service'
 import { TelegramSuperAdminService } from './telegram-super-admin.service'
 import { TelegramUpdateInboxService } from './telegram-update-inbox.service'
+import { TelegramUserDirectoryService } from './telegram-user-directory.service'
 import { TelegramWebhookController } from './telegram-webhook.controller'
 
 @Module({
@@ -38,6 +39,7 @@ import { TelegramWebhookController } from './telegram-webhook.controller'
     TelegramMemberService,
     TelegramSuperAdminService,
     TelegramUpdateInboxService,
+    TelegramUserDirectoryService,
   ],
   exports: [
     TelegramBotService,

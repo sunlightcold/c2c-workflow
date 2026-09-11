@@ -35,6 +35,7 @@ declare module 'vue' {
     ATextarea: typeof import('ant-design-vue/es')['Textarea']
     ATimeline: typeof import('ant-design-vue/es')['Timeline']
     ATimelineItem: typeof import('ant-design-vue/es')['TimelineItem']
+    ATooltip: typeof import('ant-design-vue/es')['Tooltip']
     Authentication: typeof import('./../src/components/authentication/index.vue')['default']
     AuthTitle: typeof import('./../src/components/authentication/auth-title.vue')['default']
     BaseModal: typeof import('./../src/components/base-modal/index.vue')['default']

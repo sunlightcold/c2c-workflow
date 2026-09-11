@@ -1,28 +1,46 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  approveTelegramGroupApi,
   cancelMerchantOrderApi,
   confirmMerchantOrderPaidApi,
   createManualPaymentOrderApi,
   createMerchantOrderPaymentApi,
+  createTelegramBotApi,
+  createTelegramGroupApi,
+  createTelegramMemberApi,
+  createTelegramSuperAdminApi,
   createTenantApi,
   deleteMerchantApi,
   deletePaymentAccountApi,
   deletePaymentAccountChannelApi,
+  deleteTelegramBotApi,
+  deleteTelegramMemberApi,
+  deleteTelegramSuperAdminApi,
   filterMerchantsApi,
   filterPaymentAccountsApi,
   getMerchantOrderAppealReasonsApi,
   getPaymentOrdersApi,
+  getTelegramMemberEligibleUsersApi,
+  getTelegramSuperAdminEligibleUsersApi,
   rotateMerchantCredentialApi,
   setMerchantStatusApi,
   setPaymentAccountChannelStatusApi,
   setPaymentAccountStatusApi,
+  setTelegramBotStatusApi,
+  setTelegramMemberStatusApi,
+  setTelegramSuperAdminStatusApi,
   submitMerchantOrderAppealApi,
   syncMerchantOrdersApi,
   testMerchantConnectionApi,
+  unbindTelegramGroupApi,
   updateMerchantApi,
   updatePaymentAccountApi,
   updatePaymentAccountChannelApi,
+  updateTelegramBotApi,
+  updateTelegramGroupApi,
+  updateTelegramMemberApi,
+  updateTelegramSuperAdminApi,
 } from './index';
 
 const requestMocks = vi.hoisted(() => ({
@@ -334,6 +352,207 @@ describe('business api', () => {
         reason: '收款资料有误',
         tenantId: 'tenant-1',
       },
+    );
+  });
+
+  it('loads tenant-scoped users for Telegram member mappings', async () => {
+    requestMocks.get.mockResolvedValue([
+      { id: 8, nickname: '值班员', username: 'operator' },
+    ]);
+
+    await getTelegramMemberEligibleUsersApi('tenant-1');
+    await getTelegramSuperAdminEligibleUsersApi('tenant-1');
+
+    expect(requestMocks.get).toHaveBeenNthCalledWith(
+      1,
+      '/sys/tg/members/eligible-users',
+      { params: { tenantId: 'tenant-1' } },
+    );
+    expect(requestMocks.get).toHaveBeenNthCalledWith(
+      2,
+      '/sys/tg/super-admins/eligible-users',
+      { params: { tenantId: 'tenant-1' } },
+    );
+  });
+
+  it('uses the Telegram bot and group management endpoints', async () => {
+    requestMocks.post.mockResolvedValue({ id: 'resource-1' });
+    requestMocks.put.mockResolvedValue({ id: 'resource-1' });
+    requestMocks.request.mockResolvedValue({ id: 'resource-1' });
+    requestMocks.delete.mockResolvedValue(undefined);
+
+    await createTelegramBotApi({
+      botType: 'PAYMENT',
+      capabilities: ['MANUAL_PAYMENT'],
+      code: 'PAY_MAIN',
+      name: '支付机器人',
+      tenantId: 'tenant-1',
+      tokenRef: 'env://PAY_MAIN_TOKEN',
+    });
+    await updateTelegramBotApi('bot-1', {
+      name: '支付机器人一号',
+      tenantId: 'tenant-1',
+    });
+    await setTelegramBotStatusApi('bot-1', 'disabled', 'tenant-1');
+    await deleteTelegramBotApi('bot-1', 'tenant-1');
+    await createTelegramGroupApi({
+      botId: 'bot-1',
+      capabilities: ['MANUAL_PAYMENT'],
+      merchantId: 'merchant-1',
+      name: '支付一群',
+      paymentScene: 'BOT_MANUAL',
+      tenantId: 'tenant-1',
+    });
+    await updateTelegramGroupApi('group-1', {
+      name: '支付二群',
+      tenantId: 'tenant-1',
+    });
+    await approveTelegramGroupApi('group-1', {
+      chatId: '-1001234567890',
+      chatType: 'supergroup',
+      tenantId: 'tenant-1',
+    });
+    await unbindTelegramGroupApi('group-1', 'tenant-1');
+
+    expect(requestMocks.post).toHaveBeenNthCalledWith(1, '/sys/tg/bots', {
+      botType: 'PAYMENT',
+      capabilities: ['MANUAL_PAYMENT'],
+      code: 'PAY_MAIN',
+      name: '支付机器人',
+      tenantId: 'tenant-1',
+      tokenRef: 'env://PAY_MAIN_TOKEN',
+    });
+    expect(requestMocks.put).toHaveBeenNthCalledWith(1, '/sys/tg/bots/bot-1', {
+      name: '支付机器人一号',
+      tenantId: 'tenant-1',
+    });
+    expect(requestMocks.request).toHaveBeenCalledWith(
+      '/sys/tg/bots/bot-1/status',
+      {
+        data: { status: 'disabled' },
+        method: 'PATCH',
+        params: { tenantId: 'tenant-1' },
+      },
+    );
+    expect(requestMocks.delete).toHaveBeenCalledWith('/sys/tg/bots/bot-1', {
+      params: { tenantId: 'tenant-1' },
+    });
+    expect(requestMocks.post).toHaveBeenNthCalledWith(2, '/sys/tg/groups', {
+      botId: 'bot-1',
+      capabilities: ['MANUAL_PAYMENT'],
+      merchantId: 'merchant-1',
+      name: '支付一群',
+      paymentScene: 'BOT_MANUAL',
+      tenantId: 'tenant-1',
+    });
+    expect(requestMocks.post).toHaveBeenNthCalledWith(
+      3,
+      '/sys/tg/groups/group-1/approve',
+      {
+        chatId: '-1001234567890',
+        chatType: 'supergroup',
+        tenantId: 'tenant-1',
+      },
+    );
+    expect(requestMocks.put).toHaveBeenNthCalledWith(
+      2,
+      '/sys/tg/groups/group-1',
+      { name: '支付二群', tenantId: 'tenant-1' },
+    );
+    expect(requestMocks.delete).toHaveBeenCalledWith('/sys/tg/groups/group-1', {
+      params: { tenantId: 'tenant-1' },
+    });
+  });
+
+  it('uses the Telegram member and super administrator endpoints', async () => {
+    requestMocks.post.mockResolvedValue({ id: 'resource-1' });
+    requestMocks.put.mockResolvedValue({ id: 'resource-1' });
+    requestMocks.request.mockResolvedValue({ id: 'resource-1' });
+    requestMocks.delete.mockResolvedValue(undefined);
+
+    await createTelegramMemberApi({
+      capabilities: ['ORDER_QUERY'],
+      groupId: 'group-1',
+      role: 'OPERATOR',
+      telegramUserId: '123456789',
+      tenantId: 'tenant-1',
+      userId: 8,
+    });
+    await updateTelegramMemberApi('member-1', {
+      role: 'VIEWER',
+      tenantId: 'tenant-1',
+    });
+    await setTelegramMemberStatusApi('member-1', 'disabled', 'tenant-1');
+    await deleteTelegramMemberApi('member-1', 'tenant-1');
+    await createTelegramSuperAdminApi({
+      groupIds: [],
+      scopeType: 'ALL_GROUPS',
+      telegramUserId: '987654321',
+      tenantId: 'tenant-1',
+      userId: 9,
+    });
+    await updateTelegramSuperAdminApi('super-1', {
+      groupIds: ['group-1'],
+      scopeType: 'SPECIFIED_GROUPS',
+      tenantId: 'tenant-1',
+    });
+    await setTelegramSuperAdminStatusApi('super-1', 'disabled', 'tenant-1');
+    await deleteTelegramSuperAdminApi('super-1', 'tenant-1');
+
+    expect(requestMocks.post).toHaveBeenNthCalledWith(1, '/sys/tg/members', {
+      capabilities: ['ORDER_QUERY'],
+      groupId: 'group-1',
+      role: 'OPERATOR',
+      telegramUserId: '123456789',
+      tenantId: 'tenant-1',
+      userId: 8,
+    });
+    expect(requestMocks.put).toHaveBeenNthCalledWith(
+      1,
+      '/sys/tg/members/member-1',
+      { role: 'VIEWER', tenantId: 'tenant-1' },
+    );
+    expect(requestMocks.request).toHaveBeenNthCalledWith(
+      1,
+      '/sys/tg/members/member-1/status',
+      {
+        data: { status: 'disabled' },
+        method: 'PATCH',
+        params: { tenantId: 'tenant-1' },
+      },
+    );
+    expect(requestMocks.post).toHaveBeenNthCalledWith(
+      2,
+      '/sys/tg/super-admins',
+      {
+        groupIds: [],
+        scopeType: 'ALL_GROUPS',
+        telegramUserId: '987654321',
+        tenantId: 'tenant-1',
+        userId: 9,
+      },
+    );
+    expect(requestMocks.put).toHaveBeenNthCalledWith(
+      2,
+      '/sys/tg/super-admins/super-1',
+      {
+        groupIds: ['group-1'],
+        scopeType: 'SPECIFIED_GROUPS',
+        tenantId: 'tenant-1',
+      },
+    );
+    expect(requestMocks.request).toHaveBeenNthCalledWith(
+      2,
+      '/sys/tg/super-admins/super-1/status',
+      {
+        data: { status: 'disabled' },
+        method: 'PATCH',
+        params: { tenantId: 'tenant-1' },
+      },
+    );
+    expect(requestMocks.delete).toHaveBeenCalledWith(
+      '/sys/tg/super-admins/super-1',
+      { params: { tenantId: 'tenant-1' } },
     );
   });
 

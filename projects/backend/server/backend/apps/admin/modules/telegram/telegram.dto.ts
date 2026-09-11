@@ -36,6 +36,17 @@ export class TelegramTenantContextDto {
   tenantId?: string
 }
 
+export class TelegramEligibleUserDto {
+  @ApiProperty()
+  id: number
+
+  @ApiProperty()
+  username: string
+
+  @ApiProperty()
+  nickname: string
+}
+
 export class TelegramPageDto extends TelegramTenantContextDto {
   @ApiPropertyOptional({ default: 1 })
   @Type(() => Number)
