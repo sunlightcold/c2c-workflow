@@ -968,14 +968,13 @@ test('provides complete Telegram administration actions', async ({ page }) => {
       .getByRole('button', { name: /编\s*辑/ })
       .first()
       .click();
-    await expect(
-      page.getByRole('dialog', { name: assertion.editDialog }),
-    ).toBeVisible();
-    await expectResponsiveTwoColumnForm(
-      page,
-      page.getByRole('dialog', { name: assertion.editDialog }),
-    );
-    await page.keyboard.press('Escape');
+    const editDialog = page.getByRole('dialog', {
+      name: assertion.editDialog,
+    });
+    await expect(editDialog).toBeVisible();
+    await expectResponsiveTwoColumnForm(page, editDialog);
+    await editDialog.getByRole('button', { name: /取\s*消/ }).click();
+    await expect(editDialog).toBeHidden();
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth > window.innerWidth,
@@ -1034,9 +1033,9 @@ test('keeps internal business codes out of create forms', async ({ page }) => {
   );
 });
 
-test('replaces the one payment account credential from selected certificate files', async ({
+test('replaces the payment account credential from pasted text and local files', async ({
   page,
-}) => {
+}, testInfo) => {
   await page.goto('/business/payment-accounts');
   await selectHeadquartersTenant(page);
   await expect(page.getByText('公钥模式', { exact: true })).toBeVisible();
@@ -1060,21 +1059,53 @@ test('replaces the one payment account credential from selected certificate file
   ).toBeVisible();
   await expect(dialog.getByText('支付宝根证书', { exact: true })).toBeVisible();
 
-  const fileInputs = dialog.locator('input[type="file"]');
-  await expect(fileInputs).toHaveCount(4);
+  const privateKeyInput = dialog.getByRole('textbox', { name: '应用私钥' });
+  const appCertInput = dialog.getByRole('textbox', { name: '应用公钥证书' });
+  await expect(privateKeyInput).toHaveAttribute(
+    'placeholder',
+    '可直接粘贴内容，或读取本地文件',
+  );
+  await privateKeyInput.fill('pasted-application-private-key');
+
+  const privateKeyBox = await privateKeyInput.boundingBox();
+  const appCertBox = await appCertInput.boundingBox();
+  expect(privateKeyBox).not.toBeNull();
+  expect(appCertBox).not.toBeNull();
+  if (!privateKeyBox || !appCertBox) {
+    throw new Error('Credential inputs are not rendered');
+  }
+  if (testInfo.project.name === 'mobile-chromium') {
+    expect(Math.abs(privateKeyBox.x - appCertBox.x)).toBeLessThan(8);
+    expect(appCertBox.y).toBeGreaterThan(privateKeyBox.y);
+  } else {
+    expect(Math.abs(privateKeyBox.y - appCertBox.y)).toBeLessThan(8);
+    expect(appCertBox.x).toBeGreaterThan(privateKeyBox.x);
+  }
+
+  const certificateFileInputs = [
+    dialog.getByLabel('读取应用公钥证书'),
+    dialog.getByLabel('读取支付宝公钥证书'),
+    dialog.getByLabel('读取支付宝根证书'),
+  ];
   const selectedFiles = [
-    ['app-private-key.pem', 'application-private-key'],
     ['app-cert.crt', 'application-certificate'],
     ['alipay-public-cert.crt', 'alipay-public-certificate'],
     ['alipay-root-cert.crt', 'alipay-root-certificate'],
   ] as const;
   for (const [index, [name, content]] of selectedFiles.entries()) {
-    await fileInputs.nth(index).setInputFiles({
+    const fileInput = certificateFileInputs[index];
+    if (!fileInput) throw new Error(`Missing credential file input: ${name}`);
+    await fileInput.setInputFiles({
       buffer: Buffer.from(content),
       mimeType: 'text/plain',
       name,
     });
   }
+  await expect(appCertInput).toHaveValue('application-certificate');
+  await page.screenshot({
+    fullPage: true,
+    path: `node_modules/.e2e/screenshots/payment-credential-input-${testInfo.project.name}.png`,
+  });
 
   const credentialRequest = page.waitForRequest(
     (request) =>
@@ -1093,7 +1124,7 @@ test('replaces the one payment account credential from selected certificate file
     alipayPublicCertContent: 'alipay-public-certificate',
     alipayRootCertContent: 'alipay-root-certificate',
     gateway: customGateway,
-    privateKey: 'application-private-key',
+    privateKey: 'pasted-application-private-key',
     tenantId,
   });
   expect(payload).not.toHaveProperty('alipayPublicKey');

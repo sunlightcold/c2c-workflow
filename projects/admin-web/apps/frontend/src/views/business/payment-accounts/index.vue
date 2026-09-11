@@ -1,9 +1,4 @@
 <script lang="tsx" setup>
-import type {
-  AlipayCredentialFileField,
-  AlipayCredentialFiles,
-} from '../shared/business-form-schemas';
-
 import type { VbenFormProps } from '#/adapter/form';
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { BusinessApi } from '#/api';
@@ -37,10 +32,10 @@ import {
   createPaymentAccountModalOptions,
   editPaymentAccountModalOptions,
   editPaymentChannelModalOptions,
+  normalizeAlipayCredential,
   normalizePaymentChannelFormData,
   openPaymentChannelModalOptions,
   paymentAccountCredentialModalOptions,
-  readAlipayCredentialFiles,
 } from '../shared/business-form-schemas';
 import { createEmptyBusinessPage } from '../shared/business-grid';
 import {
@@ -258,50 +253,32 @@ function cleanOptionalStrings<T extends object>(value: T): T {
 }
 
 function openCreate() {
-  const credentialFiles: AlipayCredentialFiles = {};
-  const onCredentialFile = (
-    field: AlipayCredentialFileField,
-    file: File | undefined,
-  ) => {
-    if (file) credentialFiles[field] = file;
-    else delete credentialFiles[field];
-  };
-  formModalShow(
-    createPaymentAccountModalOptions(platformOptions.value, onCredentialFile),
-    {
-      onOk: async (api) => {
-        await api.validate();
-        const data = api.formData() as {
-          appId: string;
-          authMode: 'CERT' | 'KEY';
+  formModalShow(createPaymentAccountModalOptions(platformOptions.value), {
+    onOk: async (api) => {
+      await api.validate();
+      const data =
+        api.formData() as BusinessApi.AlipayPaymentAccountCredential & {
           externalAccountId: string;
-          gateway: string;
           name: string;
           platformId: string;
         };
-        await runResourceAction({
-          action: async () => {
-            const credential = await readAlipayCredentialFiles(
-              data,
-              credentialFiles,
-            );
-            return createPaymentAccountApi({
-              credential,
-              externalAccountId: data.externalAccountId,
-              name: data.name,
-              platformId: data.platformId,
-              tenantId: selectedTenantId.value,
-            });
-          },
-          onSuccess: async () => {
-            formModalClose();
-            await gridApi.query();
-          },
-          successMessage: '支付账号已创建',
-        });
-      },
+      await runResourceAction({
+        action: () =>
+          createPaymentAccountApi({
+            credential: normalizeAlipayCredential(data),
+            externalAccountId: data.externalAccountId,
+            name: data.name,
+            platformId: data.platformId,
+            tenantId: selectedTenantId.value,
+          }),
+        onSuccess: async () => {
+          formModalClose();
+          await gridApi.query();
+        },
+        successMessage: '支付账号已创建',
+      });
     },
-  );
+  });
 }
 
 async function editAccount(account: BusinessApi.PaymentAccount) {
@@ -332,35 +309,20 @@ async function editAccount(account: BusinessApi.PaymentAccount) {
 }
 
 async function editCredential(account: BusinessApi.PaymentAccount) {
-  const credentialFiles: AlipayCredentialFiles = {};
-  const onCredentialFile = (
-    field: AlipayCredentialFileField,
-    file: File | undefined,
-  ) => {
-    if (file) credentialFiles[field] = file;
-    else delete credentialFiles[field];
-  };
   const mode = account.credentialAuthMode ?? 'KEY';
   const [formApi] = await formModalShow(
-    paymentAccountCredentialModalOptions(mode, onCredentialFile),
+    paymentAccountCredentialModalOptions(mode),
     {
       onOk: async (api) => {
         await api.validate();
-        const values = api.formData() as Pick<
-          BusinessApi.AlipayPaymentAccountCredential,
-          'appId' | 'authMode' | 'gateway'
-        >;
+        const values =
+          api.formData() as BusinessApi.AlipayPaymentAccountCredential;
         await runResourceAction({
-          action: async () => {
-            const credential = await readAlipayCredentialFiles(
-              values,
-              credentialFiles,
-            );
-            return updatePaymentAccountCredentialApi(account.id, {
-              ...credential,
+          action: () =>
+            updatePaymentAccountCredentialApi(account.id, {
+              ...normalizeAlipayCredential(values),
               tenantId: selectedTenantId.value,
-            });
-          },
+            }),
           onSuccess: async () => {
             formModalClose();
             await gridApi.query();

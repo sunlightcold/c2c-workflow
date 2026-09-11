@@ -17,9 +17,11 @@ import { initComponentAdapter } from './adapter/component';
 import { initSetupVbenForm } from './adapter/form';
 import App from './app.vue';
 import { router } from './router';
+import CredentialTextFileInput from './views/business/shared/CredentialTextFileInput.vue';
 
 // 按需导入组件
 formCreate.use(install);
+formCreate.component('credentialTextFileInput', CredentialTextFileInput);
 
 async function bootstrap(namespace: string) {
   // 初始化组件适配器

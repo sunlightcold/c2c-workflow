@@ -9,10 +9,10 @@ import {
   createPaymentBatchModalOptions,
   editPaymentAccountModalOptions,
   editPaymentChannelModalOptions,
+  normalizeAlipayCredential,
   normalizePaymentChannelFormData,
   openPaymentChannelModalOptions,
   paymentAccountCredentialModalOptions,
-  readAlipayCredentialFiles,
 } from './business-form-schemas';
 
 describe('merchant order operation forms', () => {
@@ -32,8 +32,11 @@ describe('merchant order operation forms', () => {
       xs: 24,
     });
     expect(
-      accountRules.find(({ field }) => field === 'privateKeyFile')?.col,
-    ).toEqual({ span: 24 });
+      accountRules.find(({ field }) => field === 'privateKey')?.col,
+    ).toEqual({
+      md: 12,
+      xs: 24,
+    });
     expect(
       batchRules?.find(({ field }) => field === 'paymentOrderIds')?.col,
     ).toEqual({ span: 24 });
@@ -106,7 +109,7 @@ describe('merchant order operation forms', () => {
   });
 
   it('offers key and certificate modes for the one account credential', () => {
-    const options = paymentAccountCredentialModalOptions('KEY', vi.fn());
+    const options = paymentAccountCredentialModalOptions('KEY');
     const rules = options.formProps?.rule ?? [];
     const fields = rules.map(({ field }) => field);
 
@@ -115,12 +118,30 @@ describe('merchant order operation forms', () => {
         'authMode',
         'appId',
         'gateway',
-        'privateKeyFile',
-        'alipayPublicKeyFile',
-        'appCertFile',
-        'alipayPublicCertFile',
-        'alipayRootCertFile',
+        'privateKey',
+        'alipayPublicKey',
+        'appCertContent',
+        'alipayPublicCertContent',
+        'alipayRootCertContent',
       ]),
+    );
+    expect(fields.some((field) => String(field).endsWith('File'))).toBe(false);
+    expect(rules.find(({ field }) => field === 'privateKey')).toMatchObject({
+      col: { md: 12, xs: 24 },
+      type: 'credentialTextFileInput',
+    });
+    expect(
+      rules.find(({ field }) => field === 'alipayPublicKey'),
+    ).toMatchObject({
+      col: { md: 12, xs: 24 },
+      hidden: false,
+      type: 'credentialTextFileInput',
+    });
+    expect(rules.find(({ field }) => field === 'appCertContent')).toMatchObject(
+      {
+        hidden: true,
+        type: 'credentialTextFileInput',
+      },
     );
     expect(rules.find(({ field }) => field === 'authMode')?.options).toEqual([
       { label: '公钥模式', value: 'KEY' },
@@ -136,22 +157,19 @@ describe('merchant order operation forms', () => {
     ).toBeUndefined();
   });
 
-  it('reads selected key files into a mode-specific credential payload', async () => {
-    const files = {
-      alipayPublicKey: new File(['alipay-public-key'], 'alipayPublicKey.pem'),
-      privateKey: new File(['application-private-key'], 'appPrivateKey.pem'),
+  it('submits only the credential fields used by the selected mode', () => {
+    const common = {
+      alipayPublicCertContent: 'stale-public-cert',
+      alipayPublicKey: 'alipay-public-key',
+      alipayRootCertContent: 'stale-root-cert',
+      appCertContent: 'stale-app-cert',
+      appId: '2026000000000001',
+      authMode: 'KEY' as const,
+      gateway: 'https://openapi.alipay.com/gateway.do',
+      privateKey: 'application-private-key',
     };
 
-    await expect(
-      readAlipayCredentialFiles(
-        {
-          appId: '2026000000000001',
-          authMode: 'KEY',
-          gateway: 'https://openapi.alipay.com/gateway.do',
-        },
-        files,
-      ),
-    ).resolves.toEqual({
+    expect(normalizeAlipayCredential(common)).toEqual({
       alipayPublicKey: 'alipay-public-key',
       appId: '2026000000000001',
       authMode: 'KEY',

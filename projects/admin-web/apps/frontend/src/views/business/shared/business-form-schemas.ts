@@ -16,22 +16,6 @@ import {
 
 type SelectOption = { disabled?: boolean; label: string; value: string };
 
-export type AlipayCredentialFileField =
-  | 'alipayPublicCertContent'
-  | 'alipayPublicKey'
-  | 'alipayRootCertContent'
-  | 'appCertContent'
-  | 'privateKey';
-
-export type AlipayCredentialFiles = Partial<
-  Record<AlipayCredentialFileField, File>
->;
-
-type AlipayCredentialFileHandler = (
-  field: AlipayCredentialFileField,
-  file: File | undefined,
-) => void;
-
 const required = (message: string) => [
   { message, required: true, trigger: 'blur' },
 ];
@@ -439,7 +423,6 @@ export function rotateMerchantCredentialModalOptions(
 
 export function createPaymentAccountModalOptions(
   platforms: SelectOption[],
-  onCredentialFile: AlipayCredentialFileHandler = () => undefined,
 ): FormModalOptions {
   return {
     props: businessModalProps('新增支付账号'),
@@ -472,16 +455,9 @@ export function createPaymentAccountModalOptions(
             validate: required('请输入支付宝商户号'),
             value: '',
           },
-          ...alipayCredentialRules('KEY', onCredentialFile),
+          ...alipayCredentialRules('KEY'),
         ],
-        [
-          'alipayPublicCertFile',
-          'alipayPublicKeyFile',
-          'alipayRootCertFile',
-          'appCertFile',
-          'authMode',
-          'privateKeyFile',
-        ],
+        ['authMode'],
       ),
     },
   };
@@ -514,45 +490,37 @@ export function editPaymentAccountModalOptions(): FormModalOptions {
   };
 }
 
-const keyCredentialFileFields = ['alipayPublicKeyFile'];
-const certificateCredentialFileFields = [
-  'appCertFile',
-  'alipayPublicCertFile',
-  'alipayRootCertFile',
+const keyCredentialFields = ['alipayPublicKey'];
+const certificateCredentialFields = [
+  'appCertContent',
+  'alipayPublicCertContent',
+  'alipayRootCertContent',
 ];
 
-function credentialFileRule(
+function credentialTextFileRule(
   field: string,
-  credentialField: AlipayCredentialFileField,
   title: string,
   accept: string,
   hidden: boolean,
-  onCredentialFile: AlipayCredentialFileHandler,
 ) {
   return {
     field,
     hidden,
-    on: {
-      remove: () => onCredentialFile(credentialField, undefined),
-    },
     props: {
       accept,
-      beforeUpload: (file: File) => {
-        onCredentialFile(credentialField, file);
-        return false;
-      },
-      maxCount: 1,
+      ariaLabel: title,
+      fileButtonLabel: `读取${title}`,
+      placeholder: '可直接粘贴内容，或读取本地文件',
+      rows: 3,
     },
     title,
-    type: 'upload',
-    value: [],
+    type: 'credentialTextFileInput',
+    validate: required(`请输入或读取${title}`),
+    value: '',
   };
 }
 
-function alipayCredentialRules(
-  initialMode: 'CERT' | 'KEY',
-  onCredentialFile: AlipayCredentialFileHandler,
-) {
+function alipayCredentialRules(initialMode: 'CERT' | 'KEY') {
   const certificateMode = initialMode === 'CERT';
   return [
     {
@@ -570,8 +538,8 @@ function alipayCredentialRules(
         { origin }: { origin: string },
       ) => {
         if (origin !== 'change') return;
-        api.hidden(value !== 'KEY', keyCredentialFileFields);
-        api.hidden(value !== 'CERT', certificateCredentialFileFields);
+        api.hidden(value !== 'KEY', keyCredentialFields);
+        api.hidden(value !== 'CERT', certificateCredentialFields);
       },
       validate: required('请选择签名模式'),
       value: initialMode,
@@ -595,120 +563,65 @@ function alipayCredentialRules(
       validate: required('请输入 API 网关地址'),
       value: 'https://openapi.alipay.com/gateway.do',
     },
-    credentialFileRule(
-      'privateKeyFile',
-      'privateKey',
-      '应用私钥文件',
-      '.pem,.key,.txt',
-      false,
-      onCredentialFile,
-    ),
-    credentialFileRule(
-      'alipayPublicKeyFile',
+    credentialTextFileRule('privateKey', '应用私钥', '.pem,.key,.txt', false),
+    credentialTextFileRule(
       'alipayPublicKey',
-      '支付宝公钥文件',
+      '支付宝公钥',
       '.pem,.txt',
       certificateMode,
-      onCredentialFile,
     ),
-    credentialFileRule(
-      'appCertFile',
+    credentialTextFileRule(
       'appCertContent',
       '应用公钥证书',
       '.crt,.cer,.pem',
       !certificateMode,
-      onCredentialFile,
     ),
-    credentialFileRule(
-      'alipayPublicCertFile',
+    credentialTextFileRule(
       'alipayPublicCertContent',
       '支付宝公钥证书',
       '.crt,.cer,.pem',
       !certificateMode,
-      onCredentialFile,
     ),
-    credentialFileRule(
-      'alipayRootCertFile',
+    credentialTextFileRule(
       'alipayRootCertContent',
       '支付宝根证书',
       '.crt,.cer,.pem',
       !certificateMode,
-      onCredentialFile,
     ),
   ];
 }
 
 export function paymentAccountCredentialModalOptions(
   initialMode: 'CERT' | 'KEY',
-  onCredentialFile: AlipayCredentialFileHandler,
 ): FormModalOptions {
   return {
     props: businessModalProps('配置支付账号凭据'),
     formProps: {
       option: businessFormOption,
-      rule: layoutBusinessFormRules(
-        alipayCredentialRules(initialMode, onCredentialFile),
-        [
-          'alipayPublicCertFile',
-          'alipayPublicKeyFile',
-          'alipayRootCertFile',
-          'appCertFile',
-          'authMode',
-          'privateKeyFile',
-        ],
-      ),
+      rule: layoutBusinessFormRules(alipayCredentialRules(initialMode), [
+        'authMode',
+      ]),
     },
   };
 }
 
-export async function readAlipayCredentialFiles(
-  values: Pick<
-    BusinessApi.AlipayPaymentAccountCredential,
-    'appId' | 'authMode' | 'gateway'
-  >,
-  files: AlipayCredentialFiles,
-): Promise<BusinessApi.AlipayPaymentAccountCredential> {
-  const privateKey = await readRequiredCredentialFile(
-    files.privateKey,
-    '应用私钥文件',
-  );
-  if (values.authMode === 'KEY') {
-    return {
-      ...values,
-      privateKey,
-      alipayPublicKey: await readRequiredCredentialFile(
-        files.alipayPublicKey,
-        '支付宝公钥文件',
-      ),
-    };
-  }
-  return {
-    ...values,
-    privateKey,
-    appCertContent: await readRequiredCredentialFile(
-      files.appCertContent,
-      '应用公钥证书',
-    ),
-    alipayPublicCertContent: await readRequiredCredentialFile(
-      files.alipayPublicCertContent,
-      '支付宝公钥证书',
-    ),
-    alipayRootCertContent: await readRequiredCredentialFile(
-      files.alipayRootCertContent,
-      '支付宝根证书',
-    ),
+export function normalizeAlipayCredential(
+  values: BusinessApi.AlipayPaymentAccountCredential,
+): BusinessApi.AlipayPaymentAccountCredential {
+  const common = {
+    appId: values.appId,
+    authMode: values.authMode,
+    gateway: values.gateway,
+    privateKey: values.privateKey,
   };
-}
-
-async function readRequiredCredentialFile(
-  file: File | undefined,
-  title: string,
-) {
-  if (!file) throw new Error(`请选择${title}`);
-  const fileContent = await file.text();
-  const content = fileContent.trim();
-  if (!content) throw new Error(`${title}内容为空`);
-  return content;
+  return values.authMode === 'KEY'
+    ? { ...common, alipayPublicKey: values.alipayPublicKey }
+    : {
+        ...common,
+        alipayPublicCertContent: values.alipayPublicCertContent,
+        alipayRootCertContent: values.alipayRootCertContent,
+        appCertContent: values.appCertContent,
+      };
 }
 
 const paymentAmountPattern = /^(0|[1-9]\d{0,17})(\.\d{1,2})?$/;
