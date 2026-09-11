@@ -1000,7 +1000,9 @@ test('provides complete Telegram administration actions', async ({ page }) => {
   await expect(page.getByRole('button', { name: /移\s*除/ })).toBeVisible();
 });
 
-test('keeps internal business codes out of create forms', async ({ page }) => {
+test('keeps internal business codes out of create forms', async ({
+  page,
+}, testInfo) => {
   await page.goto('/business/tenants');
   await page.getByRole('button', { name: '新增代理商' }).click();
   const tenantDialog = page.getByRole('dialog', { name: '新增代理商' });
@@ -1021,7 +1023,11 @@ test('keeps internal business codes out of create forms', async ({ page }) => {
       .getByRole('combobox', { name: /支付平台/ })
       .locator('.ant-select-selection-item'),
   ).toHaveCount(0);
-  await expectDialogWithoutHorizontalOverflow(accountDialog);
+  await expectResponsiveTwoColumnForm(page, accountDialog);
+  await page.screenshot({
+    fullPage: true,
+    path: `node_modules/.e2e/screenshots/payment-account-create-form-${testInfo.project.name}.png`,
+  });
   await page.keyboard.press('Escape');
 
   await page.goto('/business/telegram-bots');

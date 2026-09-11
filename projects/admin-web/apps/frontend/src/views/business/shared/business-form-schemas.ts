@@ -428,37 +428,34 @@ export function createPaymentAccountModalOptions(
     props: businessModalProps('新增支付账号'),
     formProps: {
       option: businessFormOption,
-      rule: layoutBusinessFormRules(
-        [
-          {
-            field: 'name',
-            props: { maxlength: 100, placeholder: '请输入账号名称' },
-            title: '账号名称',
-            type: 'input',
-            validate: required('请输入账号名称'),
-            value: '',
-          },
-          {
-            field: 'platformId',
-            options: platforms,
-            props: { placeholder: '请选择支付平台' },
-            title: '支付平台',
-            type: 'select',
-            validate: required('请选择支付平台'),
-            value: '',
-          },
-          {
-            field: 'externalAccountId',
-            props: { maxlength: 128, placeholder: '请输入支付宝商户号' },
-            title: '支付宝商户号',
-            type: 'input',
-            validate: required('请输入支付宝商户号'),
-            value: '',
-          },
-          ...alipayCredentialRules('KEY'),
-        ],
-        ['authMode'],
-      ),
+      rule: layoutBusinessFormRules([
+        {
+          field: 'name',
+          props: { maxlength: 100, placeholder: '请输入账号名称' },
+          title: '账号名称',
+          type: 'input',
+          validate: required('请输入账号名称'),
+          value: '',
+        },
+        {
+          field: 'platformId',
+          options: platforms,
+          props: { placeholder: '请选择支付平台' },
+          title: '支付平台',
+          type: 'select',
+          validate: required('请选择支付平台'),
+          value: '',
+        },
+        {
+          field: 'externalAccountId',
+          props: { maxlength: 128, placeholder: '请输入支付宝商户号' },
+          title: '支付宝商户号',
+          type: 'input',
+          validate: required('请输入支付宝商户号'),
+          value: '',
+        },
+        ...alipayCredentialRules('KEY', 'account-create'),
+      ]),
     },
   };
 }
@@ -520,49 +517,52 @@ function credentialTextFileRule(
   };
 }
 
-function alipayCredentialRules(initialMode: 'CERT' | 'KEY') {
+function alipayCredentialRules(
+  initialMode: 'CERT' | 'KEY',
+  layout: 'account-create' | 'credential' = 'credential',
+) {
   const certificateMode = initialMode === 'CERT';
-  return [
-    {
-      field: 'authMode',
-      options: [
-        { label: '公钥模式', value: 'KEY' },
-        { label: '证书模式', value: 'CERT' },
-      ],
-      title: '签名模式',
-      type: 'radio',
-      update: (
-        value: unknown,
-        _rule: unknown,
-        api: Api,
-        { origin }: { origin: string },
-      ) => {
-        if (origin !== 'change') return;
-        api.hidden(value !== 'KEY', keyCredentialFields);
-        api.hidden(value !== 'CERT', certificateCredentialFields);
-      },
-      validate: required('请选择签名模式'),
-      value: initialMode,
+  const authModeRule = {
+    field: 'authMode',
+    options: [
+      { label: '公钥模式', value: 'KEY' },
+      { label: '证书模式', value: 'CERT' },
+    ],
+    title: '签名模式',
+    type: 'radio',
+    update: (
+      value: unknown,
+      _rule: unknown,
+      api: Api,
+      { origin }: { origin: string },
+    ) => {
+      if (origin !== 'change') return;
+      api.hidden(value !== 'KEY', keyCredentialFields);
+      api.hidden(value !== 'CERT', certificateCredentialFields);
     },
-    {
-      field: 'appId',
-      props: { maxlength: 64, placeholder: '请输入支付宝开放平台应用 ID' },
-      title: '支付宝应用 ID',
-      type: 'input',
-      validate: required('请输入支付宝应用 ID'),
-      value: '',
+    validate: required('请选择签名模式'),
+    value: initialMode,
+  };
+  const appIdRule = {
+    field: 'appId',
+    props: { maxlength: 64, placeholder: '请输入支付宝开放平台应用 ID' },
+    title: '支付宝应用 ID',
+    type: 'input',
+    validate: required('请输入支付宝应用 ID'),
+    value: '',
+  };
+  const gatewayRule = {
+    field: 'gateway',
+    props: {
+      maxlength: 2048,
+      placeholder: '请输入完整的 HTTP/HTTPS API 网关地址',
     },
-    {
-      field: 'gateway',
-      props: {
-        maxlength: 2048,
-        placeholder: '请输入完整的 HTTP/HTTPS API 网关地址',
-      },
-      title: 'API 网关地址',
-      type: 'input',
-      validate: required('请输入 API 网关地址'),
-      value: 'https://openapi.alipay.com/gateway.do',
-    },
+    title: 'API 网关地址',
+    type: 'input',
+    validate: required('请输入 API 网关地址'),
+    value: 'https://openapi.alipay.com/gateway.do',
+  };
+  const credentialRules = [
     credentialTextFileRule('privateKey', '应用私钥', '.pem,.key,.txt', false),
     credentialTextFileRule(
       'alipayPublicKey',
@@ -589,6 +589,9 @@ function alipayCredentialRules(initialMode: 'CERT' | 'KEY') {
       !certificateMode,
     ),
   ];
+  return layout === 'account-create'
+    ? [appIdRule, authModeRule, gatewayRule, ...credentialRules]
+    : [authModeRule, appIdRule, gatewayRule, ...credentialRules];
 }
 
 export function paymentAccountCredentialModalOptions(

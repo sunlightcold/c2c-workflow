@@ -55,6 +55,28 @@ describe('merchant order operation forms', () => {
     expect(rules?.find(({ field }) => field === 'platformId')?.value).toBe('');
   });
 
+  it('groups payment account identity and connection settings into two rows', () => {
+    const rules =
+      createPaymentAccountModalOptions([
+        { label: '支付宝', value: 'platform-1' },
+      ]).formProps?.rule ?? [];
+
+    expect(rules.slice(0, 6).map(({ field }) => field)).toEqual([
+      'name',
+      'platformId',
+      'externalAccountId',
+      'appId',
+      'authMode',
+      'gateway',
+    ]);
+    for (const field of ['externalAccountId', 'appId', 'authMode', 'gateway']) {
+      expect(rules.find((rule) => rule.field === field)?.col).toEqual({
+        md: 12,
+        xs: 24,
+      });
+    }
+  });
+
   it('offers only the two implemented Alipay execution modes', () => {
     const rule = createMerchantOrderPaymentModalOptions().formProps?.rule?.find(
       ({ field }) => field === 'executionMode',
