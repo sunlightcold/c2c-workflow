@@ -4,17 +4,33 @@ import type { BusinessApi } from '#/api';
 import type { FormModalOptions } from '#/hooks';
 
 import {
+  BUSINESS_NESTED_MODAL_Z_INDEX,
+  businessFormOption,
+  businessModalProps,
+  layoutBusinessFormRules,
+} from './business-form-layout';
+import {
   merchantPlatformApiBaseUrl,
   merchantPlatformOptions,
 } from './business-ui';
 
 type SelectOption = { disabled?: boolean; label: string; value: string };
 
-const verticalForm = {
-  appendValue: false,
-  form: { layout: 'vertical' as const },
-  submitBtn: false,
-};
+export type AlipayCredentialFileField =
+  | 'alipayPublicCertContent'
+  | 'alipayPublicKey'
+  | 'alipayRootCertContent'
+  | 'appCertContent'
+  | 'privateKey';
+
+export type AlipayCredentialFiles = Partial<
+  Record<AlipayCredentialFileField, File>
+>;
+
+type AlipayCredentialFileHandler = (
+  field: AlipayCredentialFileField,
+  file: File | undefined,
+) => void;
 
 const required = (message: string) => [
   { message, required: true, trigger: 'blur' },
@@ -208,95 +224,112 @@ export function createMerchantAccountModalOptions(
 ): FormModalOptions {
   const binanceOnly = platform !== 'BINANCE';
   return {
-    props: { centered: true, title: '新增商家账号', width: 760 },
+    props: businessModalProps('新增商家账号'),
     formProps: {
-      option: verticalForm,
-      rule: [
-        {
-          field: 'platform',
-          options: merchantPlatformOptions,
-          props: { placeholder: '请选择交易平台' },
-          title: '交易平台',
-          type: 'select',
-          update: (value, _rule, api, { origin }) => {
-            if (origin !== 'change') return;
-            const isBinance = value === 'BINANCE';
-            api.hidden(!isBinance, binanceCredentialFields);
-            api.hidden(isBinance, okxCredentialFields);
-            api.hidden(!isBinance, binanceAutomationFields);
-            api.setValue(
-              'apiBaseUrl',
-              isBinance ? 'https://api.binance.com' : 'https://www.okx.com',
-            );
-            api.setValue('paidConfirmIntervalMinMs', isBinance ? 0 : 2000);
-            api.setValue('paidConfirmIntervalMaxMs', isBinance ? 0 : 3000);
+      option: businessFormOption,
+      rule: layoutBusinessFormRules(
+        [
+          {
+            field: 'platform',
+            options: merchantPlatformOptions,
+            props: { placeholder: '请选择交易平台' },
+            title: '交易平台',
+            type: 'select',
+            update: (value, _rule, api, { origin }) => {
+              if (origin !== 'change') return;
+              const isBinance = value === 'BINANCE';
+              api.hidden(!isBinance, binanceCredentialFields);
+              api.hidden(isBinance, okxCredentialFields);
+              api.hidden(!isBinance, binanceAutomationFields);
+              api.setValue(
+                'apiBaseUrl',
+                isBinance ? 'https://api.binance.com' : 'https://www.okx.com',
+              );
+              api.setValue('paidConfirmIntervalMinMs', isBinance ? 0 : 2000);
+              api.setValue('paidConfirmIntervalMaxMs', isBinance ? 0 : 3000);
+            },
+            validate: required('请选择交易平台'),
+            value: platform ?? '',
           },
-          validate: required('请选择交易平台'),
-          value: platform ?? '',
-        },
-        {
-          field: 'apiKey',
-          hidden: binanceOnly,
-          props: {
-            autocomplete: 'new-password',
-            placeholder: '请输入 API Key',
+          {
+            field: 'apiKey',
+            hidden: binanceOnly,
+            props: {
+              autocomplete: 'new-password',
+              placeholder: '请输入 API Key',
+            },
+            title: 'API Key',
+            type: 'inputPassword',
+            validate: required('请输入 API Key'),
+            value: '',
           },
-          title: 'API Key',
-          type: 'inputPassword',
-          validate: required('请输入 API Key'),
-          value: '',
-        },
-        {
-          field: 'secretKey',
-          hidden: binanceOnly,
-          props: {
-            autocomplete: 'new-password',
-            placeholder: '请输入 Secret Key',
+          {
+            field: 'secretKey',
+            hidden: binanceOnly,
+            props: {
+              autocomplete: 'new-password',
+              placeholder: '请输入 Secret Key',
+            },
+            title: 'Secret Key',
+            type: 'inputPassword',
+            validate: required('请输入 Secret Key'),
+            value: '',
           },
-          title: 'Secret Key',
-          type: 'inputPassword',
-          validate: required('请输入 Secret Key'),
-          value: '',
-        },
-        {
-          field: 'clientType',
-          hidden: binanceOnly,
-          props: { maxlength: 32 },
-          title: '客户端类型',
-          type: 'input',
-          value: 'WEB',
-        },
-        {
-          field: 'xUserId',
-          hidden: binanceOnly,
-          props: { maxlength: 64, placeholder: '接口要求时填写' },
-          title: 'X-User-ID',
-          type: 'input',
-          value: '',
-        },
-        {
-          field: 'authorization',
-          hidden: platform !== 'OKX',
-          props: {
-            autocomplete: 'new-password',
-            placeholder: '请输入 Authorization',
+          {
+            field: 'clientType',
+            hidden: binanceOnly,
+            props: { maxlength: 32 },
+            title: '客户端类型',
+            type: 'input',
+            value: 'WEB',
           },
-          title: 'Authorization',
-          type: 'inputPassword',
-          validate: required('请输入 Authorization'),
-          value: '',
-        },
-        {
-          field: 'sessionCookie',
-          hidden: platform !== 'OKX',
-          props: { autocomplete: 'new-password', placeholder: '请输入 Cookie' },
-          title: 'Cookie',
-          type: 'inputPassword',
-          validate: required('请输入 Cookie'),
-          value: '',
-        },
-        ...accountSettingRules(platform),
-      ],
+          {
+            field: 'xUserId',
+            hidden: binanceOnly,
+            props: { maxlength: 64, placeholder: '接口要求时填写' },
+            title: 'X-User-ID',
+            type: 'input',
+            value: '',
+          },
+          {
+            field: 'authorization',
+            hidden: platform !== 'OKX',
+            props: {
+              autocomplete: 'new-password',
+              placeholder: '请输入 Authorization',
+            },
+            title: 'Authorization',
+            type: 'inputPassword',
+            validate: required('请输入 Authorization'),
+            value: '',
+          },
+          {
+            field: 'sessionCookie',
+            hidden: platform !== 'OKX',
+            props: {
+              autocomplete: 'new-password',
+              placeholder: '请输入 Cookie',
+            },
+            title: 'Cookie',
+            type: 'inputPassword',
+            validate: required('请输入 Cookie'),
+            value: '',
+          },
+          ...accountSettingRules(platform),
+        ],
+        [
+          'apiBaseUrl',
+          'apiKey',
+          'authorization',
+          'c2cChatOrderCompletedMessage',
+          'c2cChatOrderCreatedMessage',
+          'c2cChatOrderPaidMessage',
+          'description',
+          'orderStatusList',
+          'secretKey',
+          'sessionCookie',
+        ],
+      ),
     },
   };
 }
@@ -305,10 +338,17 @@ export function editMerchantAccountModalOptions(
   platform: 'BINANCE' | 'OKX',
 ): FormModalOptions {
   return {
-    props: { centered: true, title: '编辑商家账号', width: 760 },
+    props: businessModalProps('编辑商家账号'),
     formProps: {
-      option: verticalForm,
-      rule: accountSettingRules(platform),
+      option: businessFormOption,
+      rule: layoutBusinessFormRules(accountSettingRules(platform), [
+        'apiBaseUrl',
+        'c2cChatOrderCompletedMessage',
+        'c2cChatOrderCreatedMessage',
+        'c2cChatOrderPaidMessage',
+        'description',
+        'orderStatusList',
+      ]),
     },
   };
 }
@@ -384,66 +424,75 @@ export function rotateMerchantCredentialModalOptions(
     value: 10_000,
   });
   return {
-    props: { centered: true, title: '更新平台凭据', width: 620 },
-    formProps: { option: verticalForm, rule: rules },
+    props: businessModalProps('更新平台凭据', 680),
+    formProps: {
+      option: businessFormOption,
+      rule: layoutBusinessFormRules(rules ?? [], [
+        'apiKey',
+        'authorization',
+        'secretKey',
+        'sessionCookie',
+      ]),
+    },
   };
 }
 
 export function createPaymentAccountModalOptions(
   platforms: SelectOption[],
+  onCredentialFile: AlipayCredentialFileHandler = () => undefined,
 ): FormModalOptions {
   return {
-    props: { centered: true, title: '新增支付账号' },
+    props: businessModalProps('新增支付账号'),
     formProps: {
-      option: verticalForm,
-      rule: [
-        {
-          field: 'name',
-          props: { maxlength: 100, placeholder: '请输入账号名称' },
-          title: '账号名称',
-          type: 'input',
-          validate: required('请输入账号名称'),
-          value: '',
-        },
-        {
-          field: 'platformId',
-          options: platforms,
-          props: { placeholder: '请选择支付平台' },
-          title: '支付平台',
-          type: 'select',
-          validate: required('请选择支付平台'),
-          value: '',
-        },
-        {
-          field: 'externalAccountId',
-          props: { maxlength: 128, placeholder: '请输入支付宝商户号' },
-          title: '支付宝商户号',
-          type: 'input',
-          validate: required('请输入支付宝商户号'),
-          value: '',
-        },
-        {
-          field: 'credentialRef',
-          props: {
-            autocomplete: 'new-password',
-            placeholder: '请输入 Secret 引用',
+      option: businessFormOption,
+      rule: layoutBusinessFormRules(
+        [
+          {
+            field: 'name',
+            props: { maxlength: 100, placeholder: '请输入账号名称' },
+            title: '账号名称',
+            type: 'input',
+            validate: required('请输入账号名称'),
+            value: '',
           },
-          title: 'Secret 引用',
-          type: 'inputPassword',
-          validate: required('请输入 Secret 引用'),
-          value: '',
-        },
-      ],
+          {
+            field: 'platformId',
+            options: platforms,
+            props: { placeholder: '请选择支付平台' },
+            title: '支付平台',
+            type: 'select',
+            validate: required('请选择支付平台'),
+            value: '',
+          },
+          {
+            field: 'externalAccountId',
+            props: { maxlength: 128, placeholder: '请输入支付宝商户号' },
+            title: '支付宝商户号',
+            type: 'input',
+            validate: required('请输入支付宝商户号'),
+            value: '',
+          },
+          ...alipayCredentialRules('KEY', onCredentialFile),
+        ],
+        [
+          'alipayPublicCertFile',
+          'alipayPublicKeyFile',
+          'alipayRootCertFile',
+          'appCertFile',
+          'authMode',
+          'privateKeyFile',
+        ],
+      ),
     },
   };
 }
 
 export function editPaymentAccountModalOptions(): FormModalOptions {
   return {
-    props: { centered: true, title: '编辑支付账号' },
+    props: businessModalProps('编辑支付账号', 680),
     formProps: {
-      option: verticalForm,
-      rule: [
+      option: businessFormOption,
+      rule: layoutBusinessFormRules([
         {
           field: 'name',
           props: { maxlength: 100, placeholder: '请输入账号名称' },
@@ -460,19 +509,212 @@ export function editPaymentAccountModalOptions(): FormModalOptions {
           validate: required('请输入支付宝商户号'),
           value: '',
         },
-        {
-          field: 'credentialRef',
-          props: {
-            autocomplete: 'new-password',
-            placeholder: '不修改凭据时留空',
-          },
-          title: '新 Secret 引用',
-          type: 'inputPassword',
-          value: '',
-        },
-      ],
+      ]),
     },
   };
+}
+
+const keyCredentialFileFields = ['alipayPublicKeyFile'];
+const certificateCredentialFileFields = [
+  'appCertFile',
+  'alipayPublicCertFile',
+  'alipayRootCertFile',
+];
+
+function credentialFileRule(
+  field: string,
+  credentialField: AlipayCredentialFileField,
+  title: string,
+  accept: string,
+  hidden: boolean,
+  onCredentialFile: AlipayCredentialFileHandler,
+) {
+  return {
+    field,
+    hidden,
+    on: {
+      remove: () => onCredentialFile(credentialField, undefined),
+    },
+    props: {
+      accept,
+      beforeUpload: (file: File) => {
+        onCredentialFile(credentialField, file);
+        return false;
+      },
+      maxCount: 1,
+    },
+    title,
+    type: 'upload',
+    value: [],
+  };
+}
+
+function alipayCredentialRules(
+  initialMode: 'CERT' | 'KEY',
+  onCredentialFile: AlipayCredentialFileHandler,
+) {
+  const certificateMode = initialMode === 'CERT';
+  return [
+    {
+      field: 'authMode',
+      options: [
+        { label: '公钥模式', value: 'KEY' },
+        { label: '证书模式', value: 'CERT' },
+      ],
+      title: '签名模式',
+      type: 'radio',
+      update: (
+        value: unknown,
+        _rule: unknown,
+        api: Api,
+        { origin }: { origin: string },
+      ) => {
+        if (origin !== 'change') return;
+        api.hidden(value !== 'KEY', keyCredentialFileFields);
+        api.hidden(value !== 'CERT', certificateCredentialFileFields);
+      },
+      validate: required('请选择签名模式'),
+      value: initialMode,
+    },
+    {
+      field: 'appId',
+      props: { maxlength: 64, placeholder: '请输入支付宝开放平台应用 ID' },
+      title: '支付宝应用 ID',
+      type: 'input',
+      validate: required('请输入支付宝应用 ID'),
+      value: '',
+    },
+    {
+      field: 'gateway',
+      options: [
+        {
+          label: '正式环境',
+          value: 'https://openapi.alipay.com/gateway.do',
+        },
+        {
+          label: '沙箱环境',
+          value: 'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+        },
+      ],
+      title: '接口环境',
+      type: 'select',
+      validate: required('请选择接口环境'),
+      value: 'https://openapi.alipay.com/gateway.do',
+    },
+    credentialFileRule(
+      'privateKeyFile',
+      'privateKey',
+      '应用私钥文件',
+      '.pem,.key,.txt',
+      false,
+      onCredentialFile,
+    ),
+    credentialFileRule(
+      'alipayPublicKeyFile',
+      'alipayPublicKey',
+      '支付宝公钥文件',
+      '.pem,.txt',
+      certificateMode,
+      onCredentialFile,
+    ),
+    credentialFileRule(
+      'appCertFile',
+      'appCertContent',
+      '应用公钥证书',
+      '.crt,.cer,.pem',
+      !certificateMode,
+      onCredentialFile,
+    ),
+    credentialFileRule(
+      'alipayPublicCertFile',
+      'alipayPublicCertContent',
+      '支付宝公钥证书',
+      '.crt,.cer,.pem',
+      !certificateMode,
+      onCredentialFile,
+    ),
+    credentialFileRule(
+      'alipayRootCertFile',
+      'alipayRootCertContent',
+      '支付宝根证书',
+      '.crt,.cer,.pem',
+      !certificateMode,
+      onCredentialFile,
+    ),
+  ];
+}
+
+export function paymentAccountCredentialModalOptions(
+  initialMode: 'CERT' | 'KEY',
+  onCredentialFile: AlipayCredentialFileHandler,
+): FormModalOptions {
+  return {
+    props: businessModalProps('配置支付账号凭据'),
+    formProps: {
+      option: businessFormOption,
+      rule: layoutBusinessFormRules(
+        alipayCredentialRules(initialMode, onCredentialFile),
+        [
+          'alipayPublicCertFile',
+          'alipayPublicKeyFile',
+          'alipayRootCertFile',
+          'appCertFile',
+          'authMode',
+          'privateKeyFile',
+        ],
+      ),
+    },
+  };
+}
+
+export async function readAlipayCredentialFiles(
+  values: Pick<
+    BusinessApi.AlipayPaymentAccountCredential,
+    'appId' | 'authMode' | 'gateway'
+  >,
+  files: AlipayCredentialFiles,
+): Promise<BusinessApi.AlipayPaymentAccountCredential> {
+  const privateKey = await readRequiredCredentialFile(
+    files.privateKey,
+    '应用私钥文件',
+  );
+  if (values.authMode === 'KEY') {
+    return {
+      ...values,
+      privateKey,
+      alipayPublicKey: await readRequiredCredentialFile(
+        files.alipayPublicKey,
+        '支付宝公钥文件',
+      ),
+    };
+  }
+  return {
+    ...values,
+    privateKey,
+    appCertContent: await readRequiredCredentialFile(
+      files.appCertContent,
+      '应用公钥证书',
+    ),
+    alipayPublicCertContent: await readRequiredCredentialFile(
+      files.alipayPublicCertContent,
+      '支付宝公钥证书',
+    ),
+    alipayRootCertContent: await readRequiredCredentialFile(
+      files.alipayRootCertContent,
+      '支付宝根证书',
+    ),
+  };
+}
+
+async function readRequiredCredentialFile(
+  file: File | undefined,
+  title: string,
+) {
+  if (!file) throw new Error(`请选择${title}`);
+  const fileContent = await file.text();
+  const content = fileContent.trim();
+  if (!content) throw new Error(`${title}内容为空`);
+  return content;
 }
 
 const paymentAmountPattern = /^(0|[1-9]\d{0,17})(\.\d{1,2})?$/;
@@ -486,7 +728,6 @@ export function normalizePaymentChannelFormData(
   };
   return {
     ...value,
-    configRef: value.configRef?.trim() || undefined,
     maximumAmount: normalizeAmount(value.maximumAmount),
     minimumAmount: normalizeAmount(value.minimumAmount),
   };
@@ -494,16 +735,6 @@ export function normalizePaymentChannelFormData(
 
 function paymentChannelParameterRules() {
   return [
-    {
-      field: 'configRef',
-      props: {
-        autocomplete: 'new-password',
-        placeholder: '没有独立配置时可留空',
-      },
-      title: '通道配置引用',
-      type: 'inputPassword',
-      value: '',
-    },
     {
       field: 'minimumAmount',
       props: { placeholder: '不限制时留空' },
@@ -548,28 +779,34 @@ export function openPaymentChannelModalOptions(
   channels: SelectOption[],
 ): FormModalOptions {
   return {
-    props: { centered: true, title: '开通支付通道' },
+    props: {
+      ...businessModalProps('开通支付通道'),
+      zIndex: BUSINESS_NESTED_MODAL_Z_INDEX,
+    },
     formProps: {
-      option: verticalForm,
-      rule: [
-        {
-          field: 'accountName',
-          props: { disabled: true },
-          title: '支付账号',
-          type: 'input',
-          value: accountName,
-        },
-        {
-          field: 'channelId',
-          options: channels,
-          props: { placeholder: '请选择该账号平台下的支付通道' },
-          title: '支付通道',
-          type: 'select',
-          validate: required('请选择支付通道'),
-          value: '',
-        },
-        ...paymentChannelParameterRules(),
-      ],
+      option: businessFormOption,
+      rule: layoutBusinessFormRules(
+        [
+          {
+            field: 'accountName',
+            props: { disabled: true },
+            title: '支付账号',
+            type: 'input',
+            value: accountName,
+          },
+          {
+            field: 'channelId',
+            options: channels,
+            props: { placeholder: '请选择该账号平台下的支付通道' },
+            title: '支付通道',
+            type: 'select',
+            validate: required('请选择支付通道'),
+            value: '',
+          },
+          ...paymentChannelParameterRules(),
+        ],
+        [],
+      ),
     },
   };
 }
@@ -578,19 +815,25 @@ export function editPaymentChannelModalOptions(
   channelName: string,
 ): FormModalOptions {
   return {
-    props: { centered: true, title: '编辑支付通道' },
+    props: {
+      ...businessModalProps('编辑支付通道'),
+      zIndex: BUSINESS_NESTED_MODAL_Z_INDEX,
+    },
     formProps: {
-      option: verticalForm,
-      rule: [
-        {
-          field: 'channelName',
-          props: { disabled: true },
-          title: '支付通道',
-          type: 'input',
-          value: channelName,
-        },
-        ...paymentChannelParameterRules(),
-      ],
+      option: businessFormOption,
+      rule: layoutBusinessFormRules(
+        [
+          {
+            field: 'channelName',
+            props: { disabled: true },
+            title: '支付通道',
+            type: 'input',
+            value: channelName,
+          },
+          ...paymentChannelParameterRules(),
+        ],
+        [],
+      ),
     },
   };
 }
@@ -599,36 +842,39 @@ export function createPaymentPlanModalOptions(
   routes: SelectOption[],
 ): FormModalOptions {
   return {
-    props: { centered: true, title: '新增支付方案' },
+    props: businessModalProps('新增支付方案', 680),
     formProps: {
-      option: verticalForm,
-      rule: [
-        {
-          field: 'routeKey',
-          options: routes,
-          props: { placeholder: '请选择支付账号及其已开通通道' },
-          title: '支付账号与通道',
-          type: 'select',
-          validate: required('请选择支付账号与通道'),
-          value: '',
-        },
-        {
-          field: 'priority',
-          props: { max: 1000, min: 1 },
-          title: '使用顺序',
-          type: 'inputNumber',
-          validate: required('请输入使用顺序'),
-          value: 100,
-        },
-        {
-          field: 'weight',
-          props: { max: 100, min: 1 },
-          title: '分配比例',
-          type: 'inputNumber',
-          validate: required('请输入分配比例'),
-          value: 100,
-        },
-      ],
+      option: businessFormOption,
+      rule: layoutBusinessFormRules(
+        [
+          {
+            field: 'routeKey',
+            options: routes,
+            props: { placeholder: '请选择支付账号及其已开通通道' },
+            title: '支付账号与通道',
+            type: 'select',
+            validate: required('请选择支付账号与通道'),
+            value: '',
+          },
+          {
+            field: 'priority',
+            props: { max: 1000, min: 1 },
+            title: '使用顺序',
+            type: 'inputNumber',
+            validate: required('请输入使用顺序'),
+            value: 100,
+          },
+          {
+            field: 'weight',
+            props: { max: 100, min: 1 },
+            title: '分配比例',
+            type: 'inputNumber',
+            validate: required('请输入分配比例'),
+            value: 100,
+          },
+        ],
+        ['routeKey'],
+      ),
     },
   };
 }
@@ -637,10 +883,10 @@ export function createManualPaymentModalOptions(
   merchants: SelectOption[],
 ): FormModalOptions {
   return {
-    props: { centered: true, title: '新增手工支付' },
+    props: businessModalProps('新增手工支付'),
     formProps: {
-      option: verticalForm,
-      rule: [
+      option: businessFormOption,
+      rule: layoutBusinessFormRules([
         {
           field: 'merchantId',
           options: merchants,
@@ -700,7 +946,7 @@ export function createManualPaymentModalOptions(
           validate: required('请输入支付宝账号'),
           value: '',
         },
-      ],
+      ]),
     },
   };
 }
@@ -721,111 +967,122 @@ export function createPaymentBatchModalOptions({
     api.setValue('paymentOrderIds', []);
   };
   return {
-    props: { centered: true, title: '创建支付批次' },
+    props: businessModalProps('创建支付批次'),
     formProps: {
-      option: verticalForm,
-      rule: [
-        {
-          field: 'merchantId',
-          options: merchants,
-          props: { placeholder: '请选择商家' },
-          title: '商家',
-          type: 'select',
-          update: (merchantId, _rule, api, { origin }) => {
-            if (origin !== 'change') return;
-            resetRouteFields(api);
-            void loadRoutes(merchantId as string).then((routes) => {
-              api.updateRule('routeKey', { options: routes });
-            });
-          },
-          validate: required('请选择商家'),
-          value: '',
-        },
-        {
-          field: 'routeKey',
-          options: [],
-          props: { placeholder: '请选择同一支付账号与通道' },
-          title: '支付账号与通道',
-          type: 'select',
-          update: (routeKey, rule, api, { origin }) => {
-            if (origin !== 'change') return;
-            api.setValue('paymentOrderIds', []);
-            const route = (
-              rule.options as Array<SelectOption & { orders: SelectOption[] }>
-            ).find(({ value }) => value === routeKey);
-            api.updateRule('paymentOrderIds', { options: route?.orders ?? [] });
-          },
-          validate: required('请选择支付账号与通道'),
-          value: '',
-        },
-        {
-          field: 'paymentOrderIds',
-          options: [],
-          props: {
-            maxTagCount: 'responsive',
-            mode: 'multiple',
-            placeholder: '请选择 1 至 500 笔支付订单',
-          },
-          title: '待提交支付订单',
-          type: 'select',
-          validate: [
-            {
-              message: '请选择至少一笔支付订单',
-              min: 1,
-              required: true,
-              trigger: 'change',
-              type: 'array',
+      option: businessFormOption,
+      rule: layoutBusinessFormRules(
+        [
+          {
+            field: 'merchantId',
+            options: merchants,
+            props: { placeholder: '请选择商家' },
+            title: '商家',
+            type: 'select',
+            update: (merchantId, _rule, api, { origin }) => {
+              if (origin !== 'change') return;
+              resetRouteFields(api);
+              void loadRoutes(merchantId as string).then((routes) => {
+                api.updateRule('routeKey', { options: routes });
+              });
             },
-          ],
-          value: [],
-        },
-      ],
+            validate: required('请选择商家'),
+            value: '',
+          },
+          {
+            field: 'routeKey',
+            options: [],
+            props: { placeholder: '请选择同一支付账号与通道' },
+            title: '支付账号与通道',
+            type: 'select',
+            update: (routeKey, rule, api, { origin }) => {
+              if (origin !== 'change') return;
+              api.setValue('paymentOrderIds', []);
+              const route = (
+                rule.options as Array<SelectOption & { orders: SelectOption[] }>
+              ).find(({ value }) => value === routeKey);
+              api.updateRule('paymentOrderIds', {
+                options: route?.orders ?? [],
+              });
+            },
+            validate: required('请选择支付账号与通道'),
+            value: '',
+          },
+          {
+            field: 'paymentOrderIds',
+            options: [],
+            props: {
+              maxTagCount: 'responsive',
+              mode: 'multiple',
+              placeholder: '请选择 1 至 500 笔支付订单',
+            },
+            title: '待提交支付订单',
+            type: 'select',
+            validate: [
+              {
+                message: '请选择至少一笔支付订单',
+                min: 1,
+                required: true,
+                trigger: 'change',
+                type: 'array',
+              },
+            ],
+            value: [],
+          },
+        ],
+        ['paymentOrderIds'],
+      ),
     },
   };
 }
 
 export function createMerchantOrderPaymentModalOptions(): FormModalOptions {
   return {
-    props: { centered: true, title: '创建支付', width: 520 },
+    props: businessModalProps('创建支付', 520),
     formProps: {
-      option: verticalForm,
-      rule: [
-        {
-          field: 'executionMode',
-          options: [
-            { label: '支付宝商家转账', value: 'INSTANT' },
-            { label: '支付宝批量有密', value: 'BATCH' },
-          ],
-          title: '支付方式',
-          type: 'radio',
-          validate: required('请选择支付方式'),
-          value: 'INSTANT',
-        },
-      ],
+      option: businessFormOption,
+      rule: layoutBusinessFormRules(
+        [
+          {
+            field: 'executionMode',
+            options: [
+              { label: '支付宝商家转账', value: 'INSTANT' },
+              { label: '支付宝批量有密', value: 'BATCH' },
+            ],
+            title: '支付方式',
+            type: 'radio',
+            validate: required('请选择支付方式'),
+            value: 'INSTANT',
+          },
+        ],
+        ['executionMode'],
+      ),
     },
   };
 }
 
 export function cancelMerchantOrderModalOptions(): FormModalOptions {
   return {
-    props: { centered: true, title: '作废商家订单', width: 520 },
+    props: businessModalProps('作废商家订单', 520),
     formProps: {
-      option: verticalForm,
-      rule: [
-        {
-          field: 'reason',
-          props: {
-            maxlength: 400,
-            placeholder: '请输入作废原因',
-            rows: 4,
-            showCount: true,
+      option: businessFormOption,
+      rule: layoutBusinessFormRules(
+        [
+          {
+            field: 'reason',
+            props: {
+              maxlength: 400,
+              placeholder: '请输入作废原因',
+              rows: 4,
+              showCount: true,
+            },
+            title: '作废原因',
+            type: 'textarea',
+            validate: required('请输入作废原因'),
+            value: '',
           },
-          title: '作废原因',
-          type: 'textarea',
-          validate: required('请输入作废原因'),
-          value: '',
-        },
-      ],
+        ],
+        ['reason'],
+      ),
     },
   };
 }
@@ -835,61 +1092,64 @@ export function createMerchantOrderAppealModalOptions(
   onReceipt: (file: File | undefined) => void,
 ): FormModalOptions {
   return {
-    props: { centered: true, title: '提交订单申诉', width: 620 },
+    props: businessModalProps('提交订单申诉', 680),
     formProps: {
-      option: verticalForm,
-      rule: [
-        {
-          field: 'reasonCode',
-          options: reasons.map(({ reasonCode, reasonDesc }) => ({
-            label: reasonDesc,
-            value: reasonCode,
-          })),
-          props: { placeholder: '请选择币安实时返回的申诉原因' },
-          title: '申诉原因',
-          type: 'select',
-          validate: required('请选择申诉原因'),
-          value: reasons[0]?.reasonCode,
-        },
-        {
-          field: 'description',
-          props: {
-            maxlength: 500,
-            placeholder: '请说明已付款及卖家未放行的情况',
-            rows: 4,
-            showCount: true,
+      option: businessFormOption,
+      rule: layoutBusinessFormRules(
+        [
+          {
+            field: 'reasonCode',
+            options: reasons.map(({ reasonCode, reasonDesc }) => ({
+              label: reasonDesc,
+              value: reasonCode,
+            })),
+            props: { placeholder: '请选择币安实时返回的申诉原因' },
+            title: '申诉原因',
+            type: 'select',
+            validate: required('请选择申诉原因'),
+            value: reasons[0]?.reasonCode,
           },
-          title: '申诉说明',
-          type: 'textarea',
-          validate: required('请输入申诉说明'),
-          value: '',
-        },
-        {
-          field: 'receipt',
-          props: {
-            accept: 'image/png,image/jpeg,image/webp',
-            beforeUpload: (file: File) => {
-              onReceipt(file);
-              return false;
+          {
+            field: 'description',
+            props: {
+              maxlength: 500,
+              placeholder: '请说明已付款及卖家未放行的情况',
+              rows: 4,
+              showCount: true,
             },
-            listType: 'picture',
-            maxCount: 1,
+            title: '申诉说明',
+            type: 'textarea',
+            validate: required('请输入申诉说明'),
+            value: '',
           },
-          on: { remove: () => onReceipt(undefined) },
-          title: '付款回单',
-          type: 'upload',
-          validate: [
-            {
-              message: '请选择一张付款回单图片',
-              min: 1,
-              required: true,
-              trigger: 'change',
-              type: 'array',
+          {
+            field: 'receipt',
+            props: {
+              accept: 'image/png,image/jpeg,image/webp',
+              beforeUpload: (file: File) => {
+                onReceipt(file);
+                return false;
+              },
+              listType: 'picture',
+              maxCount: 1,
             },
-          ],
-          value: [],
-        },
-      ],
+            on: { remove: () => onReceipt(undefined) },
+            title: '付款回单',
+            type: 'upload',
+            validate: [
+              {
+                message: '请选择一张付款回单图片',
+                min: 1,
+                required: true,
+                trigger: 'change',
+                type: 'array',
+              },
+            ],
+            value: [],
+          },
+        ],
+        ['description', 'reasonCode', 'receipt'],
+      ),
     },
   };
 }

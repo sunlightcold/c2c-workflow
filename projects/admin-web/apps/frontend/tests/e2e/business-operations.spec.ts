@@ -1,4 +1,6 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
+
+import { Buffer } from 'node:buffer';
 
 import { expect, test } from '@playwright/test';
 
@@ -115,6 +117,68 @@ async function selectHeadquartersTenant(page: Page) {
   await expect(tenantSelect.locator('.ant-select-selection-item')).toHaveText(
     '总部自营（总部自营）',
   );
+}
+
+async function expectResponsiveTwoColumnForm(page: Page, dialog: Locator) {
+  await expectDialogWithoutHorizontalOverflow(dialog);
+  const row = dialog.locator('.ant-form > .ant-row').first();
+  const halfWidthFields = row.locator(
+    ':scope > .ant-col-xs-24.ant-col-md-12:visible',
+  );
+  await expect(halfWidthFields.first()).toBeVisible();
+  expect(await halfWidthFields.count()).toBeGreaterThanOrEqual(2);
+
+  const [rowBox, fieldBox] = await Promise.all([
+    row.boundingBox(),
+    halfWidthFields.first().boundingBox(),
+  ]);
+  if (!rowBox || !fieldBox) throw new Error('无法读取表单栅格尺寸');
+  const widthRatio = fieldBox.width / rowBox.width;
+  if ((page.viewportSize()?.width ?? 0) < 768) {
+    expect(widthRatio).toBeGreaterThan(0.95);
+  } else {
+    expect(widthRatio).toBeGreaterThan(0.45);
+    expect(widthRatio).toBeLessThan(0.55);
+  }
+}
+
+async function expectDialogWithoutHorizontalOverflow(dialog: Locator) {
+  const body = dialog.locator('.ant-modal-body');
+  await expect(body).toBeVisible();
+  await expect
+    .poll(() =>
+      body.evaluate((element) => element.scrollWidth - element.clientWidth),
+    )
+    .toBeLessThanOrEqual(0);
+}
+
+async function expectDialogAboveDrawerAndInsideViewport(
+  page: Page,
+  dialog: Locator,
+) {
+  await expect(dialog).toBeVisible();
+  await expectDialogWithoutHorizontalOverflow(dialog);
+  const result = await dialog.evaluate((modal) => {
+    const modalWrap = modal.closest<HTMLElement>('.ant-modal-wrap');
+    const drawerRoot = [
+      ...document.querySelectorAll<HTMLElement>('.ant-drawer'),
+    ].find((drawer) => drawer.getBoundingClientRect().width > 0);
+    if (!modalWrap || !drawerRoot) return null;
+    const box = modal.getBoundingClientRect();
+    return {
+      insideViewport:
+        box.left >= 0 &&
+        box.top >= 0 &&
+        box.right <= window.innerWidth &&
+        box.bottom <= window.innerHeight,
+      modalZIndex: Number.parseInt(getComputedStyle(modalWrap).zIndex, 10),
+      drawerZIndex: Number.parseInt(getComputedStyle(drawerRoot).zIndex, 10),
+    };
+  });
+
+  expect(result).not.toBeNull();
+  expect(result?.modalZIndex).toBeGreaterThan(result?.drawerZIndex ?? 0);
+  expect(result?.insideViewport).toBe(true);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -319,6 +383,10 @@ test.beforeEach(async ({ page }) => {
               code: 'alipay-main',
               createdAt: '2026-09-10T08:00:00.000Z',
               credentialConfigured: true,
+              credentialAppId: '2026000000000001',
+              credentialAuthMode: 'KEY',
+              credentialGateway: 'https://openapi.alipay.com/gateway.do',
+              credentialUpdatedAt: '2026-09-10T08:00:00.000Z',
               externalAccountId: '2088123456789000',
               id: '00000000-0000-4000-8000-000000000110',
               name: '总部支付宝主账号',
@@ -559,6 +627,7 @@ test('loads all second-level business pages under one menu', async ({
   await expect(
     createMerchantDialog.getByText('账号编码', { exact: true }),
   ).toHaveCount(0);
+  await expectResponsiveTwoColumnForm(page, createMerchantDialog);
   await createMerchantDialog.locator('.ant-btn-primary').click();
   await expect(createMerchantDialog.getByText('请输入账号名称')).toBeVisible();
   const dialogBox = await createMerchantDialog.boundingBox();
@@ -617,10 +686,22 @@ test('loads all second-level business pages under one menu', async ({
     fullPage: true,
     path: `node_modules/.e2e/screenshots/payment-accounts-${testInfo.project.name}.png`,
   });
+  await channelDrawer.getByRole('button', { name: '开通支付通道' }).click();
+  const openChannelDialog = page.getByRole('dialog', {
+    name: '开通支付通道',
+  });
+  await expectDialogAboveDrawerAndInsideViewport(page, openChannelDialog);
+  await page.screenshot({
+    fullPage: true,
+    path: `node_modules/.e2e/screenshots/payment-channel-modal-${testInfo.project.name}.png`,
+  });
+  await openChannelDialog.getByRole('button', { name: /取\s*消/ }).click();
+
   await channelDrawer.getByRole('button', { name: /编\s*辑/ }).click();
   const editChannelDialog = page.getByRole('dialog', {
     name: '编辑支付通道',
   });
+  await expectDialogAboveDrawerAndInsideViewport(page, editChannelDialog);
   await expect(editChannelDialog.getByText('单笔最小金额')).toBeVisible();
   await expect(editChannelDialog.getByText('并发上限')).toBeVisible();
   expect(
@@ -639,6 +720,7 @@ test('loads all second-level business pages under one menu', async ({
     name: '新增手工支付',
   });
   await expect(createPaymentDialog).toBeVisible();
+  await expectResponsiveTwoColumnForm(page, createPaymentDialog);
   await expect(
     createPaymentDialog
       .getByRole('combobox', { name: /商家/ })
@@ -797,6 +879,10 @@ test('provides complete Telegram administration actions', async ({ page }) => {
     await expect(
       page.getByRole('dialog', { name: assertion.editDialog }),
     ).toBeVisible();
+    await expectResponsiveTwoColumnForm(
+      page,
+      page.getByRole('dialog', { name: assertion.editDialog }),
+    );
     await page.keyboard.press('Escape');
     expect(
       await page.evaluate(
@@ -842,6 +928,7 @@ test('keeps internal business codes out of create forms', async ({ page }) => {
       .getByRole('combobox', { name: /支付平台/ })
       .locator('.ant-select-selection-item'),
   ).toHaveCount(0);
+  await expectDialogWithoutHorizontalOverflow(accountDialog);
   await page.keyboard.press('Escape');
 
   await page.goto('/business/telegram-bots');
@@ -851,4 +938,62 @@ test('keeps internal business codes out of create forms', async ({ page }) => {
   await expect(botDialog.getByText('机器人编码', { exact: true })).toHaveCount(
     0,
   );
+});
+
+test('replaces the one payment account credential from selected certificate files', async ({
+  page,
+}) => {
+  await page.goto('/business/payment-accounts');
+  await selectHeadquartersTenant(page);
+  await expect(page.getByText('公钥模式', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '凭据配置' }).click();
+
+  const dialog = page.getByRole('dialog', { name: '配置支付账号凭据' });
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole('textbox', { name: /支付宝应用 ID/ }),
+  ).toHaveValue('2026000000000001');
+  await dialog.getByText('证书模式', { exact: true }).click();
+  await expect(dialog.getByText('应用公钥证书', { exact: true })).toBeVisible();
+  await expect(
+    dialog.getByText('支付宝公钥证书', { exact: true }),
+  ).toBeVisible();
+  await expect(dialog.getByText('支付宝根证书', { exact: true })).toBeVisible();
+
+  const fileInputs = dialog.locator('input[type="file"]');
+  await expect(fileInputs).toHaveCount(4);
+  const selectedFiles = [
+    ['app-private-key.pem', 'application-private-key'],
+    ['app-cert.crt', 'application-certificate'],
+    ['alipay-public-cert.crt', 'alipay-public-certificate'],
+    ['alipay-root-cert.crt', 'alipay-root-certificate'],
+  ] as const;
+  for (const [index, [name, content]] of selectedFiles.entries()) {
+    await fileInputs.nth(index).setInputFiles({
+      buffer: Buffer.from(content),
+      mimeType: 'text/plain',
+      name,
+    });
+  }
+
+  const credentialRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'PUT' &&
+      request.url().includes('/v1/sys/payment-accounts/') &&
+      request.url().endsWith('/credential'),
+    { timeout: 8000 },
+  );
+  await dialog.getByRole('button', { name: /确\s*定/ }).click();
+  await expect(dialog.locator('.ant-form-item-explain-error')).toHaveCount(0);
+  const request = await credentialRequest;
+  const payload = request.postDataJSON();
+  expect(payload).toMatchObject({
+    appCertContent: 'application-certificate',
+    authMode: 'CERT',
+    alipayPublicCertContent: 'alipay-public-certificate',
+    alipayRootCertContent: 'alipay-root-certificate',
+    privateKey: 'application-private-key',
+    tenantId,
+  });
+  expect(payload).not.toHaveProperty('alipayPublicKey');
 });

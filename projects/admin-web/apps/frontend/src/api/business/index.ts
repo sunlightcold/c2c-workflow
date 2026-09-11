@@ -108,6 +108,10 @@ export namespace BusinessApi {
     code: string;
     createdAt: string;
     credentialConfigured: boolean;
+    credentialAppId: null | string;
+    credentialAuthMode: 'CERT' | 'KEY' | null;
+    credentialGateway: null | string;
+    credentialUpdatedAt: null | string;
     externalAccountId: string;
     id: string;
     name: string;
@@ -279,14 +283,30 @@ export namespace BusinessApi {
   }
 
   export interface UpdatePaymentAccountInput extends TenantContext {
-    credentialRef?: string;
     externalAccountId?: string;
     name?: string;
   }
 
+  export interface AlipayPaymentAccountCredential {
+    alipayPublicCertContent?: string;
+    alipayPublicKey?: string;
+    alipayRootCertContent?: string;
+    appCertContent?: string;
+    appId: string;
+    authMode: 'CERT' | 'KEY';
+    gateway: string;
+    privateKey: string;
+  }
+
+  export interface CreatePaymentAccountInput extends TenantContext {
+    credential: AlipayPaymentAccountCredential;
+    externalAccountId: string;
+    name: string;
+    platformId: string;
+  }
+
   export interface PaymentAccountChannelInput extends TenantContext {
     concurrencyLimit?: number;
-    configRef?: string;
     maximumAmount?: null | string;
     minimumAmount?: null | string;
   }
@@ -542,13 +562,7 @@ export async function getPaymentAccountsApi(params: BusinessApi.TenantContext) {
   return result.items;
 }
 export const createPaymentAccountApi = (
-  data: BusinessApi.TenantContext &
-    Pick<
-      BusinessApi.PaymentAccount,
-      'externalAccountId' | 'name' | 'platformId'
-    > & {
-      credentialRef: string;
-    },
+  data: BusinessApi.CreatePaymentAccountInput,
 ) =>
   requestClient.post<BusinessApi.PaymentAccount>('/sys/payment-accounts', data);
 export const updatePaymentAccountApi = (
@@ -557,6 +571,14 @@ export const updatePaymentAccountApi = (
 ) =>
   requestClient.put<BusinessApi.PaymentAccount>(
     `/sys/payment-accounts/${id}`,
+    data,
+  );
+export const updatePaymentAccountCredentialApi = (
+  id: string,
+  data: BusinessApi.AlipayPaymentAccountCredential & BusinessApi.TenantContext,
+) =>
+  requestClient.put<BusinessApi.PaymentAccount>(
+    `/sys/payment-accounts/${id}/credential`,
     data,
   );
 export const setPaymentAccountStatusApi = (

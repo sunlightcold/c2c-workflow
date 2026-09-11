@@ -1,4 +1,9 @@
 <script lang="tsx" setup>
+import type {
+  AlipayCredentialFileField,
+  AlipayCredentialFiles,
+} from '../shared/business-form-schemas';
+
 import type { VbenFormProps } from '#/adapter/form';
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { BusinessApi } from '#/api';
@@ -19,6 +24,7 @@ import {
   setPaymentAccountStatusApi,
   updatePaymentAccountApi,
   updatePaymentAccountChannelApi,
+  updatePaymentAccountCredentialApi,
 } from '#/api';
 import {
   confirmResourceAction,
@@ -33,6 +39,8 @@ import {
   editPaymentChannelModalOptions,
   normalizePaymentChannelFormData,
   openPaymentChannelModalOptions,
+  paymentAccountCredentialModalOptions,
+  readAlipayCredentialFiles,
 } from '../shared/business-form-schemas';
 import { createEmptyBusinessPage } from '../shared/business-grid';
 import {
@@ -193,7 +201,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.PaymentAccount> = {
       fixed: 'right',
       slots: { default: 'action' },
       title: '操作',
-      width: 300,
+      width: 360,
     },
   ],
 };
@@ -250,29 +258,50 @@ function cleanOptionalStrings<T extends object>(value: T): T {
 }
 
 function openCreate() {
-  formModalShow(createPaymentAccountModalOptions(platformOptions.value), {
-    onOk: async (api) => {
-      await api.validate();
-      const data = api.formData() as {
-        credentialRef: string;
-        externalAccountId: string;
-        name: string;
-        platformId: string;
-      };
-      await runResourceAction({
-        action: () =>
-          createPaymentAccountApi({
-            ...data,
-            tenantId: selectedTenantId.value,
-          }),
-        onSuccess: async () => {
-          formModalClose();
-          await gridApi.query();
-        },
-        successMessage: '支付账号已创建',
-      });
+  const credentialFiles: AlipayCredentialFiles = {};
+  const onCredentialFile = (
+    field: AlipayCredentialFileField,
+    file: File | undefined,
+  ) => {
+    if (file) credentialFiles[field] = file;
+    else delete credentialFiles[field];
+  };
+  formModalShow(
+    createPaymentAccountModalOptions(platformOptions.value, onCredentialFile),
+    {
+      onOk: async (api) => {
+        await api.validate();
+        const data = api.formData() as {
+          appId: string;
+          authMode: 'CERT' | 'KEY';
+          externalAccountId: string;
+          gateway: string;
+          name: string;
+          platformId: string;
+        };
+        await runResourceAction({
+          action: async () => {
+            const credential = await readAlipayCredentialFiles(
+              data,
+              credentialFiles,
+            );
+            return createPaymentAccountApi({
+              credential,
+              externalAccountId: data.externalAccountId,
+              name: data.name,
+              platformId: data.platformId,
+              tenantId: selectedTenantId.value,
+            });
+          },
+          onSuccess: async () => {
+            formModalClose();
+            await gridApi.query();
+          },
+          successMessage: '支付账号已创建',
+        });
+      },
     },
-  });
+  );
 }
 
 async function editAccount(account: BusinessApi.PaymentAccount) {
@@ -297,9 +326,55 @@ async function editAccount(account: BusinessApi.PaymentAccount) {
     },
   });
   formApi?.setValue({
-    credentialRef: '',
     externalAccountId: account.externalAccountId,
     name: account.name,
+  });
+}
+
+async function editCredential(account: BusinessApi.PaymentAccount) {
+  const credentialFiles: AlipayCredentialFiles = {};
+  const onCredentialFile = (
+    field: AlipayCredentialFileField,
+    file: File | undefined,
+  ) => {
+    if (file) credentialFiles[field] = file;
+    else delete credentialFiles[field];
+  };
+  const mode = account.credentialAuthMode ?? 'KEY';
+  const [formApi] = await formModalShow(
+    paymentAccountCredentialModalOptions(mode, onCredentialFile),
+    {
+      onOk: async (api) => {
+        await api.validate();
+        const values = api.formData() as Pick<
+          BusinessApi.AlipayPaymentAccountCredential,
+          'appId' | 'authMode' | 'gateway'
+        >;
+        await runResourceAction({
+          action: async () => {
+            const credential = await readAlipayCredentialFiles(
+              values,
+              credentialFiles,
+            );
+            return updatePaymentAccountCredentialApi(account.id, {
+              ...credential,
+              tenantId: selectedTenantId.value,
+            });
+          },
+          onSuccess: async () => {
+            formModalClose();
+            await gridApi.query();
+          },
+          successMessage: '支付账号凭据已更新',
+        });
+      },
+    },
+  );
+  formApi?.setValue({
+    appId: account.credentialAppId ?? '',
+    authMode: mode,
+    gateway:
+      account.credentialGateway ?? 'https://openapi.alipay.com/gateway.do',
   });
 }
 
@@ -394,7 +469,6 @@ async function editChannel(channel: BusinessApi.PaymentChannelBinding) {
     channelName:
       channel.channelName ?? channel.channelCode ?? channel.channelId,
     concurrencyLimit: channel.concurrencyLimit,
-    configRef: '',
     maximumAmount: channel.maximumAmount ?? '',
     minimumAmount: channel.minimumAmount ?? '',
   });
@@ -491,7 +565,15 @@ onMounted(async () => {
       </template>
       <template #credential="{ row }">
         <ATag :color="row.credentialConfigured ? 'success' : 'warning'">
-          {{ row.credentialConfigured ? '已配置' : '未配置' }}
+          {{
+            row.credentialConfigured
+              ? row.credentialAuthMode === 'CERT'
+                ? '证书模式'
+                : row.credentialAuthMode === 'KEY'
+                  ? '公钥模式'
+                  : '已配置'
+              : '未配置'
+          }}
         </ATag>
       </template>
       <template #channels="{ row }">
@@ -516,6 +598,14 @@ onMounted(async () => {
             @click="editAccount(row)"
           >
             编辑
+          </AButton>
+          <AButton
+            v-access:code="['payment:account:update']"
+            size="small"
+            type="link"
+            @click="editCredential(row)"
+          >
+            凭据配置
           </AButton>
           <AButton
             v-access:code="['payment:account:update']"

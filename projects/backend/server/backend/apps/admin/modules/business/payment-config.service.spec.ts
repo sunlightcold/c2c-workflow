@@ -13,6 +13,7 @@ import {
 } from '@admin/database'
 import { DataSource } from 'typeorm'
 import { PaymentConfigService } from './payment-config.service'
+import { CredentialCipherService } from '../system/credential/credential-cipher.service'
 
 describe('PaymentConfigService', () => {
   const tenantId = '00000000-0000-4000-8000-000000000010'
@@ -63,6 +64,7 @@ describe('PaymentConfigService', () => {
       }),
     ),
   }
+  const cipher = { encrypt: jest.fn(() => 'encrypted-payment-credential') }
   let service: PaymentConfigService
 
   beforeEach(async () => {
@@ -102,6 +104,7 @@ describe('PaymentConfigService', () => {
         { provide: getRepositoryToken(PaymentPlatformEntity), useValue: repositories.platform },
         { provide: getRepositoryToken(PaymentChannelEntity), useValue: repositories.channel },
         { provide: DataSource, useValue: dataSource },
+        { provide: CredentialCipherService, useValue: cipher },
       ],
     }).compile()
     service = module.get(PaymentConfigService)
@@ -191,23 +194,95 @@ describe('PaymentConfigService', () => {
     expect(txRepositories.plan.delete).not.toHaveBeenCalled()
   })
 
-  it('does not return a payment account Secret reference after creation', async () => {
-    repositories.platform.findOne.mockResolvedValue({ id: 'platform-1', status: 'active' })
+  it('encrypts the single key-mode credential and never returns its contents', async () => {
+    repositories.platform.findOne.mockResolvedValue({
+      id: 'platform-1',
+      code: 'ALIPAY',
+      status: 'active',
+    })
 
     const result = await service.createAccount(tenantId, {
       platformId: 'platform-1',
       name: 'Alipay 1',
       externalAccountId: '2088',
-      credentialRef: 'env://ALIPAY_ACCOUNT_1',
+      credential: {
+        authMode: 'KEY',
+        appId: '2026000000000001',
+        gateway: 'https://openapi.alipay.com/gateway.do',
+        privateKey: 'application-private-key',
+        alipayPublicKey: 'alipay-public-key',
+      },
     })
 
     expect(result).not.toHaveProperty('credentialRef')
+    expect(result).not.toHaveProperty('privateKey')
+    expect(cipher.encrypt).toHaveBeenCalledWith(
+      JSON.stringify({
+        authMode: 'KEY',
+        appId: '2026000000000001',
+        gateway: 'https://openapi.alipay.com/gateway.do',
+        privateKey: 'application-private-key',
+        alipayPublicKey: 'alipay-public-key',
+      }),
+    )
     expect(repositories.account.save).toHaveBeenCalledWith(
       expect.objectContaining({
         code: expect.stringMatching(/^PAC\d{20}$/),
-        credentialRef: 'env://ALIPAY_ACCOUNT_1',
+        credentialAuthMode: 'KEY',
+        credentialAppId: '2026000000000001',
+        credentialRef: 'enc://encrypted-payment-credential',
       }),
     )
+  })
+
+  it('rejects an incomplete certificate-mode credential', async () => {
+    repositories.platform.findOne.mockResolvedValue({
+      id: 'platform-1',
+      code: 'ALIPAY',
+      status: 'active',
+    })
+
+    await expect(
+      service.createAccount(tenantId, {
+        platformId: 'platform-1',
+        name: 'Alipay 1',
+        externalAccountId: '2088',
+        credential: {
+          authMode: 'CERT',
+          appId: '2026000000000001',
+          gateway: 'https://openapi.alipay.com/gateway.do',
+          privateKey: 'application-private-key',
+          appCertContent: 'app-cert',
+        },
+      }),
+    ).rejects.toThrow('支付宝证书配置不完整')
+    expect(repositories.account.save).not.toHaveBeenCalled()
+  })
+
+  it('replaces the one credential configured on the payment account', async () => {
+    repositories.account.findOne.mockResolvedValue({
+      id: accountId,
+      tenantId,
+      credentialRef: 'enc://old',
+    })
+
+    const result = await service.updateAccountCredential(tenantId, accountId, {
+      authMode: 'KEY',
+      appId: '2026000000000002',
+      gateway: 'https://openapi.alipay.com/gateway.do',
+      privateKey: 'new-private-key',
+      alipayPublicKey: 'new-alipay-public-key',
+    })
+
+    expect(repositories.account.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: accountId,
+        credentialAuthMode: 'KEY',
+        credentialAppId: '2026000000000002',
+        credentialRef: 'enc://encrypted-payment-credential',
+      }),
+    )
+    expect(result).not.toHaveProperty('credentialRef')
   })
 
   it('rejects a channel that is not opened under the selected account', async () => {
@@ -330,14 +405,13 @@ describe('PaymentConfigService', () => {
 
     const result = await service.updateAccount(tenantId, accountId, {
       name: '主支付账号',
-      credentialRef: 'env://NEW_SECRET',
     })
 
     expect(repositories.account.findOne).toHaveBeenCalledWith({
       where: { id: accountId, tenantId },
     })
     expect(repositories.account.save).toHaveBeenCalledWith(
-      expect.objectContaining({ name: '主支付账号', credentialRef: 'env://NEW_SECRET' }),
+      expect.objectContaining({ name: '主支付账号', credentialRef: 'env://OLD_SECRET' }),
     )
     expect(result).not.toHaveProperty('credentialRef')
   })

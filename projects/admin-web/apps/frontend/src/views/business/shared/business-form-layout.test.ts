@@ -29,6 +29,7 @@ describe('business form layout', () => {
     expect(businessModalProps('编辑商家账号')).toMatchObject({
       bodyStyle: {
         maxHeight: 'calc(100dvh - 180px)',
+        overflowX: 'hidden',
         overflowY: 'auto',
       },
       width: 760,

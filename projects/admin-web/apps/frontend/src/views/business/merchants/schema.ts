@@ -3,6 +3,7 @@ import type { Rule } from '@form-create/ant-design-vue';
 import type { FormModalOptions } from '#/hooks';
 
 import {
+  BUSINESS_NESTED_MODAL_Z_INDEX,
   businessFormOption,
   businessModalProps,
   layoutBusinessFormRules,
@@ -307,7 +308,10 @@ function paymentPlanModalOptions(
   routes: SelectOption[],
 ): FormModalOptions {
   return {
-    props: { ...businessModalProps(title, 680), zIndex: 2100 },
+    props: {
+      ...businessModalProps(title, 680),
+      zIndex: BUSINESS_NESTED_MODAL_Z_INDEX,
+    },
     formProps: {
       option: businessFormOption,
       rule: layoutBusinessFormRules(

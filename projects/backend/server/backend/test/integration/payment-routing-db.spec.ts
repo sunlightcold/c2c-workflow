@@ -26,6 +26,7 @@ import { migrateC2cPaymentBatches } from '@/apps/admin/database/migrations/c2c-p
 import { migrateC2cMerchantPlatformCredentials } from '@/apps/admin/database/migrations/c2c-merchant-platform-credentials.migration'
 import { migrateC2cMerchantAccountOperations } from '@/apps/admin/database/migrations/c2c-merchant-account-operations.migration'
 import { migrateC2cPaymentRouting } from '@/apps/admin/database/migrations/c2c-payment-routing.migration'
+import { migratePaymentAccountCredentials } from '@/apps/admin/database/migrations/payment-account-credentials.migration'
 import { PaymentOrderService } from '@/apps/admin/modules/payment/payment-order.service'
 import { PaymentPlanResolver } from '@/apps/admin/modules/payment/payment-plan-resolver'
 import { PaymentConfigService } from '@/apps/admin/modules/business/payment-config.service'
@@ -93,6 +94,7 @@ describe('Payment routing database integration', () => {
     await migrateC2cMerchantPlatformCredentials(dataSource.manager)
     await migrateC2cMerchantAccountOperations(dataSource.manager)
     await migrateC2cPaymentBatches(dataSource.manager)
+    await migratePaymentAccountCredentials(dataSource.manager)
     await seedConfiguration()
     resolver = new PaymentPlanResolver(dataSource)
     orders = new PaymentOrderService(
@@ -109,6 +111,7 @@ describe('Payment routing database integration', () => {
       dataSource.getRepository(PaymentPlatformEntity),
       dataSource.getRepository(PaymentChannelEntity),
       dataSource,
+      null as never,
     )
   })
 

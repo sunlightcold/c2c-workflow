@@ -56,8 +56,20 @@ export class PaymentAccountEntity extends CommonUuidEntity {
   @Column({ type: 'varchar', length: 128 })
   externalAccountId: string
 
-  @Column({ type: 'varchar', length: 255, select: false })
+  @Column({ type: 'text', select: false })
   credentialRef: string
+
+  @Column({ type: 'varchar', length: 8, nullable: true })
+  credentialAuthMode: 'CERT' | 'KEY' | null
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  credentialAppId: string | null
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  credentialGateway: string | null
+
+  @Column({ type: 'timestamptz', nullable: true })
+  credentialUpdatedAt: Date | null
 
   @Column({ type: 'enum', enum: BusinessStatus, enumName: 'business_status_enum' })
   status: BusinessStatus

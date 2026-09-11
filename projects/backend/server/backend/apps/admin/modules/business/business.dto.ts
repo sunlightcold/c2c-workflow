@@ -17,6 +17,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator'
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value)
@@ -289,6 +290,61 @@ export class MerchantListDto extends TenantContextDto {
   pageSize = 20
 }
 
+export class PaymentAccountCredentialDto {
+  @ApiProperty({ enum: ['KEY', 'CERT'], description: '支付宝签名模式' })
+  @IsIn(['KEY', 'CERT'])
+  authMode: 'CERT' | 'KEY'
+
+  @ApiProperty({ description: '支付宝开放平台应用 ID' })
+  @Transform(trim)
+  @IsNotEmpty()
+  @MaxLength(64)
+  appId: string
+
+  @ApiProperty({
+    enum: [
+      'https://openapi.alipay.com/gateway.do',
+      'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+    ],
+    description: '支付宝官方网关',
+  })
+  @IsIn([
+    'https://openapi.alipay.com/gateway.do',
+    'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+  ])
+  gateway: string
+
+  @ApiProperty({ description: '应用私钥文件内容，保存后不回显' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20000)
+  privateKey: string
+
+  @ApiPropertyOptional({ description: '公钥模式：支付宝公钥文件内容，保存后不回显' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  alipayPublicKey?: string
+
+  @ApiPropertyOptional({ description: '证书模式：应用公钥证书文件内容，保存后不回显' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100000)
+  appCertContent?: string
+
+  @ApiPropertyOptional({ description: '证书模式：支付宝公钥证书文件内容，保存后不回显' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100000)
+  alipayPublicCertContent?: string
+
+  @ApiPropertyOptional({ description: '证书模式：支付宝根证书文件内容，保存后不回显' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200000)
+  alipayRootCertContent?: string
+}
+
 export class CreatePaymentAccountDto extends TenantContextDto {
   @ApiProperty()
   @IsUUID()
@@ -306,10 +362,10 @@ export class CreatePaymentAccountDto extends TenantContextDto {
   @MaxLength(128)
   externalAccountId: string
 
-  @ApiProperty({ description: 'Secret Manager/KMS 凭据引用' })
-  @Transform(trim)
-  @Matches(/^[a-zA-Z][a-zA-Z0-9+._:/-]{7,254}$/)
-  credentialRef: string
+  @ApiProperty({ type: PaymentAccountCredentialDto, description: '该账号唯一的支付宝凭据' })
+  @ValidateNested()
+  @Type(() => PaymentAccountCredentialDto)
+  credential: PaymentAccountCredentialDto
 }
 
 export class UpdatePaymentAccountDto extends TenantContextDto {
@@ -326,12 +382,13 @@ export class UpdatePaymentAccountDto extends TenantContextDto {
   @IsNotEmpty()
   @MaxLength(128)
   externalAccountId?: string
+}
 
-  @ApiPropertyOptional({ description: '新的 Secret Manager/KMS 凭据引用；不修改时不提交' })
-  @Transform(trim)
+export class UpdatePaymentAccountCredentialDto extends PaymentAccountCredentialDto {
+  @ApiPropertyOptional({ description: '平台人员当前经营的所属单位；代理商人员忽略此字段' })
   @IsOptional()
-  @Matches(/^[a-zA-Z][a-zA-Z0-9+._:/-]{7,254}$/)
-  credentialRef?: string
+  @IsUUID()
+  tenantId?: string
 }
 
 export class PaymentAccountListDto extends TenantContextDto {
@@ -436,12 +493,6 @@ export class OpenPaymentAccountChannelDto extends TenantContextDto {
   @IsUUID()
   channelId: string
 
-  @ApiPropertyOptional()
-  @Transform(trim)
-  @IsOptional()
-  @Matches(/^[a-zA-Z][a-zA-Z0-9+._:/-]{7,254}$/)
-  configRef?: string
-
   @ApiPropertyOptional({ example: '1.00' })
   @IsOptional()
   @Matches(/^(0|[1-9]\d{0,17})(\.\d{1,2})?$/)
@@ -461,12 +512,6 @@ export class OpenPaymentAccountChannelDto extends TenantContextDto {
 }
 
 export class UpdatePaymentAccountChannelDto extends TenantContextDto {
-  @ApiPropertyOptional({ description: '新的通道配置引用；不修改时不提交' })
-  @Transform(trim)
-  @IsOptional()
-  @Matches(/^[a-zA-Z][a-zA-Z0-9+._:/-]{7,254}$/)
-  configRef?: string
-
   @ApiPropertyOptional({ example: '1.00', nullable: true })
   @IsOptional()
   @Matches(/^(0|[1-9]\d{0,17})(\.\d{1,2})?$/)

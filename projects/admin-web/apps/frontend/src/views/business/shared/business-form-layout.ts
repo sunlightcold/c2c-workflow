@@ -5,6 +5,8 @@ import type { FormModalOptions } from '#/hooks';
 const halfWidthCol = { md: 12, xs: 24 } as const;
 const fullWidthCol = { span: 24 } as const;
 
+export const BUSINESS_NESTED_MODAL_Z_INDEX = 2100;
+
 export const businessFormOption: Options = {
   appendValue: false,
   form: { layout: 'vertical' },
@@ -19,6 +21,7 @@ export function businessModalProps(
   return {
     bodyStyle: {
       maxHeight: 'calc(100dvh - 180px)',
+      overflowX: 'hidden',
       overflowY: 'auto',
     },
     centered: true,

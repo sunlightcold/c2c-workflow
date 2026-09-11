@@ -305,9 +305,10 @@ V1 买币状态：`NEW`、`PENDING_PAYMENT`、`PAYMENT_PROCESSING`、`PAID_PENDI
 
 #### 支付账号
 
-- 总部自营和代理商均可在本所属单位新增多个支付账号，配置商户号、网关、证书、私钥、API Key 和回调验签信息。
+- 总部自营和代理商均可在本所属单位新增多个支付账号；每个支付账号只保存一套当前有效凭据，更新时整套覆盖，不建立凭据列表或多套凭据切换。
+- 支付宝账号可选择公钥模式或证书模式。公钥模式保存应用 ID、应用私钥和支付宝公钥；证书模式保存应用 ID、应用私钥、应用公钥证书、支付宝公钥证书和支付宝根证书。密钥和证书由本地文件读取后加密保存，所有查询均不回显敏感内容。
 - 支付账号编码由系统按 `PAC` 前缀自动生成，不提供手工输入；支付宝商户号属于外部标识，由运营人员按签约资料录入。
-- 一个支付账号可同时启用多个支付通道，每个绑定独立配置优先级、限额、并发、时段和状态。
+- 一个支付账号可同时启用多个支付通道；所有通道共用账号的唯一凭据，每个通道只独立配置优先级、限额、并发、时段和状态。
 - 支持连接测试、证书到期检查、渠道权限探测及回调地址展示。
 - 支付账号停用后不接新订单，但继续处理原订单回调和查询。
 
@@ -674,7 +675,7 @@ views/
 | 代理商 | `POST /sys/tenants`、`PATCH /sys/tenants/{id}/status` |
 | 商家 | `POST /sys/merchants`、`GET /sys/merchants/filter`、`POST /sys/merchants/{id}/test-connection`、`POST .../{id}/rotate-credential` |
 | 商家订单 | `GET /sys/merchant-orders/filter`、`POST /sys/merchant-orders/sync` |
-| 支付账号 | `POST /sys/payment-accounts`、`POST .../{id}/channels` |
+| 支付账号 | `POST /sys/payment-accounts`、`PUT .../{id}/credential`、`POST .../{id}/channels` |
 | 支付订单 | `POST /sys/payment-orders`、`PUT .../{id}/review`、`PUT .../{id}/retry` |
 | 批次 | `POST /sys/payment-batches`、`PUT .../{id}/submit`、`PUT .../{id}/refresh` |
 | Telegram | `POST /sys/tg/bots`、`POST /sys/tg/groups/bind` |
@@ -682,7 +683,7 @@ views/
 
 ## 11. 安全与可靠性
 
-- 外部凭据仅保存 Secret Manager 引用和版本元数据，日志及导出中禁止出现明文。
+- 支付账号的唯一凭据使用平台凭据主密钥加密保存；其他外部凭据可保存 Secret Manager 引用和版本元数据。日志及导出中禁止出现任何凭据明文或密文。
 - 应用加密主密钥、JWT Secret、数据库/Redis 密码和默认管理员口令不得硬编码；密码使用 Argon2id，OTP Secret 使用 KMS 信封加密，访问令牌仅保存摘要。
 - Cookie/Authorization 采用独立 Secret、最小权限读取和版本轮换；解密操作记录审计但绝不记录明文，Worker 内存使用后不得落盘或进入异常对象。
 - 外部 HTTP 客户端禁用任意重定向，校验 HTTPS、Host、解析后的公网 IP 和端口；API Origin 使用只读白名单，防止 SSRF 和 DNS Rebinding。

@@ -351,7 +351,6 @@ describe('Business configuration API contract (e2e)', () => {
       .send({
         tenantId,
         channelId: '00000000-0000-4000-8000-000000000050',
-        configRef: 'env://ALIPAY_BATCH_MAIN',
         minimumAmount: '1.00',
         maximumAmount: '50000.00',
         concurrencyLimit: 5,
@@ -361,7 +360,6 @@ describe('Business configuration API contract (e2e)', () => {
       .put(`/v1/sys/payment-accounts/${accountId}/channels/${bindingId}`)
       .send({
         tenantId,
-        configRef: 'env://ALIPAY_BATCH_MAIN_V2',
         minimumAmount: null,
         maximumAmount: null,
         concurrencyLimit: 3,
@@ -408,11 +406,7 @@ describe('Business configuration API contract (e2e)', () => {
       bindingId,
       'disabled',
     )
-    expect(payments.removeAccountChannel).toHaveBeenCalledWith(
-      'tenant-1',
-      accountId,
-      bindingId,
-    )
+    expect(payments.removeAccountChannel).toHaveBeenCalledWith('tenant-1', accountId, bindingId)
     expect(payments.removeAccount).toHaveBeenCalledWith('tenant-1', accountId)
   })
 

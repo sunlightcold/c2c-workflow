@@ -23,6 +23,7 @@ import { migrateC2cMerchantPlatformCredentials } from '@/apps/admin/database/mig
 import { migrateC2cMerchantAccountOperations } from '@/apps/admin/database/migrations/c2c-merchant-account-operations.migration'
 import { migrateC2cPaymentOrders } from '@/apps/admin/database/migrations/c2c-payment-orders.migration'
 import { migrateC2cPaymentRouting } from '@/apps/admin/database/migrations/c2c-payment-routing.migration'
+import { migratePaymentAccountCredentials } from '@/apps/admin/database/migrations/payment-account-credentials.migration'
 import { PaymentNotSubmittedError } from '@/apps/admin/modules/payment/payment-execution-coordinator'
 import { TypeOrmPaymentPreflightStore } from '@/apps/admin/modules/payment/typeorm-payment-preflight.store'
 import developmentConfig from '@/config/development'
@@ -83,6 +84,7 @@ describe('Payment preflight store database integration', () => {
     await dataSource.initialize()
     await dataSource.transaction(async (manager) => {
       await migrateC2cBusinessFoundation(manager)
+      await migratePaymentAccountCredentials(manager)
       await migrateC2cPaymentOrders(manager)
       await migrateC2cPaymentRouting(manager)
       await migrateC2cMerchantPlatformCredentials(manager)

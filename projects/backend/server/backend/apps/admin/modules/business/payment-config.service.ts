@@ -18,6 +18,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, ILike, In, Repository } from 'typeorm'
 import { BusinessNoPrefix, IdUtils } from '@/common/utils/id'
+import { CredentialCipherService } from '../system/credential/credential-cipher.service'
 
 export interface PaymentAccountListInput {
   accountCode?: string
@@ -48,15 +49,24 @@ export interface UpdatePaymentPlanInput {
 
 interface PaymentAccountChannelInput {
   concurrencyLimit?: number
-  configRef?: string
   maximumAmount?: string | null
   minimumAmount?: string | null
 }
 
 interface UpdatePaymentAccountInput {
-  credentialRef?: string
   externalAccountId?: string
   name?: string
+}
+
+export interface PaymentAccountCredentialInput {
+  alipayPublicKey?: string
+  alipayPublicCertContent?: string
+  alipayRootCertContent?: string
+  appCertContent?: string
+  appId: string
+  authMode: 'CERT' | 'KEY'
+  gateway: string
+  privateKey: string
 }
 
 @Injectable()
@@ -75,6 +85,7 @@ export class PaymentConfigService {
     @InjectRepository(PaymentChannelEntity)
     private readonly channelRepository: Repository<PaymentChannelEntity>,
     private readonly dataSource: DataSource,
+    private readonly cipher: CredentialCipherService,
   ) {}
 
   async listCatalog() {
@@ -139,6 +150,10 @@ export class PaymentConfigService {
         name: account.name,
         externalAccountId: account.externalAccountId,
         credentialConfigured: true,
+        credentialAuthMode: account.credentialAuthMode,
+        credentialAppId: account.credentialAppId,
+        credentialGateway: account.credentialGateway,
+        credentialUpdatedAt: account.credentialUpdatedAt,
         status: account.status,
         createdAt: account.createdAt,
         updatedAt: account.updatedAt,
@@ -179,18 +194,26 @@ export class PaymentConfigService {
       platformId: string
       name: string
       externalAccountId: string
-      credentialRef: string
+      credential: PaymentAccountCredentialInput
     },
   ) {
     const platform = await this.platformRepository.findOne({
       where: { id: input.platformId, status: BusinessStatus.ACTIVE },
     })
     if (!platform) throw new BadRequestException('支付平台不可用')
+    if (platform.code !== 'ALIPAY') throw new BadRequestException('当前仅支持支付宝支付账号')
+    const credential = this.normalizeCredential(input.credential)
+    const { credential: _credential, ...accountInput } = input
     const account = await this.accountRepository.save(
       this.accountRepository.create({
-        ...input,
+        ...accountInput,
         tenantId,
         code: IdUtils.generateBusinessNo(BusinessNoPrefix.PAYMENT_ACCOUNT),
+        credentialRef: this.encryptCredential(credential),
+        credentialAuthMode: credential.authMode,
+        credentialAppId: credential.appId,
+        credentialGateway: credential.gateway,
+        credentialUpdatedAt: new Date(),
         status: BusinessStatus.ACTIVE,
       }),
     )
@@ -203,7 +226,22 @@ export class PaymentConfigService {
     if (!account) throw new NotFoundException('支付账号不存在')
     if (input.name !== undefined) account.name = input.name
     if (input.externalAccountId !== undefined) account.externalAccountId = input.externalAccountId
-    if (input.credentialRef !== undefined) account.credentialRef = input.credentialRef
+    return this.sanitizeAccount(await this.accountRepository.save(account))
+  }
+
+  async updateAccountCredential(
+    tenantId: string,
+    id: string,
+    input: PaymentAccountCredentialInput,
+  ) {
+    const account = await this.accountRepository.findOne({ where: { id, tenantId } })
+    if (!account) throw new NotFoundException('支付账号不存在')
+    const credential = this.normalizeCredential(input)
+    account.credentialRef = this.encryptCredential(credential)
+    account.credentialAuthMode = credential.authMode
+    account.credentialAppId = credential.appId
+    account.credentialGateway = credential.gateway
+    account.credentialUpdatedAt = new Date()
     return this.sanitizeAccount(await this.accountRepository.save(account))
   }
 
@@ -252,7 +290,6 @@ export class PaymentConfigService {
       this.accountChannelRepository.create({
         paymentAccountId,
         channelId: channel.id,
-        configRef: input.configRef ?? null,
         minimumAmount: input.minimumAmount ?? null,
         maximumAmount: input.maximumAmount ?? null,
         concurrencyLimit: input.concurrencyLimit ?? 1,
@@ -278,7 +315,6 @@ export class PaymentConfigService {
     const maximumAmount =
       input.maximumAmount === undefined ? binding.maximumAmount : input.maximumAmount
     this.validateAmountRange(minimumAmount, maximumAmount)
-    if (input.configRef !== undefined) binding.configRef = input.configRef
     if (input.minimumAmount !== undefined) binding.minimumAmount = input.minimumAmount
     if (input.maximumAmount !== undefined) binding.maximumAmount = input.maximumAmount
     if (input.concurrencyLimit !== undefined) binding.concurrencyLimit = input.concurrencyLimit
@@ -436,6 +472,40 @@ export class PaymentConfigService {
   private sanitizeAccount(account: PaymentAccountEntity) {
     const { credentialRef: _credentialRef, ...response } = account
     return response
+  }
+
+  private encryptCredential(credential: PaymentAccountCredentialInput): string {
+    return `enc://${this.cipher.encrypt(JSON.stringify(credential))}`
+  }
+
+  private normalizeCredential(input: PaymentAccountCredentialInput): PaymentAccountCredentialInput {
+    const common = {
+      authMode: input.authMode,
+      appId: input.appId.trim(),
+      gateway: input.gateway.trim(),
+      privateKey: input.privateKey.trim(),
+    }
+    if (!common.appId || !common.privateKey) {
+      throw new BadRequestException('支付宝应用 ID 和应用私钥不能为空')
+    }
+    if (input.authMode === 'KEY') {
+      const alipayPublicKey = input.alipayPublicKey?.trim()
+      if (!alipayPublicKey) throw new BadRequestException('支付宝公钥未配置')
+      return { ...common, authMode: 'KEY', alipayPublicKey }
+    }
+    const appCertContent = input.appCertContent?.trim()
+    const alipayPublicCertContent = input.alipayPublicCertContent?.trim()
+    const alipayRootCertContent = input.alipayRootCertContent?.trim()
+    if (!appCertContent || !alipayPublicCertContent || !alipayRootCertContent) {
+      throw new BadRequestException('支付宝证书配置不完整')
+    }
+    return {
+      ...common,
+      authMode: 'CERT',
+      appCertContent,
+      alipayPublicCertContent,
+      alipayRootCertContent,
+    }
   }
 
   private sanitizeChannel(binding: PaymentAccountChannelEntity) {

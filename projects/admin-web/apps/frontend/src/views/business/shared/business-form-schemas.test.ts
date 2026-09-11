@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   cancelMerchantOrderModalOptions,
+  createManualPaymentModalOptions,
   createMerchantOrderAppealModalOptions,
   createMerchantOrderPaymentModalOptions,
   createPaymentAccountModalOptions,
+  createPaymentBatchModalOptions,
   editPaymentAccountModalOptions,
   editPaymentChannelModalOptions,
   normalizePaymentChannelFormData,
@@ -14,6 +16,33 @@ import {
 } from './business-form-schemas';
 
 describe('merchant order operation forms', () => {
+  it('uses responsive columns and full rows for complex payment fields', () => {
+    const account = createPaymentAccountModalOptions([
+      { label: '支付宝', value: 'platform-1' },
+    ]);
+    const accountRules = account.formProps?.rule ?? [];
+    const batchRules = createPaymentBatchModalOptions({
+      loadRoutes: vi.fn().mockResolvedValue([]),
+      merchants: [],
+    }).formProps?.rule;
+    const manualRules = createManualPaymentModalOptions([]).formProps?.rule;
+
+    expect(accountRules.find(({ field }) => field === 'name')?.col).toEqual({
+      md: 12,
+      xs: 24,
+    });
+    expect(
+      accountRules.find(({ field }) => field === 'privateKeyFile')?.col,
+    ).toEqual({ span: 24 });
+    expect(
+      batchRules?.find(({ field }) => field === 'paymentOrderIds')?.col,
+    ).toEqual({ span: 24 });
+    expect(manualRules?.find(({ field }) => field === 'amount')?.col).toEqual({
+      md: 12,
+      xs: 24,
+    });
+  });
+
   it('does not expose an internal code or preselect a payment platform', () => {
     const rules = createPaymentAccountModalOptions([
       { label: '支付宝', value: 'platform-1' },
@@ -123,17 +152,15 @@ describe('merchant order operation forms', () => {
     });
   });
 
-  it('maps cleared channel limits to null without clearing the secret reference', () => {
+  it('maps cleared channel limits to null', () => {
     expect(
       normalizePaymentChannelFormData({
         concurrencyLimit: 3,
-        configRef: '   ',
         maximumAmount: ' ',
         minimumAmount: '',
       }),
     ).toEqual({
       concurrencyLimit: 3,
-      configRef: undefined,
       maximumAmount: null,
       minimumAmount: null,
     });
@@ -149,7 +176,6 @@ describe('merchant order operation forms', () => {
 
       expect(fields).toEqual(
         expect.arrayContaining([
-          'configRef',
           'minimumAmount',
           'maximumAmount',
           'concurrencyLimit',
@@ -157,4 +183,11 @@ describe('merchant order operation forms', () => {
       );
     },
   );
+
+  it.each([
+    ['open', openPaymentChannelModalOptions('主账号', [])],
+    ['edit', editPaymentChannelModalOptions('支付宝批量有密')],
+  ])('places the nested channel modal above its drawer: %s', (_, options) => {
+    expect(options.props?.zIndex).toBe(2100);
+  });
 });
