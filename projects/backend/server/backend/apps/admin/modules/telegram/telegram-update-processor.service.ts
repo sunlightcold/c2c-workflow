@@ -42,9 +42,10 @@ export class TelegramUpdateProcessorService {
     return this.dataSource.transaction(async (manager) => {
       const [rows] = (await manager.query(
         `WITH candidate AS (
-           SELECT id
-           FROM telegram_update_event
+         SELECT id
+         FROM telegram_update_event
            WHERE status = $1
+              OR (status = $2 AND "updatedAt" < now() - interval '5 minutes')
            ORDER BY "createdAt", id
            FOR UPDATE SKIP LOCKED
            LIMIT 1

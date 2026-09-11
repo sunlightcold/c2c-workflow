@@ -37,4 +37,18 @@ describe('TelegramUpdateProcessorService', () => {
       'request failed',
     )
   })
+
+  it('claims received updates or processing updates abandoned by another worker', async () => {
+    const query = jest.fn().mockResolvedValue([[], 0])
+    const manager = { query }
+    const dataSource = { transaction: jest.fn((callback) => callback(manager)) }
+    const runtime = { handle: jest.fn() }
+    const processor = new TelegramUpdateProcessorService(dataSource as never, runtime as never)
+
+    await expect(processor.claimNext()).resolves.toBeNull()
+    expect(query).toHaveBeenCalledWith(expect.stringContaining("interval '5 minutes'"), [
+      TelegramUpdateStatus.RECEIVED,
+      TelegramUpdateStatus.PROCESSING,
+    ])
+  })
 })

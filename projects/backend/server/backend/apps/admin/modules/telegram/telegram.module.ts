@@ -6,10 +6,12 @@ import {
   TelegramGroupMemberEntity,
   TelegramSuperAdminEntity,
   TelegramUpdateEventEntity,
+  TelegramInteractionContextEntity,
 } from '@admin/database'
 import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { BusinessModule } from '../business'
+import { PaymentModule } from '../payment'
 import { TelegramBotService } from './telegram-bot.service'
 import { TelegramApiClient } from './telegram-api.client'
 import { TelegramAuthorizationService } from './telegram-authorization.service'
@@ -22,10 +24,13 @@ import { TelegramUpdateProcessorService } from './telegram-update-processor.serv
 import { TelegramUserDirectoryService } from './telegram-user-directory.service'
 import { TelegramWebhookController } from './telegram-webhook.controller'
 import { TelegramRuntimeService } from './telegram-runtime.service'
+import { TelegramInteractionService } from './telegram-interaction.service'
+import { TelegramManualPaymentService } from './telegram-manual-payment.service'
 
 @Module({
   imports: [
     BusinessModule,
+    PaymentModule,
     TypeOrmModule.forFeature([
       MerchantEntity,
       SysUserEntity,
@@ -34,6 +39,7 @@ import { TelegramRuntimeService } from './telegram-runtime.service'
       TelegramGroupMemberEntity,
       TelegramSuperAdminEntity,
       TelegramUpdateEventEntity,
+      TelegramInteractionContextEntity,
     ]),
   ],
   controllers: [TelegramController, TelegramWebhookController],
@@ -48,6 +54,8 @@ import { TelegramRuntimeService } from './telegram-runtime.service'
     TelegramUpdateProcessorService,
     TelegramUserDirectoryService,
     TelegramRuntimeService,
+    TelegramInteractionService,
+    TelegramManualPaymentService,
   ],
   exports: [
     TelegramBotService,
