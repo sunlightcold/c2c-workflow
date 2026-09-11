@@ -1,46 +1,72 @@
-<script lang="ts" setup>
+<script lang="tsx" setup>
+import type { VbenFormProps } from '#/adapter/form';
+import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { BusinessApi } from '#/api';
 
-import { computed, ref } from 'vue';
+import { onMounted, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
 
 import {
+  cancelMerchantOrderApi,
+  confirmMerchantOrderPaidApi,
+  createMerchantOrderPaymentApi,
   getMerchantOrderApi,
+  getMerchantOrderAppealReasonsApi,
   getMerchantOrdersApi,
   getMerchantsApi,
+  submitMerchantOrderAppealApi,
   syncMerchantOrdersApi,
 } from '#/api';
-import { runResourceAction } from '#/hooks';
+import {
+  confirmResourceAction,
+  runResourceAction,
+  useFormModal,
+  useResourceGrid,
+} from '#/hooks';
 
+import {
+  cancelMerchantOrderModalOptions,
+  createMerchantOrderAppealModalOptions,
+  createMerchantOrderPaymentModalOptions,
+} from '../shared/business-form-schemas';
 import {
   businessEnumText,
   businessStateColor,
   formatBusinessTime,
   merchantPlatformText,
 } from '../shared/business-ui';
-import BusinessScopeSelect from '../shared/BusinessScopeSelect.vue';
+import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 
-const tenantId = ref('');
-const merchantId = ref('');
-const status = ref<string>();
+type SearchValues = {
+  createdAt?: unknown;
+  endTime?: string;
+  merchantId?: string;
+  paymentMethod?: 'ALIPAY';
+  platformOrderId?: string;
+  startTime?: string;
+  status?: string;
+  tenantId?: string;
+};
+type QueryParams = Omit<BusinessApi.MerchantOrderQuery, 'page'> & {
+  createdAt?: unknown;
+  pageIndex: number;
+};
+
+const { fixedTenantId, loadDefaultTenantId, tenantOptions } =
+  useBusinessTenantFilter();
+const merchantOptions: Array<{
+  disabled?: boolean;
+  label: string;
+  value: string;
+}> = [];
 const merchants = ref<BusinessApi.Merchant[]>([]);
-const items = ref<BusinessApi.MerchantOrder[]>([]);
-const total = ref(0);
-const page = ref(1);
-const pageSize = ref(20);
-const loading = ref(false);
+const selectedTenantId = ref('');
 const detailOpen = ref(false);
-const detail = ref<
-  BusinessApi.MerchantOrder & { history: BusinessApi.StatusHistory[] }
->();
+const detailLoading = ref(false);
+const detail = ref<BusinessApi.MerchantOrderDetail>();
+const actionLoading = ref('');
 
-const merchantOptions = computed(() =>
-  merchants.value.map((merchant) => ({
-    label: `${merchant.name} · ${merchantPlatformText(merchant.platform)}`,
-    value: merchant.id,
-  })),
-);
 const statusOptions = [
   'NEW',
   'PENDING_PAYMENT',
@@ -55,205 +81,544 @@ const statusOptions = [
   'EXCEPTION',
 ].map((value) => ({ label: businessEnumText(value), value }));
 
-async function onScopeReady() {
-  merchants.value = await getMerchantsApi({ tenantId: tenantId.value });
-  merchantId.value = merchants.value[0]?.id ?? '';
-  await refresh();
+const formOptions: VbenFormProps = {
+  commonConfig: { labelWidth: 86 },
+  fieldMappingTime: [
+    ['createdAt', ['startTime', 'endTime'], 'YYYY-MM-DDTHH:mm:ssZ'],
+  ],
+  schema: [
+    {
+      component: 'Select',
+      componentProps: () => ({
+        allowClear: false,
+        'aria-label': '选择经营单位',
+        disabled: Boolean(fixedTenantId.value),
+        onChange: (value: string) => void selectTenant(value, true),
+        options: tenantOptions,
+        placeholder: '请选择经营单位',
+        showSearch: true,
+      }),
+      fieldName: 'tenantId',
+      label: '经营单位',
+    },
+    {
+      component: 'Select',
+      componentProps: () => ({
+        allowClear: false,
+        options: merchantOptions,
+        placeholder: '请选择商家账号',
+        showSearch: true,
+      }),
+      fieldName: 'merchantId',
+      label: '商家账号',
+    },
+    {
+      component: 'Input',
+      componentProps: { placeholder: '请输入平台订单号' },
+      fieldName: 'platformOrderId',
+      label: '平台订单号',
+    },
+    {
+      component: 'Select',
+      componentProps: {
+        allowClear: true,
+        options: statusOptions,
+        placeholder: '全部状态',
+      },
+      fieldName: 'status',
+      label: '订单状态',
+    },
+    {
+      component: 'Select',
+      componentProps: {
+        allowClear: true,
+        options: [{ label: '支付宝', value: 'ALIPAY' }],
+        placeholder: '全部方式',
+      },
+      fieldName: 'paymentMethod',
+      label: '支付方式',
+    },
+    {
+      component: 'RangePicker',
+      componentProps: { showTime: true },
+      fieldName: 'createdAt',
+      label: '订单时间',
+    },
+  ],
+  wrapperClass: '2xl:grid-cols-4 xl:grid-cols-3 lg:grid-cols-2 md:grid-cols-1',
+};
+
+const gridOptions: VxeTableGridOptions<BusinessApi.MerchantOrder> = {
+  cellConfig: { height: 64 },
+  columnConfig: { resizable: true },
+  columns: [
+    { align: 'center', type: 'seq', width: 60 },
+    { field: 'platformOrderId', minWidth: 190, title: '平台订单号' },
+    {
+      align: 'center',
+      field: 'platform',
+      formatter: ({ cellValue }) =>
+        merchantPlatformText(cellValue as BusinessApi.MerchantPlatform),
+      title: '平台',
+      width: 90,
+    },
+    {
+      align: 'right',
+      field: 'fiatAmount',
+      slots: { default: 'amount' },
+      title: '订单金额',
+      width: 140,
+    },
+    {
+      field: 'payee',
+      minWidth: 210,
+      slots: { default: 'payee' },
+      title: '收款信息',
+    },
+    {
+      align: 'center',
+      field: 'status',
+      slots: { default: 'status' },
+      title: '订单状态',
+      width: 145,
+    },
+    {
+      align: 'center',
+      field: 'paymentStatus',
+      slots: { default: 'paymentStatus' },
+      title: '支付状态',
+      width: 145,
+    },
+    {
+      field: 'platformCreatedAt',
+      formatter: ({ cellValue }) => formatBusinessTime(cellValue as string),
+      title: '订单时间',
+      width: 180,
+    },
+    {
+      field: 'paymentDeadline',
+      formatter: ({ cellValue }) => formatBusinessTime(cellValue as string),
+      title: '支付截止时间',
+      width: 180,
+    },
+    {
+      align: 'center',
+      field: 'active',
+      fixed: 'right',
+      slots: { default: 'action' },
+      title: '操作',
+      width: 320,
+    },
+  ],
+  showOverflow: true,
+};
+
+const [Grid, gridApi] = useResourceGrid<
+  BusinessApi.MerchantOrder,
+  SearchValues,
+  QueryParams
+>({
+  formOptions,
+  gridOptions,
+  mapQueryParams: ({ formValues, page }) => ({
+    ...formValues,
+    merchantId: formValues.merchantId ?? '',
+    pageIndex: page.currentPage,
+    pageSize: page.pageSize,
+  }),
+  query: async (params) => {
+    selectedTenantId.value = params.tenantId ?? '';
+    if (!params.tenantId || !params.merchantId) {
+      return emptyGridData(params.pageIndex, params.pageSize);
+    }
+    const { createdAt: _createdAt, pageIndex, ...query } = params;
+    return getMerchantOrdersApi({ ...query, page: pageIndex });
+  },
+});
+const { FormModalRender, formModalClose, formModalShow } = useFormModal();
+
+function emptyGridData(page: number, pageSize: number) {
+  return {
+    items: [],
+    meta: {
+      currentPage: page,
+      itemsPerPage: pageSize,
+      totalItems: 0,
+      totalPages: 0,
+    },
+  };
 }
 
-async function refresh(resetPage = false) {
-  if (!tenantId.value || !merchantId.value) {
-    items.value = [];
-    total.value = 0;
-    return;
-  }
-  if (resetPage) page.value = 1;
-  loading.value = true;
-  try {
-    const result = await getMerchantOrdersApi({
-      merchantId: merchantId.value,
-      page: page.value,
-      pageSize: pageSize.value,
-      status: status.value,
-      tenantId: tenantId.value,
-    });
-    items.value = result.items;
-    total.value = result.meta.totalItems;
-  } finally {
-    loading.value = false;
-  }
+async function selectTenant(tenantId: string, refresh: boolean) {
+  selectedTenantId.value = tenantId;
+  merchants.value = tenantId ? await getMerchantsApi({ tenantId }) : [];
+  merchantOptions.splice(
+    0,
+    merchantOptions.length,
+    ...merchants.value.map((merchant) => ({
+      disabled: merchant.status !== 'active',
+      label: `${merchant.name} · ${merchantPlatformText(merchant.platform)}`,
+      value: merchant.id,
+    })),
+  );
+  const merchantId =
+    merchants.value.find((merchant) => merchant.status === 'active')?.id ?? '';
+  await gridApi.formApi.setFieldValue('merchantId', merchantId);
+  if (refresh) await gridApi.query();
 }
 
 async function syncOrders() {
-  if (!merchantId.value) return;
-  await runResourceAction({
-    action: () =>
-      syncMerchantOrdersApi(merchantId.value, { tenantId: tenantId.value }),
-    onSuccess: () => refresh(true),
-    successMessage: '商家订单同步完成',
-  });
+  const values = (await gridApi.formApi.getValues()) as SearchValues;
+  if (!values.merchantId || !selectedTenantId.value) return;
+  actionLoading.value = `sync:${values.merchantId}`;
+  try {
+    await runResourceAction({
+      action: () =>
+        syncMerchantOrdersApi(values.merchantId!, {
+          tenantId: selectedTenantId.value,
+        }),
+      onSuccess: () => gridApi.query(),
+      successMessage: '商家订单同步完成',
+    });
+  } finally {
+    actionLoading.value = '';
+  }
 }
 
 async function openDetail(order: BusinessApi.MerchantOrder) {
-  detail.value = await getMerchantOrderApi(order.id, {
-    merchantId: order.merchantId,
-    tenantId: tenantId.value,
-  });
+  detail.value = undefined;
   detailOpen.value = true;
+  detailLoading.value = true;
+  try {
+    detail.value = await getMerchantOrderApi(order.id, {
+      merchantId: order.merchantId,
+      tenantId: selectedTenantId.value,
+    });
+  } finally {
+    detailLoading.value = false;
+  }
 }
 
-function onPageChange(nextPage?: number, nextPageSize?: number) {
-  page.value = nextPage ?? page.value;
-  pageSize.value = nextPageSize ?? pageSize.value;
-  refresh();
+function createPayment(order: BusinessApi.MerchantOrder) {
+  formModalShow(createMerchantOrderPaymentModalOptions(), {
+    onOk: async (api) => {
+      await api.validate();
+      const data = api.formData() as {
+        executionMode: BusinessApi.PaymentExecutionMode;
+      };
+      await runResourceAction({
+        action: () =>
+          createMerchantOrderPaymentApi(order.id, {
+            executionMode: data.executionMode,
+            merchantId: order.merchantId,
+            tenantId: selectedTenantId.value,
+          }),
+        onSuccess: async () => {
+          formModalClose();
+          await gridApi.query();
+        },
+        successMessage:
+          data.executionMode === 'INSTANT'
+            ? '支付宝商家转账已提交'
+            : '支付订单已创建，可加入批量有密批次',
+      });
+    },
+  });
 }
+
+function confirmPaid(order: BusinessApi.MerchantOrder) {
+  confirmResourceAction({
+    action: () =>
+      confirmMerchantOrderPaidApi(order.id, {
+        merchantId: order.merchantId,
+        tenantId: selectedTenantId.value,
+      }),
+    content: '系统只会重试交易平台付款确认，不会再次发起支付宝支付。',
+    okText: '确认重试',
+    onSuccess: () => gridApi.query(),
+    successMessage: '交易平台付款确认已完成',
+    title: '重试付款确认',
+  });
+}
+
+function cancelOrder(order: BusinessApi.MerchantOrder) {
+  formModalShow(cancelMerchantOrderModalOptions(), {
+    onOk: async (api) => {
+      await api.validate();
+      const { reason } = api.formData() as { reason: string };
+      await runResourceAction({
+        action: () =>
+          cancelMerchantOrderApi(order.id, {
+            merchantId: order.merchantId,
+            reason,
+            tenantId: selectedTenantId.value,
+          }),
+        onSuccess: async () => {
+          formModalClose();
+          await gridApi.query();
+        },
+        successMessage: '商家订单已作废',
+      });
+    },
+  });
+}
+
+async function appealOrder(order: BusinessApi.MerchantOrder) {
+  actionLoading.value = `appeal:${order.id}`;
+  try {
+    const { reasons } = await getMerchantOrderAppealReasonsApi(order.id, {
+      merchantId: order.merchantId,
+      tenantId: selectedTenantId.value,
+    });
+    let receipt: File | undefined;
+    formModalShow(
+      createMerchantOrderAppealModalOptions(reasons, (file) => {
+        receipt = file;
+      }),
+      {
+        onOk: async (api) => {
+          await api.validate();
+          const selectedReceipt = receipt;
+          if (!selectedReceipt) return;
+          const data = api.formData() as {
+            description: string;
+            reasonCode: number;
+          };
+          await runResourceAction({
+            action: () =>
+              submitMerchantOrderAppealApi(order.id, {
+                description: data.description,
+                merchantId: order.merchantId,
+                reasonCode: Number(data.reasonCode),
+                receipt: selectedReceipt,
+                tenantId: selectedTenantId.value,
+              }),
+            onSuccess: async () => {
+              formModalClose();
+              await gridApi.query();
+            },
+            successMessage: '订单申诉已提交',
+          });
+        },
+      },
+    );
+  } finally {
+    actionLoading.value = '';
+  }
+}
+
+function canPay(order: BusinessApi.MerchantOrder) {
+  return (
+    order.status === 'PENDING_PAYMENT' &&
+    order.payable &&
+    order.identityMatched &&
+    order.paymentMethod === 'ALIPAY'
+  );
+}
+
+function canCancel(order: BusinessApi.MerchantOrder) {
+  return (
+    order.status === 'PENDING_PAYMENT' &&
+    (!order.paymentOrder ||
+      ['CREATED', 'PENDING_CONFIG', 'READY'].includes(
+        order.paymentOrder.status,
+      ))
+  );
+}
+
+function canConfirm(order: BusinessApi.MerchantOrder) {
+  return order.paymentOrder?.status === 'PLATFORM_CONFIRM_PENDING';
+}
+
+function canAppeal(order: BusinessApi.MerchantOrder) {
+  return (
+    order.platform === 'BINANCE' &&
+    order.status === 'PENDING_RELEASE' &&
+    order.paymentOrder?.status === 'COMPLETED' &&
+    !order.appealStatus
+  );
+}
+
+onMounted(async () => {
+  selectedTenantId.value = await loadDefaultTenantId();
+  if (!selectedTenantId.value) return;
+  await gridApi.formApi.setFieldValue('tenantId', selectedTenantId.value);
+  await selectTenant(selectedTenantId.value, false);
+  await gridApi.query();
+});
 </script>
 
 <template>
   <Page auto-content-height>
-    <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
-      <div class="flex flex-wrap items-end gap-3">
-        <BusinessScopeSelect v-model="tenantId" @ready="onScopeReady" />
-        <div>
-          <div class="mb-1 text-sm font-medium">商家</div>
-          <ASelect
-            v-model:value="merchantId"
-            :options="merchantOptions"
-            placeholder="选择商家"
-            show-search
-            style="min-width: 240px"
-            @change="refresh(true)"
-          />
+    <Grid>
+      <template #toolbar-actions>
+        <AButton
+          v-access:code="['merchant:order:sync']"
+          :disabled="merchantOptions.length === 0"
+          :loading="actionLoading.startsWith('sync:')"
+          size="small"
+          type="primary"
+          @click="syncOrders"
+        >
+          同步订单
+        </AButton>
+      </template>
+      <template #amount="{ row }">
+        <span class="tabular-nums">{{ row.fiatAmount }}</span>
+        {{ row.fiatCurrency }}
+      </template>
+      <template #payee="{ row }">
+        <div class="text-sm leading-6">
+          <div>{{ row.payeeName || '-' }}</div>
+          <div class="text-muted-foreground truncate">
+            {{ row.payeeIdentity || '-' }}
+          </div>
         </div>
-        <div>
-          <div class="mb-1 text-sm font-medium">订单状态</div>
-          <ASelect
-            v-model:value="status"
-            allow-clear
-            :options="statusOptions"
-            placeholder="全部状态"
-            style="min-width: 180px"
-            @change="refresh(true)"
-          />
-        </div>
-      </div>
-      <AButton
-        v-access:code="['merchant:order:sync']"
-        :disabled="!merchantId"
-        type="primary"
-        @click="syncOrders"
-      >
-        同步订单
-      </AButton>
-    </div>
-
-    <AAlert
-      v-if="tenantId && merchants.length === 0"
-      class="mb-3"
-      message="当前经营单位尚未创建商家"
-      show-icon
-      type="info"
-    />
-    <ATable
-      :data-source="items"
-      :loading="loading"
-      :pagination="{
-        current: page,
-        pageSize,
-        showSizeChanger: true,
-        total,
-      }"
-      row-key="id"
-      :scroll="{ x: 1240 }"
-      @change="
-        (pagination) => onPageChange(pagination.current, pagination.pageSize)
-      "
-    >
-      <ATableColumn
-        data-index="platformOrderId"
-        title="平台订单号"
-        :width="190"
-      />
-      <ATableColumn key="platform" title="平台" :width="90">
-        <template #default="{ record }">
-          {{ merchantPlatformText(record.platform) }}
-        </template>
-      </ATableColumn>
-      <ATableColumn key="amount" title="订单金额" :width="140">
-        <template #default="{ record }">
-          {{ record.fiatAmount }} {{ record.fiatCurrency }}
-        </template>
-      </ATableColumn>
-      <ATableColumn key="asset" title="买入数量" :width="150">
-        <template #default="{ record }">
-          {{ record.assetAmount }} {{ record.asset }}
-        </template>
-      </ATableColumn>
-      <ATableColumn data-index="counterpartyName" title="交易对象" :width="140">
-        <template #default="{ text }">{{ text || '-' }}</template>
-      </ATableColumn>
-      <ATableColumn key="status" title="业务状态" :width="150">
-        <template #default="{ record }">
-          <ATag :color="businessStateColor(record.status)">
-            {{ businessEnumText(record.status) }}
-          </ATag>
-        </template>
-      </ATableColumn>
-      <ATableColumn key="deadline" title="支付截止时间" :width="190">
-        <template #default="{ record }">
-          {{ formatBusinessTime(record.paymentDeadline) }}
-        </template>
-      </ATableColumn>
-      <ATableColumn key="action" fixed="right" title="操作" :width="90">
-        <template #default="{ record }">
-          <AButton size="small" type="link" @click="openDetail(record)">
-            详情
+      </template>
+      <template #status="{ row }">
+        <ATag :color="businessStateColor(row.status)">
+          {{ businessEnumText(row.status) }}
+        </ATag>
+      </template>
+      <template #paymentStatus="{ row }">
+        <ATag
+          v-if="row.paymentOrder"
+          :color="businessStateColor(row.paymentOrder.status)"
+        >
+          {{ businessEnumText(row.paymentOrder.status) }}
+        </ATag>
+        <span v-else class="text-muted-foreground">未创建</span>
+      </template>
+      <template #action="{ row }">
+        <ASpace :size="4" wrap>
+          <AButton size="small" @click="openDetail(row)">详情</AButton>
+          <AButton
+            v-if="canPay(row)"
+            v-access:code="['merchant:order:pay']"
+            size="small"
+            type="primary"
+            @click="createPayment(row)"
+          >
+            支付
           </AButton>
-        </template>
-      </ATableColumn>
-    </ATable>
+          <AButton
+            v-if="canConfirm(row)"
+            v-access:code="['merchant:order:confirm_paid']"
+            size="small"
+            type="primary"
+            @click="confirmPaid(row)"
+          >
+            补偿确认
+          </AButton>
+          <AButton
+            v-if="canAppeal(row)"
+            v-access:code="['merchant:order:appeal']"
+            :loading="actionLoading === `appeal:${row.id}`"
+            size="small"
+            @click="appealOrder(row)"
+          >
+            申诉
+          </AButton>
+          <AButton
+            v-if="canCancel(row)"
+            v-access:code="['merchant:order:cancel']"
+            danger
+            size="small"
+            type="link"
+            @click="cancelOrder(row)"
+          >
+            作废
+          </AButton>
+        </ASpace>
+      </template>
+    </Grid>
 
     <ADrawer
       v-model:open="detailOpen"
       title="商家订单详情"
-      width="min(760px, 94vw)"
+      width="min(780px, 94vw)"
     >
-      <template v-if="detail">
-        <ADescriptions bordered :column="1" size="small">
-          <ADescriptionsItem label="平台订单号">
-            {{ detail.platformOrderId }}
-          </ADescriptionsItem>
-          <ADescriptionsItem label="金额">
-            {{ detail.fiatAmount }}
-            {{ detail.fiatCurrency }}
-          </ADescriptionsItem>
-          <ADescriptionsItem label="收款人">
-            {{ detail.payeeName || '-' }}
-          </ADescriptionsItem>
-          <ADescriptionsItem label="收款账号">
-            {{ detail.payeeIdentity || '-' }}
-          </ADescriptionsItem>
-          <ADescriptionsItem label="支付方式">
-            {{ detail.paymentMethod || '-' }}
-          </ADescriptionsItem>
-          <ADescriptionsItem label="当前状态">
-            {{ businessEnumText(detail.status) }}
-          </ADescriptionsItem>
-          <ADescriptionsItem v-if="detail.lastError" label="异常原因">
-            {{ detail.lastError }}
-          </ADescriptionsItem>
-        </ADescriptions>
-        <ADivider orientation="left">状态时间线</ADivider>
-        <ATimeline>
-          <ATimelineItem v-for="item in detail.history" :key="item.id">
-            <div class="font-medium">{{ businessEnumText(item.toStatus) }}</div>
-            <div class="text-muted-foreground text-sm">
-              {{ formatBusinessTime(item.createdAt) }} · {{ item.source }}
-            </div>
-            <div v-if="item.reason" class="mt-1 text-sm">{{ item.reason }}</div>
-          </ATimelineItem>
-        </ATimeline>
-      </template>
+      <ASpin :spinning="detailLoading">
+        <template v-if="detail">
+          <ADescriptions bordered :column="1" size="small">
+            <ADescriptionsItem label="平台订单号">
+              {{ detail.platformOrderId }}
+            </ADescriptionsItem>
+            <ADescriptionsItem label="交易平台">
+              {{ merchantPlatformText(detail.platform) }}
+            </ADescriptionsItem>
+            <ADescriptionsItem label="订单金额">
+              {{ detail.fiatAmount }} {{ detail.fiatCurrency }}
+            </ADescriptionsItem>
+            <ADescriptionsItem label="买入数量">
+              {{ detail.assetAmount }} {{ detail.asset }}
+            </ADescriptionsItem>
+            <ADescriptionsItem label="收款人">
+              {{ detail.payeeName || '-' }}
+            </ADescriptionsItem>
+            <ADescriptionsItem label="支付宝账号">
+              {{ detail.payeeIdentity || '-' }}
+            </ADescriptionsItem>
+            <ADescriptionsItem label="订单状态">
+              {{ businessEnumText(detail.status) }}
+            </ADescriptionsItem>
+            <ADescriptionsItem label="支付单号">
+              {{ detail.paymentOrder?.paymentNo || '-' }}
+            </ADescriptionsItem>
+            <ADescriptionsItem label="支付状态">
+              {{ businessEnumText(detail.paymentOrder?.status) }}
+            </ADescriptionsItem>
+            <ADescriptionsItem label="申诉状态">
+              {{ businessEnumText(detail.appealStatus) }}
+            </ADescriptionsItem>
+            <ADescriptionsItem v-if="detail.appealComplaintNo" label="申诉单号">
+              {{ detail.appealComplaintNo }}
+            </ADescriptionsItem>
+            <ADescriptionsItem v-if="detail.lastError" label="订单异常">
+              {{ detail.lastError }}
+            </ADescriptionsItem>
+            <ADescriptionsItem v-if="detail.appealLastError" label="申诉异常">
+              {{ detail.appealLastError }}
+            </ADescriptionsItem>
+          </ADescriptions>
+
+          <ADivider orientation="left">订单状态记录</ADivider>
+          <ATimeline>
+            <ATimelineItem v-for="item in detail.history" :key="item.id">
+              <div class="font-medium">
+                {{ businessEnumText(item.toStatus) }}
+              </div>
+              <div class="text-muted-foreground text-sm">
+                {{ formatBusinessTime(item.createdAt) }} · {{ item.source }}
+              </div>
+              <div v-if="item.reason" class="mt-1 text-sm">
+                {{ item.reason }}
+              </div>
+            </ATimelineItem>
+          </ATimeline>
+
+          <template v-if="detail.paymentOrder?.history.length">
+            <ADivider orientation="left">支付状态记录</ADivider>
+            <ATimeline>
+              <ATimelineItem
+                v-for="item in detail.paymentOrder.history"
+                :key="item.id"
+              >
+                <div class="font-medium">
+                  {{ businessEnumText(item.toStatus) }}
+                </div>
+                <div class="text-muted-foreground text-sm">
+                  {{ formatBusinessTime(item.createdAt) }} · {{ item.source }}
+                </div>
+                <div v-if="item.reason" class="mt-1 text-sm">
+                  {{ item.reason }}
+                </div>
+              </ATimelineItem>
+            </ATimeline>
+          </template>
+        </template>
+      </ASpin>
     </ADrawer>
+    <FormModalRender />
   </Page>
 </template>

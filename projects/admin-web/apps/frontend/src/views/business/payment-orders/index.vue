@@ -1,9 +1,9 @@
-<script lang="ts" setup>
-import type { FormInstance } from 'ant-design-vue';
-
+<script lang="tsx" setup>
+import type { VbenFormProps } from '#/adapter/form';
+import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { BusinessApi } from '#/api';
 
-import { computed, reactive, ref } from 'vue';
+import { onMounted, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
 
@@ -15,53 +15,37 @@ import {
   reconcilePaymentOrderApi,
   rematchPaymentOrderApi,
 } from '#/api';
-import { runResourceAction } from '#/hooks';
+import { runResourceAction, useFormModal, useResourceGrid } from '#/hooks';
 
+import { createManualPaymentModalOptions } from '../shared/business-form-schemas';
 import {
   businessEnumText,
   businessStateColor,
   formatBusinessTime,
   merchantPlatformText,
-  validateBusinessForm,
 } from '../shared/business-ui';
-import BusinessScopeSelect from '../shared/BusinessScopeSelect.vue';
+import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 
 type PaymentOrderDetail = BusinessApi.PaymentOrder & {
   batchItems: BusinessApi.PaymentBatchItem[];
   history: BusinessApi.StatusHistory[];
 };
+type SearchValues = {
+  merchantId?: string;
+  sourceType?: BusinessApi.PaymentSourceType;
+  status?: string;
+  tenantId?: string;
+};
+type QueryParams = SearchValues & { pageIndex: number; pageSize: number };
 
-const tenantId = ref('');
-const merchantId = ref<string>();
-const sourceType = ref<BusinessApi.PaymentSourceType>();
-const status = ref<string>();
+const { fixedTenantId, loadDefaultTenantId, tenantOptions } =
+  useBusinessTenantFilter();
+const selectedTenantId = ref('');
 const merchants = ref<BusinessApi.Merchant[]>([]);
-const items = ref<BusinessApi.PaymentOrder[]>([]);
-const total = ref(0);
-const page = ref(1);
-const pageSize = ref(20);
-const loading = ref(false);
-const createOpen = ref(false);
+const merchantOptions: Array<{ label: string; value: string }> = [];
 const detailOpen = ref(false);
 const detail = ref<PaymentOrderDetail>();
-const createFormRef = ref<FormInstance>();
-const form = reactive<BusinessApi.ManualPaymentOrderInput>({
-  amount: '',
-  currency: 'CNY',
-  executionMode: 'INSTANT',
-  merchantId: '',
-  payeeIdentity: '',
-  payeeName: '',
-  paymentMethod: 'ALIPAY',
-  sourceBusinessNo: '',
-});
 
-const merchantOptions = computed(() =>
-  merchants.value.map((merchant) => ({
-    label: `${merchant.name} · ${merchantPlatformText(merchant.platform)}`,
-    value: merchant.id,
-  })),
-);
 const sourceOptions = ['C2C_BUY', 'BOT_MANUAL'].map((value) => ({
   label: businessEnumText(value),
   value,
@@ -80,62 +64,186 @@ const statusOptions = [
   'FUND_EXCEPTION',
 ].map((value) => ({ label: businessEnumText(value), value }));
 
-async function onScopeReady() {
-  merchants.value = await getMerchantsApi({ tenantId: tenantId.value });
-  await refresh(true);
-}
+const formOptions: VbenFormProps = {
+  commonConfig: { labelWidth: 86 },
+  schema: [
+    {
+      component: 'Select',
+      componentProps: () => ({
+        allowClear: false,
+        'aria-label': '选择经营单位',
+        disabled: Boolean(fixedTenantId.value),
+        onChange: (value: string) => void selectTenant(value, true),
+        options: tenantOptions,
+        placeholder: '请选择经营单位',
+        showSearch: true,
+      }),
+      fieldName: 'tenantId',
+      label: '经营单位',
+    },
+    {
+      component: 'Select',
+      componentProps: () => ({
+        allowClear: true,
+        options: merchantOptions,
+        placeholder: '全部商家',
+        showSearch: true,
+      }),
+      fieldName: 'merchantId',
+      label: '商家',
+    },
+    {
+      component: 'Select',
+      componentProps: {
+        allowClear: true,
+        options: sourceOptions,
+        placeholder: '全部来源',
+      },
+      fieldName: 'sourceType',
+      label: '来源',
+    },
+    {
+      component: 'Select',
+      componentProps: {
+        allowClear: true,
+        options: statusOptions,
+        placeholder: '全部状态',
+      },
+      fieldName: 'status',
+      label: '状态',
+    },
+  ],
+  wrapperClass: '2xl:grid-cols-4 xl:grid-cols-3 lg:grid-cols-2 md:grid-cols-1',
+};
 
-async function refresh(resetPage = false) {
-  if (!tenantId.value) return;
-  if (resetPage) page.value = 1;
-  loading.value = true;
-  try {
-    const result = await getPaymentOrdersApi({
-      merchantId: merchantId.value,
-      page: page.value,
-      pageSize: pageSize.value,
-      sourceType: sourceType.value,
-      status: status.value,
-      tenantId: tenantId.value,
+const gridOptions: VxeTableGridOptions<BusinessApi.PaymentOrder> = {
+  columns: [
+    { type: 'seq', width: 70 },
+    { field: 'paymentNo', title: '支付单号', minWidth: 200 },
+    {
+      field: 'sourceType',
+      title: '来源',
+      width: 140,
+      formatter: ({ cellValue }) => businessEnumText(cellValue as string),
+    },
+    { field: 'sourceBusinessNo', title: '来源业务号', width: 180 },
+    {
+      field: 'amount',
+      title: '支付金额',
+      width: 130,
+      slots: { default: 'amount' },
+    },
+    {
+      field: 'executionMode',
+      title: '支付通道',
+      width: 120,
+      formatter: ({ cellValue }) => businessEnumText(cellValue as string),
+    },
+    { field: 'payeeName', title: '收款人', width: 130 },
+    {
+      field: 'status',
+      title: '状态',
+      width: 150,
+      slots: { default: 'status' },
+    },
+    {
+      field: 'createdAt',
+      title: '创建时间',
+      width: 190,
+      formatter: ({ cellValue }) => formatBusinessTime(cellValue as string),
+    },
+    {
+      field: 'active',
+      title: '操作',
+      align: 'center',
+      fixed: 'right',
+      width: 190,
+      slots: { default: 'action' },
+    },
+  ],
+};
+
+const [Grid, gApi] = useResourceGrid<
+  BusinessApi.PaymentOrder,
+  SearchValues,
+  QueryParams
+>({
+  formOptions,
+  gridOptions,
+  mapQueryParams: ({ formValues, page }) => ({
+    ...formValues,
+    pageIndex: page.currentPage,
+    pageSize: page.pageSize,
+  }),
+  query: async (params) => {
+    if (!params.tenantId) {
+      return {
+        items: [],
+        meta: {
+          currentPage: 1,
+          itemsPerPage: params.pageSize,
+          totalItems: 0,
+          totalPages: 0,
+        },
+      };
+    }
+    return getPaymentOrdersApi({
+      merchantId: params.merchantId,
+      page: params.pageIndex,
+      pageSize: params.pageSize,
+      sourceType: params.sourceType,
+      status: params.status,
+      tenantId: params.tenantId,
     });
-    items.value = result.items;
-    total.value = result.meta.totalItems;
-  } finally {
-    loading.value = false;
-  }
+  },
+});
+const { FormModalRender, formModalClose, formModalShow } = useFormModal();
+
+async function selectTenant(tenantId: string, refresh: boolean) {
+  selectedTenantId.value = tenantId;
+  merchants.value = tenantId ? await getMerchantsApi({ tenantId }) : [];
+  merchantOptions.splice(
+    0,
+    merchantOptions.length,
+    ...merchants.value.map((merchant) => ({
+      disabled: merchant.status !== 'active',
+      label: `${merchant.name} · ${merchantPlatformText(merchant.platform)}`,
+      value: merchant.id,
+    })),
+  );
+  await gApi.formApi.setFieldValue('merchantId', undefined);
+  if (refresh) await gApi.query();
 }
 
 function openCreate() {
-  Object.assign(form, {
-    amount: '',
-    currency: 'CNY',
-    executionMode: 'INSTANT',
-    merchantId: merchantId.value ?? merchants.value[0]?.id ?? '',
-    payeeIdentity: '',
-    payeeName: '',
-    paymentMethod: 'ALIPAY',
-    sourceBusinessNo: '',
-    tenantId: tenantId.value,
-  });
-  createOpen.value = true;
-}
-
-async function submitCreate() {
-  if (!(await validateBusinessForm(createFormRef.value))) return;
-  await runResourceAction({
-    action: () =>
-      createManualPaymentOrderApi({ ...form, tenantId: tenantId.value }),
-    onSuccess: async () => {
-      createOpen.value = false;
-      await refresh(true);
+  formModalShow(createManualPaymentModalOptions(merchantOptions), {
+    onOk: async (api) => {
+      await api.validate();
+      const data = api.formData() as Omit<
+        BusinessApi.ManualPaymentOrderInput,
+        'currency' | 'paymentMethod'
+      >;
+      await runResourceAction({
+        action: () =>
+          createManualPaymentOrderApi({
+            ...data,
+            currency: 'CNY',
+            paymentMethod: 'ALIPAY',
+            tenantId: selectedTenantId.value,
+          }),
+        onSuccess: async () => {
+          formModalClose();
+          await gApi.reload();
+        },
+        successMessage: '支付订单已创建',
+      });
     },
-    successMessage: '支付订单已创建',
   });
 }
 
 async function openDetail(order: BusinessApi.PaymentOrder) {
   detail.value = await getPaymentOrderApi(order.id, {
-    tenantId: tenantId.value,
+    tenantId: selectedTenantId.value,
   });
   detailOpen.value = true;
 }
@@ -145,197 +253,66 @@ async function runOrderAction(order: BusinessApi.PaymentOrder) {
   await runResourceAction({
     action: () =>
       reconcile
-        ? reconcilePaymentOrderApi(order.id, { tenantId: tenantId.value })
-        : rematchPaymentOrderApi(order.id, { tenantId: tenantId.value }),
-    onSuccess: () => refresh(),
+        ? reconcilePaymentOrderApi(order.id, {
+            tenantId: selectedTenantId.value,
+          })
+        : rematchPaymentOrderApi(order.id, {
+            tenantId: selectedTenantId.value,
+          }),
+    onSuccess: () => gApi.query(),
     successMessage: reconcile ? '支付结果回查完成' : '支付方案重新匹配完成',
   });
 }
 
-function onPageChange(nextPage?: number, nextPageSize?: number) {
-  page.value = nextPage ?? page.value;
-  pageSize.value = nextPageSize ?? pageSize.value;
-  refresh();
-}
+onMounted(async () => {
+  selectedTenantId.value = await loadDefaultTenantId();
+  if (!selectedTenantId.value) return;
+  await gApi.formApi.setFieldValue('tenantId', selectedTenantId.value);
+  await selectTenant(selectedTenantId.value, false);
+  await gApi.query();
+});
 </script>
 
 <template>
   <Page auto-content-height>
-    <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
-      <div class="flex flex-wrap items-end gap-3">
-        <BusinessScopeSelect v-model="tenantId" @ready="onScopeReady" />
-        <div>
-          <div class="mb-1 text-sm font-medium">商家</div>
-          <ASelect
-            v-model:value="merchantId"
-            allow-clear
-            :options="merchantOptions"
-            placeholder="全部商家"
-            style="min-width: 220px"
-            @change="refresh(true)"
-          />
-        </div>
-        <div>
-          <div class="mb-1 text-sm font-medium">来源</div>
-          <ASelect
-            v-model:value="sourceType"
-            allow-clear
-            :options="sourceOptions"
-            placeholder="全部来源"
-            style="min-width: 160px"
-            @change="refresh(true)"
-          />
-        </div>
-        <div>
-          <div class="mb-1 text-sm font-medium">状态</div>
-          <ASelect
-            v-model:value="status"
-            allow-clear
-            :options="statusOptions"
-            placeholder="全部状态"
-            style="min-width: 170px"
-            @change="refresh(true)"
-          />
-        </div>
-      </div>
-      <AButton
-        v-access:code="['payment:order:create']"
-        :disabled="merchants.length === 0"
-        type="primary"
-        @click="openCreate"
-      >
-        新增手工支付
-      </AButton>
-    </div>
-
-    <ATable
-      :data-source="items"
-      :loading="loading"
-      :pagination="{ current: page, pageSize, showSizeChanger: true, total }"
-      row-key="id"
-      :scroll="{ x: 1280 }"
-      @change="
-        (pagination) => onPageChange(pagination.current, pagination.pageSize)
-      "
-    >
-      <ATableColumn data-index="paymentNo" title="支付单号" :width="210" />
-      <ATableColumn key="source" title="来源" :width="140">
-        <template #default="{ record }">
-          {{ businessEnumText(record.sourceType) }}
-        </template>
-      </ATableColumn>
-      <ATableColumn
-        data-index="sourceBusinessNo"
-        title="来源业务号"
-        :width="180"
-      />
-      <ATableColumn key="amount" title="支付金额" :width="130">
-        <template #default="{ record }">
-          {{ record.amount }} {{ record.currency }}
-        </template>
-      </ATableColumn>
-      <ATableColumn key="mode" title="支付通道" :width="120">
-        <template #default="{ record }">
-          {{ businessEnumText(record.executionMode) }}
-        </template>
-      </ATableColumn>
-      <ATableColumn data-index="payeeName" title="收款人" :width="130" />
-      <ATableColumn key="status" title="状态" :width="150">
-        <template #default="{ record }">
-          <ATag :color="businessStateColor(record.status)">
-            {{ businessEnumText(record.status) }}
-          </ATag>
-        </template>
-      </ATableColumn>
-      <ATableColumn key="createdAt" title="创建时间" :width="190">
-        <template #default="{ record }">
-          {{ formatBusinessTime(record.createdAt) }}
-        </template>
-      </ATableColumn>
-      <ATableColumn key="action" fixed="right" title="操作" :width="180">
-        <template #default="{ record }">
-          <ASpace>
-            <AButton size="small" type="link" @click="openDetail(record)">
-              详情
-            </AButton>
-            <AButton
-              v-if="
-                ['PENDING_CONFIG', 'PROCESSING', 'UNKNOWN'].includes(
-                  record.status,
-                )
-              "
-              v-access:code="['payment:order:retry']"
-              size="small"
-              type="link"
-              @click="runOrderAction(record)"
-            >
-              {{ record.status === 'PENDING_CONFIG' ? '重新匹配' : '回查' }}
-            </AButton>
-          </ASpace>
-        </template>
-      </ATableColumn>
-    </ATable>
-
-    <AModal v-model:open="createOpen" title="新增手工支付" @ok="submitCreate">
-      <AForm ref="createFormRef" :model="form" layout="vertical">
-        <AFormItem
-          label="商家"
-          name="merchantId"
-          :rules="[{ required: true, message: '请选择商家' }]"
+    <Grid>
+      <template #toolbar-actions>
+        <AButton
+          v-access:code="['payment:order:create']"
+          :disabled="merchants.length === 0"
+          size="small"
+          type="primary"
+          @click="openCreate"
         >
-          <ASelect v-model:value="form.merchantId" :options="merchantOptions" />
-        </AFormItem>
-        <AFormItem
-          label="商户支付单号"
-          name="sourceBusinessNo"
-          :rules="[{ required: true, message: '请输入商户支付单号' }]"
-        >
-          <AInput v-model:value="form.sourceBusinessNo" :maxlength="128" />
-        </AFormItem>
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <AFormItem
-            label="支付金额"
-            name="amount"
-            :rules="[
-              { required: true, message: '请输入支付金额' },
-              {
-                pattern: /^(?:0\.(?:0[1-9]|[1-9]\d?)|[1-9]\d*(?:\.\d{1,2})?)$/,
-                message: '请输入大于零且最多两位小数的金额',
-              },
-            ]"
+          新增手工支付
+        </AButton>
+      </template>
+      <template #amount="{ row }">{{ row.amount }} {{ row.currency }}</template>
+      <template #status="{ row }">
+        <ATag :color="businessStateColor(row.status)">
+          {{ businessEnumText(row.status) }}
+        </ATag>
+      </template>
+      <template #action="{ row }">
+        <ASpace>
+          <AButton size="small" type="default" @click="openDetail(row)">
+            详情
+          </AButton>
+          <AButton
+            v-if="
+              ['PENDING_CONFIG', 'PROCESSING', 'UNKNOWN'].includes(row.status)
+            "
+            v-access:code="['payment:order:retry']"
+            size="small"
+            type="default"
+            @click="runOrderAction(row)"
           >
-            <AInput
-              v-model:value="form.amount"
-              inputmode="decimal"
-              placeholder="例如 100.00"
-            />
-          </AFormItem>
-          <AFormItem label="支付方式" required>
-            <AInput value="支付宝" disabled />
-          </AFormItem>
-        </div>
-        <AFormItem label="执行方式" required>
-          <ARadioGroup v-model:value="form.executionMode">
-            <ARadioButton value="INSTANT">商家转账</ARadioButton>
-            <ARadioButton value="BATCH">批量有密</ARadioButton>
-          </ARadioGroup>
-        </AFormItem>
-        <AFormItem
-          label="收款人"
-          name="payeeName"
-          :rules="[{ required: true, message: '请输入收款人' }]"
-        >
-          <AInput v-model:value="form.payeeName" />
-        </AFormItem>
-        <AFormItem
-          label="支付宝账号"
-          name="payeeIdentity"
-          :rules="[{ required: true, message: '请输入支付宝账号' }]"
-        >
-          <AInput v-model:value="form.payeeIdentity" />
-        </AFormItem>
-      </AForm>
-    </AModal>
+            {{ row.status === 'PENDING_CONFIG' ? '重新匹配' : '回查' }}
+          </AButton>
+        </ASpace>
+      </template>
+    </Grid>
+    <FormModalRender />
 
     <ADrawer
       v-model:open="detailOpen"

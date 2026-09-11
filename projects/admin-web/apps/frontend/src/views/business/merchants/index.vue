@@ -3,10 +3,9 @@ import type { VbenFormProps } from '#/adapter/form';
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { BusinessApi } from '#/api';
 
-import { computed, onMounted, ref } from 'vue';
+import { onMounted, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
-import { useUserStore } from '@vben/stores';
 
 import {
   createMerchantApi,
@@ -16,7 +15,6 @@ import {
   getMerchantCredentialsApi,
   getPaymentAccountsApi,
   getPaymentPlansApi,
-  getTenantsApi,
   rotateMerchantCredentialApi,
   setMerchantStatusApi,
   syncMerchantOrdersApi,
@@ -38,6 +36,7 @@ import {
   merchantPlatformOptions,
   merchantPlatformText,
 } from '../shared/business-ui';
+import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 import {
   createMerchantAccountModalOptions,
   createPaymentPlanModalOptions,
@@ -58,19 +57,8 @@ type MerchantQueryParams = Omit<BusinessApi.MerchantQuery, 'page'> & {
   pageIndex: number;
 };
 
-const userStore = useUserStore();
-const currentUser = computed(
-  () =>
-    userStore.userInfo as typeof userStore.userInfo & {
-      tenantId?: null | string;
-    },
-);
-const fixedTenantId = computed(() => currentUser.value?.tenantId ?? undefined);
-const tenantOptions: Array<{
-  disabled?: boolean;
-  label: string;
-  value: string;
-}> = [];
+const { fixedTenantId, loadDefaultTenantId, tenantOptions } =
+  useBusinessTenantFilter();
 const selectedTenantId = ref('');
 const configOpen = ref(false);
 const configLoading = ref(false);
@@ -88,7 +76,9 @@ const formOptions: VbenFormProps = {
       component: 'Select',
       componentProps: () => ({
         allowClear: false,
+        'aria-label': '选择经营单位',
         disabled: Boolean(fixedTenantId.value),
+        onChange: (value: string) => void selectTenant(value),
         options: tenantOptions,
         placeholder: '请选择经营单位',
         showSearch: true,
@@ -232,6 +222,11 @@ const [Grid, gridApi] = useResourceGrid<
 });
 const { FormModalRender, formModalClose, formModalShow } = useFormModal();
 
+async function selectTenant(tenantId: string) {
+  selectedTenantId.value = tenantId;
+  await gridApi.query();
+}
+
 function cleanOptionalStrings<T extends object>(value: T): T {
   return Object.fromEntries(
     Object.entries(value).map(([key, item]) => [
@@ -272,8 +267,10 @@ function normalizeCreateForm(
 }
 
 async function createMerchant() {
-  const tenantId = selectedTenantId.value;
+  const values = (await gridApi.formApi.getValues()) as SearchValues;
+  const tenantId = values.tenantId ?? selectedTenantId.value;
   if (!tenantId) return;
+  selectedTenantId.value = tenantId;
   formModalShow(createMerchantAccountModalOptions(), {
     onOk: async (api) => {
       await api.validate();
@@ -482,26 +479,7 @@ function paymentChannelName(accountId: string, channelId: string) {
 }
 
 onMounted(async () => {
-  if (fixedTenantId.value) {
-    tenantOptions.push({ label: '当前经营单位', value: fixedTenantId.value });
-    selectedTenantId.value = fixedTenantId.value;
-  } else {
-    const tenants = await getTenantsApi();
-    tenantOptions.push(
-      ...tenants.map((tenant) => ({
-        disabled: tenant.status !== 'active',
-        label:
-          tenant.type === 'HEADQUARTERS_SELF'
-            ? `${tenant.name}（总部自营）`
-            : tenant.name,
-        value: tenant.id,
-      })),
-    );
-    selectedTenantId.value =
-      tenants.find((tenant) => tenant.type === 'HEADQUARTERS_SELF')?.id ??
-      tenants.find((tenant) => tenant.status === 'active')?.id ??
-      '';
-  }
+  selectedTenantId.value = await loadDefaultTenantId();
   if (selectedTenantId.value) {
     await gridApi.formApi.setFieldValue('tenantId', selectedTenantId.value);
     await gridApi.query();
@@ -515,12 +493,12 @@ onMounted(async () => {
       <template #toolbar-actions>
         <AButton
           v-access:code="['merchant:account:create']"
-          :disabled="!selectedTenantId"
+          :disabled="tenantOptions.length === 0"
           size="small"
           type="primary"
           @click="createMerchant"
         >
-          新增账号
+          新增商家账号
         </AButton>
       </template>
       <template #account="{ row }">

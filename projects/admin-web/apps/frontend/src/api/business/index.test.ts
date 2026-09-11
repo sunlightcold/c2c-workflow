@@ -1,12 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  cancelMerchantOrderApi,
+  confirmMerchantOrderPaidApi,
   createManualPaymentOrderApi,
+  createMerchantOrderPaymentApi,
+  createTenantApi,
   deleteMerchantApi,
   filterMerchantsApi,
+  getMerchantOrderAppealReasonsApi,
   getPaymentOrdersApi,
   rotateMerchantCredentialApi,
   setMerchantStatusApi,
+  submitMerchantOrderAppealApi,
   syncMerchantOrdersApi,
   testMerchantConnectionApi,
   updateMerchantApi,
@@ -63,6 +69,17 @@ describe('business api', () => {
       itemsPerPage: 10,
       totalItems: 11,
       totalPages: 2,
+    });
+  });
+
+  it('creates a tenant without exposing internal timezone configuration', async () => {
+    requestMocks.post.mockResolvedValue({ id: 'tenant-1' });
+
+    await createTenantApi({ code: 'agent-one', name: '代理商一' });
+
+    expect(requestMocks.post).toHaveBeenCalledWith('/sys/tenants', {
+      code: 'agent-one',
+      name: '代理商一',
     });
   });
 
@@ -178,5 +195,81 @@ describe('business api', () => {
       paymentMethod: 'ALIPAY',
       sourceBusinessNo: 'manual-1',
     });
+  });
+
+  it('uses the merchant order payment workflow endpoints', async () => {
+    requestMocks.post.mockResolvedValue({ id: 'payment-1' });
+
+    await createMerchantOrderPaymentApi('order-1', {
+      executionMode: 'INSTANT',
+      merchantId: 'merchant-1',
+      tenantId: 'tenant-1',
+    });
+    await confirmMerchantOrderPaidApi('order-1', {
+      merchantId: 'merchant-1',
+      tenantId: 'tenant-1',
+    });
+    await cancelMerchantOrderApi('order-1', {
+      merchantId: 'merchant-1',
+      reason: '收款资料有误',
+      tenantId: 'tenant-1',
+    });
+
+    expect(requestMocks.post).toHaveBeenNthCalledWith(
+      1,
+      '/sys/merchant-orders/order-1/payment',
+      {
+        executionMode: 'INSTANT',
+        merchantId: 'merchant-1',
+        tenantId: 'tenant-1',
+      },
+    );
+    expect(requestMocks.post).toHaveBeenNthCalledWith(
+      2,
+      '/sys/merchant-orders/order-1/confirm-paid',
+      { merchantId: 'merchant-1', tenantId: 'tenant-1' },
+    );
+    expect(requestMocks.post).toHaveBeenNthCalledWith(
+      3,
+      '/sys/merchant-orders/order-1/cancel',
+      {
+        merchantId: 'merchant-1',
+        reason: '收款资料有误',
+        tenantId: 'tenant-1',
+      },
+    );
+  });
+
+  it('loads live appeal reasons and uploads one receipt as multipart data', async () => {
+    requestMocks.get.mockResolvedValue({ orderNo: 'BIN-1', reasons: [] });
+    requestMocks.post.mockResolvedValue({ complaintNo: '30006788' });
+    const receipt = new File(['receipt'], 'receipt.png', {
+      type: 'image/png',
+    });
+
+    await getMerchantOrderAppealReasonsApi('order-1', {
+      merchantId: 'merchant-1',
+      tenantId: 'tenant-1',
+    });
+    await submitMerchantOrderAppealApi('order-1', {
+      description: '我已付款给卖家，卖家未放行',
+      merchantId: 'merchant-1',
+      reasonCode: 6,
+      receipt,
+      tenantId: 'tenant-1',
+    });
+
+    expect(requestMocks.get).toHaveBeenCalledWith(
+      '/sys/merchant-orders/order-1/appeal-reasons',
+      { params: { merchantId: 'merchant-1', tenantId: 'tenant-1' } },
+    );
+    const [url, body] = requestMocks.post.mock.calls.at(0) ?? [];
+    expect(url).toBe('/sys/merchant-orders/order-1/appeal');
+    expect(body).toBeInstanceOf(FormData);
+    expect(body.get('merchantId')).toBe('merchant-1');
+    expect(body.get('tenantId')).toBe('tenant-1');
+    expect(body.get('reasonCode')).toBe('6');
+    expect(body.get('description')).toBe('我已付款给卖家，卖家未放行');
+    expect(body.get('receipt')).toBe(receipt);
   });
 });

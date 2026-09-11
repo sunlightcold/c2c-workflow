@@ -75,7 +75,6 @@ export function useFormModal() {
             await formEvent?.onOk?.(fApi.value as Api);
           } catch (error) {
             formEvent?.onError?.(error, fApi.value as Api);
-            throw error;
           } finally {
             modalProps.value = { ...modalProps.value, confirmLoading: false };
             update(modalProps.value);

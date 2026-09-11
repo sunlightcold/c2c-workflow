@@ -4,6 +4,7 @@ import {
   matchesPaymentRoute,
   merchantPlatformOptions,
   paymentRouteKey,
+  toBusinessGridData,
 } from './business-ui';
 
 describe('merchant platform options', () => {
@@ -12,6 +13,20 @@ describe('merchant platform options', () => {
       { label: '币安', value: 'BINANCE' },
       { label: '欧易', value: 'OKX' },
     ]);
+  });
+});
+
+describe('business grid adapter', () => {
+  it('maps non-paginated business lists to the shared resource grid contract', () => {
+    expect(toBusinessGridData([{ id: 'tenant-1' }])).toEqual({
+      items: [{ id: 'tenant-1' }],
+      meta: {
+        currentPage: 1,
+        itemsPerPage: 1,
+        totalItems: 1,
+        totalPages: 1,
+      },
+    });
   });
 });
 

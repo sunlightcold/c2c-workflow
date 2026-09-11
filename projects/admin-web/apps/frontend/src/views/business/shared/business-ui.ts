@@ -1,4 +1,4 @@
-import type { FormInstance } from 'ant-design-vue';
+import type { CommonPaginationData } from '../../../../types/common';
 
 import type { BusinessApi } from '#/api';
 
@@ -92,12 +92,14 @@ export function businessStateColor(status: string) {
   return 'processing';
 }
 
-export async function validateBusinessForm(form?: FormInstance) {
-  if (!form) return false;
-  try {
-    await form.validate();
-    return true;
-  } catch {
-    return false;
-  }
+export function toBusinessGridData<T>(items: T[]): CommonPaginationData<T> {
+  return {
+    items,
+    meta: {
+      currentPage: 1,
+      itemsPerPage: Math.max(items.length, 1),
+      totalItems: items.length,
+      totalPages: 1,
+    },
+  };
 }

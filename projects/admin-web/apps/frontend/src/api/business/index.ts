@@ -7,6 +7,7 @@ export namespace BusinessApi {
   export type MerchantPlatform = 'BINANCE' | 'OKX';
   export type PaymentExecutionMode = 'BATCH' | 'INSTANT';
   export type PaymentSourceType = 'BOT_MANUAL' | 'C2C_BUY' | 'REFUND';
+  export type MerchantOrderAppealStatus = 'PROCESSING' | 'SUBMITTED';
 
   export interface TenantContext {
     tenantId?: string;
@@ -124,26 +125,13 @@ export namespace BusinessApi {
     weight: number;
   }
 
-  export interface MerchantOrder {
-    asset: string;
-    assetAmount: string;
-    counterpartyName: null | string;
-    fiatAmount: string;
-    fiatCurrency: string;
+  export interface StatusHistory {
+    createdAt: string;
+    fromStatus: null | string;
     id: string;
-    lastError: null | string;
-    merchantId: string;
-    payable: boolean;
-    paymentDeadline: null | string;
-    paymentMethod: null | string;
-    payeeIdentity: null | string;
-    payeeName: null | string;
-    platform: MerchantPlatform;
-    platformCreatedAt: string;
-    platformOrderId: string;
-    platformStatus: string;
-    status: string;
-    tenantId: string;
+    reason: null | string;
+    source: string;
+    toStatus: string;
   }
 
   export interface PaymentOrder {
@@ -169,6 +157,46 @@ export namespace BusinessApi {
     upstreamId: null | string;
   }
 
+  export interface MerchantOrder {
+    appealComplaintNo: null | string;
+    appealLastError: null | string;
+    appealReason: null | string;
+    appealReasonCode: null | number;
+    appealStatus: MerchantOrderAppealStatus | null;
+    appealSubmittedAt: null | string;
+    asset: string;
+    assetAmount: string;
+    counterpartyName: null | string;
+    fiatAmount: string;
+    fiatCurrency: string;
+    id: string;
+    identityMatched: boolean;
+    lastError: null | string;
+    merchantId: string;
+    payable: boolean;
+    paymentDeadline: null | string;
+    paymentMethod: null | string;
+    paymentOrder: null | PaymentOrder;
+    payeeIdentity: null | string;
+    payeeName: null | string;
+    platform: MerchantPlatform;
+    platformCreatedAt: string;
+    platformOrderId: string;
+    platformStatus: string;
+    status: string;
+    tenantId: string;
+  }
+
+  export interface MerchantOrderDetail extends MerchantOrder {
+    history: StatusHistory[];
+    paymentOrder: null | (PaymentOrder & { history: StatusHistory[] });
+  }
+
+  export interface MerchantOrderAppealReason {
+    reasonCode: number;
+    reasonDesc: string;
+  }
+
   export interface PaymentBatch {
     batchNo: string;
     createdAt: string;
@@ -188,15 +216,6 @@ export namespace BusinessApi {
     unknownCount: number;
     updatedAt: string;
     upstreamId: null | string;
-  }
-
-  export interface StatusHistory {
-    createdAt: string;
-    fromStatus: null | string;
-    id: string;
-    reason: null | string;
-    source: string;
-    toStatus: string;
   }
 
   export interface PaymentBatchItem {
@@ -220,6 +239,15 @@ export namespace BusinessApi {
     externalMerchantId?: string;
     platform?: MerchantPlatform;
     status?: BusinessStatus;
+  }
+
+  export interface MerchantOrderQuery extends PageQuery {
+    endTime?: string;
+    merchantId: string;
+    paymentMethod?: 'ALIPAY';
+    platformOrderId?: string;
+    startTime?: string;
+    status?: string;
   }
 
   export interface CreateMerchantInput extends TenantContext {
@@ -311,7 +339,7 @@ function toPagination<T>(response: {
 export const getTenantsApi = () =>
   requestClient.get<BusinessApi.Tenant[]>('/sys/tenants');
 export const createTenantApi = (
-  data: Pick<BusinessApi.Tenant, 'code' | 'name' | 'timezone'>,
+  data: Pick<BusinessApi.Tenant, 'code' | 'name'>,
 ) => requestClient.post<BusinessApi.Tenant>('/sys/tenants', data);
 export const setTenantStatusApi = (
   id: string,
@@ -427,7 +455,7 @@ export const createPaymentPlanApi = (
 ) => requestClient.post<BusinessApi.PaymentPlan>('/sys/payment-plans', data);
 
 export async function getMerchantOrdersApi(
-  params: BusinessApi.PageQuery & { merchantId: string; status?: string },
+  params: BusinessApi.MerchantOrderQuery,
 ) {
   return toPagination<BusinessApi.MerchantOrder>(
     await requestClient.get('/sys/merchant-orders', { params }),
@@ -437,9 +465,10 @@ export const getMerchantOrderApi = (
   id: string,
   params: BusinessApi.TenantContext & { merchantId: string },
 ) =>
-  requestClient.get<
-    BusinessApi.MerchantOrder & { history: BusinessApi.StatusHistory[] }
-  >(`/sys/merchant-orders/${id}`, { params });
+  requestClient.get<BusinessApi.MerchantOrderDetail>(
+    `/sys/merchant-orders/${id}`,
+    { params },
+  );
 export const syncMerchantOrdersApi = (
   id: string,
   params: BusinessApi.TenantContext,
@@ -449,6 +478,59 @@ export const syncMerchantOrdersApi = (
     undefined,
     { params },
   );
+export const createMerchantOrderPaymentApi = (
+  id: string,
+  data: BusinessApi.TenantContext & {
+    executionMode: BusinessApi.PaymentExecutionMode;
+    merchantId: string;
+  },
+) =>
+  requestClient.post<BusinessApi.PaymentOrder>(
+    `/sys/merchant-orders/${id}/payment`,
+    data,
+  );
+export const confirmMerchantOrderPaidApi = (
+  id: string,
+  data: BusinessApi.TenantContext & { merchantId: string },
+) =>
+  requestClient.post<BusinessApi.PaymentOrder>(
+    `/sys/merchant-orders/${id}/confirm-paid`,
+    data,
+  );
+export const cancelMerchantOrderApi = (
+  id: string,
+  data: BusinessApi.TenantContext & { merchantId: string; reason: string },
+) => requestClient.post(`/sys/merchant-orders/${id}/cancel`, data);
+export const getMerchantOrderAppealReasonsApi = (
+  id: string,
+  params: BusinessApi.TenantContext & { merchantId: string },
+) =>
+  requestClient.get<{
+    orderNo: string;
+    reasons: BusinessApi.MerchantOrderAppealReason[];
+  }>(`/sys/merchant-orders/${id}/appeal-reasons`, { params });
+export const submitMerchantOrderAppealApi = (
+  id: string,
+  data: BusinessApi.TenantContext & {
+    description: string;
+    merchantId: string;
+    reasonCode: number;
+    receipt: Blob;
+  },
+) => {
+  const body = new FormData();
+  if (data.tenantId) body.append('tenantId', data.tenantId);
+  body.append('merchantId', data.merchantId);
+  body.append('reasonCode', String(data.reasonCode));
+  body.append('description', data.description);
+  body.append('receipt', data.receipt);
+  return requestClient.post<{
+    complaintNo: string;
+    orderNo: string;
+    reason: string;
+    reasonCode: number;
+  }>(`/sys/merchant-orders/${id}/appeal`, body);
+};
 
 export async function getPaymentOrdersApi(
   params: BusinessApi.PaymentOrderQuery,

@@ -167,7 +167,10 @@ test.beforeEach(async ({ page }) => {
         data = { items: [], page: 1, pageSize: 20, total: 0 };
         break;
       }
-      case '/sys/merchants':
+      case '/sys/merchants': {
+        data = { items: [], page: 1, pageSize: 100, total: 0 };
+        break;
+      }
       case '/sys/payment-accounts': {
         data = [];
         break;
@@ -254,17 +257,26 @@ test('loads the six second-level business pages under one menu', async ({
 
   await page.goto('/business/merchants');
   await page.getByLabel('选择经营单位').click();
-  await page.getByText('总部自营（总部自营）', { exact: true }).click();
-  await expect(page.getByRole('button', { name: '新增商家' })).toBeEnabled();
-  await page.getByRole('button', { name: '新增商家' }).click();
-  const createMerchantDialog = page.getByRole('dialog', { name: '新增商家' });
-  await expect(createMerchantDialog.getByTitle('交易平台')).toBeVisible();
+  await page
+    .locator('.ant-select-item-option-content')
+    .getByText('总部自营（总部自营）', { exact: true })
+    .click();
+  await expect(
+    page.getByRole('button', { name: '新增商家账号' }),
+  ).toBeEnabled();
+  await page.getByRole('button', { name: '新增商家账号' }).click();
+  const createMerchantDialog = page.getByRole('dialog', {
+    name: '新增商家账号',
+  });
+  await expect(
+    createMerchantDialog.getByRole('combobox', { name: /交易平台/ }),
+  ).toBeVisible();
   const selectedPlatform = createMerchantDialog.getByText('币安', {
     exact: true,
   });
   await expect(selectedPlatform).toBeVisible();
   await createMerchantDialog.locator('.ant-btn-primary').click();
-  await expect(createMerchantDialog.getByText('请输入商家名称')).toBeVisible();
+  await expect(createMerchantDialog.getByText('请输入账号名称')).toBeVisible();
   const dialogBox = await createMerchantDialog.boundingBox();
   const viewport = page.viewportSize();
   if (!dialogBox || !viewport) throw new Error('无法读取商家弹窗尺寸');
@@ -277,7 +289,10 @@ test('loads the six second-level business pages under one menu', async ({
 
   await page.goto('/business/payment-orders');
   await page.getByLabel('选择经营单位').click();
-  await page.getByText('总部自营（总部自营）', { exact: true }).click();
+  await page
+    .locator('.ant-select-item-option-content')
+    .getByText('总部自营（总部自营）', { exact: true })
+    .click();
   await expect(
     page.getByRole('button', { name: '新增手工支付' }),
   ).toBeDisabled();
