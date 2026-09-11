@@ -586,19 +586,13 @@ function alipayCredentialRules(
     },
     {
       field: 'gateway',
-      options: [
-        {
-          label: '正式环境',
-          value: 'https://openapi.alipay.com/gateway.do',
-        },
-        {
-          label: '沙箱环境',
-          value: 'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
-        },
-      ],
-      title: '接口环境',
-      type: 'select',
-      validate: required('请选择接口环境'),
+      props: {
+        maxlength: 2048,
+        placeholder: '请输入完整的 HTTP/HTTPS API 网关地址',
+      },
+      title: 'API 网关地址',
+      type: 'input',
+      validate: required('请输入 API 网关地址'),
       value: 'https://openapi.alipay.com/gateway.do',
     },
     credentialFileRule(

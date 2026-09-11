@@ -272,7 +272,7 @@ describe('Business configuration API contract (e2e)', () => {
         credential: {
           authMode: 'KEY',
           appId: '2026000000000001',
-          gateway: 'https://openapi.alipay.com/gateway.do',
+          gateway: 'https://payments.example.com/alipay/gateway.do',
           privateKey: 'application-private-key',
           alipayPublicKey: 'alipay-public-key',
         },
@@ -284,9 +284,33 @@ describe('Business configuration API contract (e2e)', () => {
     expect(payments.createAccount).toHaveBeenCalledWith(
       'tenant-1',
       expect.objectContaining({
-        credential: expect.objectContaining({ authMode: 'KEY' }),
+        credential: expect.objectContaining({
+          authMode: 'KEY',
+          gateway: 'https://payments.example.com/alipay/gateway.do',
+        }),
       }),
     )
+  })
+
+  it('rejects a payment account gateway outside HTTP protocols', async () => {
+    await request(app.getHttpServer())
+      .post('/v1/sys/payment-accounts')
+      .send({
+        tenantId: '00000000-0000-4000-8000-000000000010',
+        platformId: '00000000-0000-4000-8000-000000000011',
+        name: 'Alipay 1',
+        externalAccountId: '2088',
+        credential: {
+          authMode: 'KEY',
+          appId: '2026000000000001',
+          gateway: 'file:///etc/passwd',
+          privateKey: 'application-private-key',
+          alipayPublicKey: 'alipay-public-key',
+        },
+      })
+      .expect(400)
+
+    expect(payments.createAccount).not.toHaveBeenCalled()
   })
 
   it('replaces the single payment account credential through a dedicated endpoint', async () => {

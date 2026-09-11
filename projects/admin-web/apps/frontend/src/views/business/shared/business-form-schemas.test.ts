@@ -126,6 +126,14 @@ describe('merchant order operation forms', () => {
       { label: '公钥模式', value: 'KEY' },
       { label: '证书模式', value: 'CERT' },
     ]);
+    expect(rules.find(({ field }) => field === 'gateway')).toMatchObject({
+      title: 'API 网关地址',
+      type: 'input',
+      value: 'https://openapi.alipay.com/gateway.do',
+    });
+    expect(
+      rules.find(({ field }) => field === 'gateway')?.options,
+    ).toBeUndefined();
   });
 
   it('reads selected key files into a mode-specific credential payload', async () => {

@@ -302,16 +302,12 @@ export class PaymentAccountCredentialDto {
   appId: string
 
   @ApiProperty({
-    enum: [
-      'https://openapi.alipay.com/gateway.do',
-      'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
-    ],
-    description: '支付宝官方网关',
+    description: '支付宝 API 网关完整地址，支持官方地址、自定义代理网关和本地 Mock',
+    example: 'https://payments.example.com/alipay/gateway.do',
   })
-  @IsIn([
-    'https://openapi.alipay.com/gateway.do',
-    'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
-  ])
+  @Transform(trim)
+  @IsUrl({ protocols: ['http', 'https'], require_protocol: true, require_tld: false })
+  @MaxLength(2048)
   gateway: string
 
   @ApiProperty({ description: '应用私钥文件内容，保存后不回显' })

@@ -952,6 +952,12 @@ test('replaces the one payment account credential from selected certificate file
   await expect(
     dialog.getByRole('textbox', { name: /支付宝应用 ID/ }),
   ).toHaveValue('2026000000000001');
+  const customGateway = 'http://payment-mock.internal/alipay/gateway.do';
+  const gatewayInput = dialog.getByRole('textbox', { name: /API 网关地址/ });
+  await expect(gatewayInput).toHaveValue(
+    'https://openapi.alipay.com/gateway.do',
+  );
+  await gatewayInput.fill(customGateway);
   await dialog.getByText('证书模式', { exact: true }).click();
   await expect(dialog.getByText('应用公钥证书', { exact: true })).toBeVisible();
   await expect(
@@ -991,6 +997,7 @@ test('replaces the one payment account credential from selected certificate file
     authMode: 'CERT',
     alipayPublicCertContent: 'alipay-public-certificate',
     alipayRootCertContent: 'alipay-root-certificate',
+    gateway: customGateway,
     privateKey: 'application-private-key',
     tenantId,
   });

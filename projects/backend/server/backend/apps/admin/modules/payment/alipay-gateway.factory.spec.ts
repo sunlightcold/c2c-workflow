@@ -1,4 +1,9 @@
+import { AlipaySdk } from 'alipay-sdk'
 import { AlipayGatewayFactory } from './alipay-gateway.factory'
+
+jest.mock('alipay-sdk', () => ({
+  AlipaySdk: jest.fn().mockImplementation(() => ({ exec: jest.fn() })),
+}))
 
 describe('AlipayGatewayFactory', () => {
   const factory = new AlipayGatewayFactory()
@@ -26,15 +31,29 @@ describe('AlipayGatewayFactory', () => {
     ).toThrow('支付宝认证模式必须是 KEY 或 CERT')
   })
 
-  it('rejects non-Alipay gateway URLs before constructing the SDK', () => {
+  it('accepts a custom HTTP API gateway', () => {
+    const gateway = 'http://payment-mock.internal/alipay/gateway.do'
+
+    factory.create({
+      authMode: 'KEY',
+      appId: 'app',
+      privateKey: 'private',
+      alipayPublicKey: 'public',
+      gateway,
+    })
+
+    expect(AlipaySdk).toHaveBeenCalledWith(expect.objectContaining({ gateway }))
+  })
+
+  it('rejects a non-HTTP API gateway', () => {
     expect(() =>
       factory.create({
         authMode: 'KEY',
         appId: 'app',
         privateKey: 'private',
         alipayPublicKey: 'public',
-        gateway: 'https://example.com/gateway.do',
+        gateway: 'file:///etc/passwd',
       }),
-    ).toThrow('支付宝网关地址不在允许范围内')
+    ).toThrow('支付宝 API 网关仅支持 HTTP 或 HTTPS')
   })
 })
