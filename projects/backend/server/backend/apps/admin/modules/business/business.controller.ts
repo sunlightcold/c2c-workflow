@@ -28,6 +28,7 @@ import {
   TenantContextDto,
   UpdatePaymentAccountChannelDto,
   UpdatePaymentAccountDto,
+  UpdatePaymentPlanDto,
   UpdateMerchantDto,
 } from './business.dto'
 import { MerchantService } from './merchant.service'
@@ -314,5 +315,44 @@ export class BusinessController {
   createPaymentPlan(@Body() dto: CreatePaymentPlanDto, @User() actor: AuthUser) {
     const { tenantId, ...input } = dto
     return this.payments.createPlan(this.scope.resolveTenantId(actor, tenantId), input)
+  }
+
+  @Put('payment-plans/:id')
+  @Permission(PaymentPermissions.BIND)
+  @ApiOperation({ summary: '编辑商家支付方案的账号通道、使用顺序和分配比例' })
+  updatePaymentPlan(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdatePaymentPlanDto,
+    @User() actor: AuthUser,
+  ) {
+    const { tenantId, ...input } = dto
+    return this.payments.updatePlan(this.scope.resolveTenantId(actor, tenantId), id, input)
+  }
+
+  @Patch('payment-plans/:id/status')
+  @Permission(PaymentPermissions.BIND)
+  @ApiOperation({ summary: '启用或停用商家支付方案' })
+  setPaymentPlanStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() dto: TenantContextDto,
+    @Body() statusDto: SetTenantStatusDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.payments.setPlanStatus(
+      this.scope.resolveTenantId(actor, dto.tenantId),
+      id,
+      statusDto.status,
+    )
+  }
+
+  @Delete('payment-plans/:id')
+  @Permission(PaymentPermissions.BIND)
+  @ApiOperation({ summary: '删除尚未被支付订单使用的商家支付方案' })
+  removePaymentPlan(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() dto: TenantContextDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.payments.removePlan(this.scope.resolveTenantId(actor, dto.tenantId), id)
   }
 }

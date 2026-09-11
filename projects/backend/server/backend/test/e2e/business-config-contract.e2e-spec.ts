@@ -40,6 +40,9 @@ describe('Business configuration API contract (e2e)', () => {
     setAccountChannelStatus: jest.fn(),
     removeAccountChannel: jest.fn(),
     createPlan: jest.fn(),
+    updatePlan: jest.fn(),
+    setPlanStatus: jest.fn(),
+    removePlan: jest.fn(),
     listCatalog: jest.fn(),
     listAccounts: jest.fn(),
     listPlans: jest.fn(),
@@ -222,6 +225,36 @@ describe('Business configuration API contract (e2e)', () => {
       'tenant-1',
       expect.objectContaining({ currency: 'CNY' }),
     )
+  })
+
+  it('edits, disables and deletes a payment plan in the resolved tenant', async () => {
+    const tenantId = '00000000-0000-4000-8000-000000000010'
+    const planId = '00000000-0000-4000-8000-000000000050'
+    payments.updatePlan.mockResolvedValue({ id: planId, priority: 20, weight: 60 })
+    payments.setPlanStatus.mockResolvedValue({ id: planId, status: 'disabled' })
+    payments.removePlan.mockResolvedValue(undefined)
+
+    await request(app.getHttpServer())
+      .put(`/v1/sys/payment-plans/${planId}`)
+      .send({ tenantId, priority: 20, weight: 60 })
+      .expect(200)
+    await request(app.getHttpServer())
+      .patch(`/v1/sys/payment-plans/${planId}/status`)
+      .query({ tenantId })
+      .send({ status: 'disabled' })
+      .expect(200)
+    await request(app.getHttpServer())
+      .delete(`/v1/sys/payment-plans/${planId}`)
+      .query({ tenantId })
+      .expect(200)
+
+    expect(payments.updatePlan).toHaveBeenCalledWith(
+      'tenant-1',
+      planId,
+      expect.objectContaining({ priority: 20, weight: 60 }),
+    )
+    expect(payments.setPlanStatus).toHaveBeenCalledWith('tenant-1', planId, 'disabled')
+    expect(payments.removePlan).toHaveBeenCalledWith('tenant-1', planId)
   })
 
   it('creates a payment account without returning its Secret reference', async () => {

@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { getRepositoryToken } from '@nestjs/typeorm'
 import { Test } from '@nestjs/testing'
 import {
+  BusinessStatus,
   MerchantEntity,
   MerchantPaymentPlanEntity,
   PaymentAccountChannelEntity,
@@ -35,6 +36,7 @@ describe('PaymentConfigService', () => {
     plan: {
       create: jest.fn((value) => value),
       find: jest.fn(),
+      findOne: jest.fn(),
       save: jest.fn(async (value) => value),
       exists: jest.fn(),
     },
@@ -44,7 +46,7 @@ describe('PaymentConfigService', () => {
   const txRepositories = {
     account: { delete: jest.fn(), findOne: jest.fn() },
     accountChannel: { delete: jest.fn(), findOne: jest.fn() },
-    plan: { exists: jest.fn() },
+    plan: { delete: jest.fn(), exists: jest.fn(), findOne: jest.fn() },
     paymentOrder: { exists: jest.fn() },
     paymentBatch: { exists: jest.fn() },
   }
@@ -76,6 +78,10 @@ describe('PaymentConfigService', () => {
     txRepositories.accountChannel.findOne.mockResolvedValue({
       id: accountChannelId,
       paymentAccountId: accountId,
+    })
+    txRepositories.plan.findOne.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000050',
+      tenantId,
     })
     txRepositories.plan.exists.mockResolvedValue(false)
     txRepositories.paymentOrder.exists.mockResolvedValue(false)
@@ -120,6 +126,69 @@ describe('PaymentConfigService', () => {
         paymentAccountChannelId: accountChannelId,
       }),
     )
+  })
+
+  it('updates a payment plan only inside its tenant', async () => {
+    repositories.plan.findOne.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000050',
+      tenantId,
+      merchantId,
+      paymentAccountId: accountId,
+      paymentAccountChannelId: accountChannelId,
+      priority: 100,
+      weight: 100,
+      status: 'active',
+    })
+
+    await service.updatePlan(tenantId, '00000000-0000-4000-8000-000000000050', {
+      priority: 20,
+      weight: 60,
+    })
+
+    expect(repositories.plan.findOne).toHaveBeenCalledWith({
+      where: { id: '00000000-0000-4000-8000-000000000050', tenantId },
+    })
+    expect(repositories.plan.save).toHaveBeenCalledWith(
+      expect.objectContaining({ priority: 20, weight: 60 }),
+    )
+  })
+
+  it('deletes an unused payment plan only inside its tenant', async () => {
+    const planId = '00000000-0000-4000-8000-000000000050'
+
+    await service.removePlan(tenantId, planId)
+
+    expect(txRepositories.plan.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: planId, tenantId } }),
+    )
+    expect(txRepositories.plan.delete).toHaveBeenCalledWith({ id: planId, tenantId })
+  })
+
+  it('disables a payment plan only inside its tenant', async () => {
+    const planId = '00000000-0000-4000-8000-000000000050'
+    repositories.plan.findOne.mockResolvedValue({
+      id: planId,
+      tenantId,
+      merchantId,
+      paymentAccountId: accountId,
+      paymentAccountChannelId: accountChannelId,
+      status: 'active',
+    })
+
+    await service.setPlanStatus(tenantId, planId, BusinessStatus.DISABLED)
+
+    expect(repositories.plan.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: planId, status: 'disabled' }),
+    )
+  })
+
+  it('protects a payment plan referenced by a payment order from deletion', async () => {
+    txRepositories.paymentOrder.exists.mockResolvedValue(true)
+
+    await expect(
+      service.removePlan(tenantId, '00000000-0000-4000-8000-000000000050'),
+    ).rejects.toBeInstanceOf(ConflictException)
+    expect(txRepositories.plan.delete).not.toHaveBeenCalled()
   })
 
   it('does not return a payment account Secret reference after creation', async () => {

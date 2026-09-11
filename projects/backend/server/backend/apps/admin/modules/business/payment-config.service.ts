@@ -38,6 +38,13 @@ export interface CreatePaymentPlanInput {
   weight: number
 }
 
+export interface UpdatePaymentPlanInput {
+  paymentAccountChannelId?: string
+  paymentAccountId?: string
+  priority?: number
+  weight?: number
+}
+
 interface PaymentAccountChannelInput {
   concurrencyLimit?: number
   configRef?: string
@@ -318,11 +325,90 @@ export class PaymentConfigService {
     })
   }
 
+  async updatePlan(tenantId: string, id: string, input: UpdatePaymentPlanInput) {
+    const plan = await this.planRepository.findOne({ where: { id, tenantId } })
+    if (!plan) throw new NotFoundException('支付方案不存在')
+
+    const routeChanged =
+      input.paymentAccountId !== undefined || input.paymentAccountChannelId !== undefined
+    if (routeChanged) {
+      if (!input.paymentAccountId || !input.paymentAccountChannelId) {
+        throw new BadRequestException('支付账号与支付通道必须同时选择')
+      }
+      await this.requireActivePlanRoute(
+        tenantId,
+        plan.merchantId,
+        input.paymentAccountId,
+        input.paymentAccountChannelId,
+      )
+      plan.paymentAccountId = input.paymentAccountId
+      plan.paymentAccountChannelId = input.paymentAccountChannelId
+    }
+    if (input.priority !== undefined) plan.priority = input.priority
+    if (input.weight !== undefined) plan.weight = input.weight
+    return this.planRepository.save(plan)
+  }
+
+  async removePlan(tenantId: string, id: string): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const planRepository = manager.getRepository(MerchantPaymentPlanEntity)
+      const plan = await planRepository.findOne({
+        where: { id, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      })
+      if (!plan) throw new NotFoundException('支付方案不存在')
+
+      const referenced = await manager.getRepository(PaymentOrderEntity).exists({
+        where: { tenantId, paymentPlanId: id },
+      })
+      if (referenced) {
+        throw new ConflictException('支付方案已被支付订单使用，不能删除，可停用该方案')
+      }
+      await planRepository.delete({ id, tenantId })
+    })
+  }
+
+  async setPlanStatus(tenantId: string, id: string, status: BusinessStatus) {
+    const plan = await this.planRepository.findOne({ where: { id, tenantId } })
+    if (!plan) throw new NotFoundException('支付方案不存在')
+    if (status === BusinessStatus.ACTIVE) {
+      await this.requireActivePlanRoute(
+        tenantId,
+        plan.merchantId,
+        plan.paymentAccountId,
+        plan.paymentAccountChannelId,
+      )
+    }
+    plan.status = status
+    return this.planRepository.save(plan)
+  }
+
   async createPlan(tenantId: string, input: CreatePaymentPlanInput) {
+    await this.requireActivePlanRoute(
+      tenantId,
+      input.merchantId,
+      input.paymentAccountId,
+      input.paymentAccountChannelId,
+    )
+    return this.planRepository.save(
+      this.planRepository.create({
+        ...input,
+        tenantId,
+        status: BusinessStatus.ACTIVE,
+      }),
+    )
+  }
+
+  private async requireActivePlanRoute(
+    tenantId: string,
+    merchantId: string,
+    paymentAccountId: string,
+    paymentAccountChannelId: string,
+  ): Promise<void> {
     const [merchant, account, accountChannel] = await Promise.all([
-      this.merchantRepository.findOne({ where: { id: input.merchantId, tenantId } }),
-      this.accountRepository.findOne({ where: { id: input.paymentAccountId, tenantId } }),
-      this.accountChannelRepository.findOne({ where: { id: input.paymentAccountChannelId } }),
+      this.merchantRepository.findOne({ where: { id: merchantId, tenantId } }),
+      this.accountRepository.findOne({ where: { id: paymentAccountId, tenantId } }),
+      this.accountChannelRepository.findOne({ where: { id: paymentAccountChannelId } }),
     ])
     if (!merchant) throw new BadRequestException('商家不属于当前所属单位')
     if (!account || account.status !== BusinessStatus.ACTIVE)
@@ -334,13 +420,6 @@ export class PaymentConfigService {
     ) {
       throw new BadRequestException('支付通道未在所选支付账号下启用')
     }
-    return this.planRepository.save(
-      this.planRepository.create({
-        ...input,
-        tenantId,
-        status: BusinessStatus.ACTIVE,
-      }),
-    )
   }
 
   private async requireTenantAccount(tenantId: string, id: string) {

@@ -543,3 +543,29 @@ export class CreatePaymentPlanDto extends TenantContextDto {
   @Max(100)
   weight: number
 }
+
+export class UpdatePaymentPlanDto extends TenantContextDto {
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  paymentAccountId?: string
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID()
+  paymentAccountChannelId?: string
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 1000 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  priority?: number
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 100 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  weight?: number
+}
