@@ -47,7 +47,7 @@ const businessPages: BusinessPageDefinition[] = [
     name: '商家订单',
     path: '/business/merchant-orders',
     permission: 'merchant:order',
-    icon: 'lucide:shopping-receipt',
+    icon: 'lucide:shopping-cart',
     actions: [
       ['read', '查询'],
       ['sync', '同步'],

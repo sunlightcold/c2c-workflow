@@ -83,6 +83,15 @@ describe('MenuRegistryService', () => {
     }
   })
 
+  it('uses a supported order icon for the merchant order menu', () => {
+    expect(DEFAULT_ADMIN_MENUS).toContainEqual(
+      expect.objectContaining({
+        key: 'business.merchantOrders',
+        icon: 'lucide:shopping-cart',
+      }),
+    )
+  })
+
   it('rejects duplicate menu keys', () => {
     expect(() =>
       service.validateDefinitions([
