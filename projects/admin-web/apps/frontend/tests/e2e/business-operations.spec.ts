@@ -6,6 +6,10 @@ import { expect, test } from '@playwright/test';
 
 const tenantId = '00000000-0000-4000-8000-000000000001';
 const pageErrors = new WeakMap<Page, string[]>();
+const testCertificateDerBase64 = 'MA4wAwIBATADBgEqAwIA/w==';
+const testCertificatePem = `-----BEGIN CERTIFICATE-----
+${testCertificateDerBase64}
+-----END CERTIFICATE-----`;
 
 const pages = [
   ['所属单位', '/business/tenants', '/business/tenants', 'agency:tenant'],
@@ -1094,20 +1098,30 @@ test('replaces the payment account credential from pasted text and local files',
     dialog.getByLabel('读取支付宝根证书'),
   ];
   const selectedFiles = [
-    ['app-cert.crt', 'application-certificate'],
-    ['alipay-public-cert.crt', 'alipay-public-certificate'],
-    ['alipay-root-cert.crt', 'alipay-root-certificate'],
-  ] as const;
-  for (const [index, [name, content]] of selectedFiles.entries()) {
+    {
+      buffer: Buffer.from(testCertificateDerBase64, 'base64'),
+      mimeType: 'application/pkix-cert',
+      name: 'app-cert.crt',
+    },
+    {
+      buffer: Buffer.from(testCertificatePem),
+      mimeType: 'application/x-pem-file',
+      name: 'alipay-public-cert.cer',
+    },
+    {
+      buffer: Buffer.from(`${testCertificatePem}\n${testCertificatePem}`),
+      mimeType: 'application/x-pem-file',
+      name: 'alipay-root-cert.pem',
+    },
+  ];
+  for (const [index, file] of selectedFiles.entries()) {
     const fileInput = certificateFileInputs[index];
-    if (!fileInput) throw new Error(`Missing credential file input: ${name}`);
-    await fileInput.setInputFiles({
-      buffer: Buffer.from(content),
-      mimeType: 'text/plain',
-      name,
-    });
+    if (!fileInput) {
+      throw new Error(`Missing credential file input: ${file.name}`);
+    }
+    await fileInput.setInputFiles(file);
   }
-  await expect(appCertInput).toHaveValue('application-certificate');
+  await expect(appCertInput).toHaveValue(testCertificatePem);
   await page.screenshot({
     fullPage: true,
     path: `node_modules/.e2e/screenshots/payment-credential-input-${testInfo.project.name}.png`,
@@ -1125,10 +1139,10 @@ test('replaces the payment account credential from pasted text and local files',
   const request = await credentialRequest;
   const payload = request.postDataJSON();
   expect(payload).toMatchObject({
-    appCertContent: 'application-certificate',
+    appCertContent: testCertificatePem,
     authMode: 'CERT',
-    alipayPublicCertContent: 'alipay-public-certificate',
-    alipayRootCertContent: 'alipay-root-certificate',
+    alipayPublicCertContent: testCertificatePem,
+    alipayRootCertContent: `${testCertificatePem}\n${testCertificatePem}`,
     gateway: customGateway,
     privateKey: 'pasted-application-private-key',
     tenantId,

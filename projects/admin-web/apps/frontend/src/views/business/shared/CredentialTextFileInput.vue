@@ -1,21 +1,27 @@
 <script setup lang="ts">
+import type { CredentialContentKind } from './credential-file';
+
 import { ref } from 'vue';
 
 import { UploadOutlined } from '@ant-design/icons-vue';
 import { Button as AButton, Input, message } from 'ant-design-vue';
 
-withDefaults(
+import { readCredentialFile } from './credential-file';
+
+const props = withDefaults(
   defineProps<{
     accept?: string;
     ariaLabel?: string;
+    contentKind?: CredentialContentKind;
     fileButtonLabel: string;
     modelValue?: string;
     placeholder?: string;
     rows?: number;
   }>(),
   {
-    accept: '.pem,.key,.crt,.cer,.txt',
+    accept: '.pem,.key,.crt,.cer,.der,.txt',
     ariaLabel: undefined,
+    contentKind: 'text',
     modelValue: '',
     placeholder: '可直接粘贴内容，或读取本地文件',
     rows: 3,
@@ -35,9 +41,16 @@ async function readFile(event: Event) {
   if (!file) return;
 
   try {
-    emit('update:modelValue', await file.text());
-  } catch {
-    message.error('文件读取失败，请重新选择或直接粘贴内容');
+    emit(
+      'update:modelValue',
+      await readCredentialFile(file, props.contentKind),
+    );
+  } catch (error) {
+    message.error(
+      error instanceof Error
+        ? error.message
+        : '文件读取失败，请重新选择或直接粘贴内容',
+    );
   } finally {
     input.value = '';
   }

@@ -162,6 +162,10 @@ describe('merchant order operation forms', () => {
     expect(rules.find(({ field }) => field === 'appCertContent')).toMatchObject(
       {
         hidden: true,
+        props: {
+          accept: '.crt,.cer,.pem,.der',
+          contentKind: 'certificate',
+        },
         type: 'credentialTextFileInput',
       },
     );

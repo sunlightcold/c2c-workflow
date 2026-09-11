@@ -47,4 +47,33 @@ describe('credential text file input', () => {
       'file-private-key',
     ]);
   });
+
+  it('reads a DER encoded .crt certificate as PEM text', async () => {
+    const wrapper = mount(CredentialTextFileInput, {
+      props: {
+        contentKind: 'certificate',
+        fileButtonLabel: '读取应用公钥证书',
+        modelValue: '',
+      },
+    });
+    const input = wrapper.get('input[type="file"]');
+    const derCertificate = Uint8Array.from(
+      atob('MA4wAwIBATADBgEqAwIA/w=='),
+      (character) => character.codePointAt(0) ?? 0,
+    );
+    const file = new File([derCertificate], 'app-cert.crt', {
+      type: 'application/pkix-cert',
+    });
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [file],
+    });
+
+    await input.trigger('change');
+
+    expect(input.attributes('accept')).toContain('.crt');
+    expect(wrapper.emitted('update:modelValue')).toContainEqual([
+      '-----BEGIN CERTIFICATE-----\nMA4wAwIBATADBgEqAwIA/w==\n-----END CERTIFICATE-----',
+    ]);
+  });
 });

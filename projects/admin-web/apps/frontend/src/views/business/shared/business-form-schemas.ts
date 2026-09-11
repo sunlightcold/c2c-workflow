@@ -499,6 +499,7 @@ function credentialTextFileRule(
   title: string,
   accept: string,
   hidden: boolean,
+  contentKind: 'certificate' | 'text' = 'text',
 ) {
   return {
     field,
@@ -506,6 +507,7 @@ function credentialTextFileRule(
     props: {
       accept,
       ariaLabel: title,
+      contentKind,
       fileButtonLabel: `读取${title}`,
       placeholder: '可直接粘贴内容，或读取本地文件',
       rows: 3,
@@ -573,20 +575,23 @@ function alipayCredentialRules(
     credentialTextFileRule(
       'appCertContent',
       '应用公钥证书',
-      '.crt,.cer,.pem',
+      '.crt,.cer,.pem,.der',
       !certificateMode,
+      'certificate',
     ),
     credentialTextFileRule(
       'alipayPublicCertContent',
       '支付宝公钥证书',
-      '.crt,.cer,.pem',
+      '.crt,.cer,.pem,.der',
       !certificateMode,
+      'certificate',
     ),
     credentialTextFileRule(
       'alipayRootCertContent',
       '支付宝根证书',
-      '.crt,.cer,.pem',
+      '.crt,.cer,.pem,.der',
       !certificateMode,
+      'certificate',
     ),
   ];
   return layout === 'account-create'
