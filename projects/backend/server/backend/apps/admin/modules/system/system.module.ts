@@ -17,8 +17,9 @@ import { BusinessModule } from '../business'
 import { C2cPlatformModule } from '../c2c-platform'
 import { PaymentModule } from '../payment'
 import { C2cOrderModule } from '../c2c-order'
+import { TelegramModule } from '../telegram'
 
-const modules = [
+const routedModules = [
   CredentialModule,
   AiModule,
   MenuModule,
@@ -35,6 +36,7 @@ const modules = [
   PaymentModule,
   C2cOrderModule,
 ]
+const modules = [...routedModules, TelegramModule]
 
 @Module({
   imports: [
@@ -43,7 +45,7 @@ const modules = [
       {
         path: 'sys',
         module: SystemModule,
-        children: [...modules],
+        children: [...routedModules, { path: 'tg', module: TelegramModule }],
       },
     ]),
   ],

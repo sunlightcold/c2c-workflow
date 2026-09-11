@@ -33,7 +33,7 @@ import { DEFAULT_ADMIN_MENUS } from './registry/default-admin-menus'
 describe('MenuRegistryService', () => {
   const service = new MenuRegistryService({} as any, {} as any)
 
-  it('registers one business folder with the six operational pages and action permissions', () => {
+  it('registers one business folder with operational pages and action permissions', () => {
     const businessPages = DEFAULT_ADMIN_MENUS.filter(
       ({ parentKey, type }) => parentKey === 'business' && type === SysMenuType.MENU,
     )
@@ -51,6 +51,10 @@ describe('MenuRegistryService', () => {
       'business.paymentAccounts',
       'business.paymentOrders',
       'business.paymentBatches',
+      'business.telegramBots',
+      'business.telegramGroups',
+      'business.telegramMembers',
+      'business.telegramSuperAdmins',
     ])
     for (const permission of [
       'agency:tenant:read',

@@ -40,6 +40,10 @@ import {
   PaymentBatchEntity,
   PaymentBatchItemEntity,
   PaymentBatchStatusHistoryEntity,
+  TelegramBotEntity,
+  TelegramGroupEntity,
+  TelegramGroupMemberEntity,
+  TelegramSuperAdminEntity,
 } from './business'
 
 const sysEntities = [
@@ -83,6 +87,10 @@ const entities = [
   PaymentBatchEntity,
   PaymentBatchItemEntity,
   PaymentBatchStatusHistoryEntity,
+  TelegramBotEntity,
+  TelegramGroupEntity,
+  TelegramGroupMemberEntity,
+  TelegramSuperAdminEntity,
 ]
 
 /**

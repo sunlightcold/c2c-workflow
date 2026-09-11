@@ -7,6 +7,28 @@ export namespace BusinessApi {
   export type MerchantPlatform = 'BINANCE' | 'OKX';
   export type PaymentExecutionMode = 'BATCH' | 'INSTANT';
   export type PaymentSourceType = 'BOT_MANUAL' | 'C2C_BUY' | 'REFUND';
+  export type TelegramCapability =
+    | 'ALIPAY_BATCH_PAYMENT'
+    | 'BALANCE_QUERY'
+    | 'BOT_STATUS_MANAGE'
+    | 'C2C_APPEAL'
+    | 'C2C_DAILY_REPORT'
+    | 'C2C_ORDER_PAYMENT'
+    | 'GROUP_MEMBER_MANAGE'
+    | 'MANUAL_PAYMENT'
+    | 'ORDER_QUERY'
+    | 'PAYMENT_BATCH_SUBMIT'
+    | 'PAYMENT_RESULT_NOTIFICATION'
+    | 'PAYMENT_STATISTICS'
+    | 'RECEIPT_QUERY';
+  export type TelegramBotType = 'HQ' | 'MERCHANT' | 'PAYMENT';
+  export type TelegramGroupRole = 'ADMIN' | 'OPERATOR' | 'VIEWER';
+  export type TelegramGroupBindingState =
+    | 'ACTIVE'
+    | 'PAUSED'
+    | 'PENDING'
+    | 'UNBOUND';
+  export type TelegramSuperAdminScopeType = 'ALL_GROUPS' | 'SPECIFIED_GROUPS';
   export type MerchantOrderAppealStatus = 'PROCESSING' | 'SUBMITTED';
 
   export interface TenantContext {
@@ -337,6 +359,61 @@ export namespace BusinessApi {
     payeeName: string;
     paymentMethod: 'ALIPAY';
     sourceBusinessNo: string;
+  }
+
+  export interface TelegramBot {
+    botType: TelegramBotType;
+    batchSubmitRequireConfirmation: boolean;
+    capabilities: TelegramCapability[];
+    code: string;
+    createdAt: string;
+    description: null | string;
+    id: string;
+    language: string;
+    name: string;
+    paymentOrderRequireConfirmation: boolean;
+    status: BusinessStatus;
+    tenantId: string;
+    tokenConfigured: boolean;
+    updatedAt: string;
+    webhookSecretConfigured: boolean;
+    webhookUrl: null | string;
+  }
+  export interface TelegramGroup {
+    bindingState: TelegramGroupBindingState;
+    botId: string;
+    capabilities: TelegramCapability[];
+    chatId: null | string;
+    chatType: null | string;
+    createdAt: string;
+    id: string;
+    merchantId: string;
+    name: string;
+    notificationsEnabled: boolean;
+    paymentScene: PaymentSourceType;
+    tenantId: string;
+    updatedAt: string;
+    verifiedAt: null | string;
+  }
+  export interface TelegramMember {
+    capabilities: TelegramCapability[];
+    displayName: null | string;
+    groupId: string;
+    id: string;
+    role: TelegramGroupRole;
+    status: BusinessStatus;
+    telegramUserId: string;
+    telegramUsername: null | string;
+    userId: number;
+  }
+  export interface TelegramSuperAdmin {
+    groupIds: string[];
+    id: string;
+    scopeType: TelegramSuperAdminScopeType;
+    status: BusinessStatus;
+    telegramUserId: string;
+    telegramUsername: null | string;
+    userId: number;
   }
 }
 
@@ -680,3 +757,68 @@ export const reconcilePaymentBatchApi = (
   id: string,
   data: BusinessApi.TenantContext,
 ) => requestClient.post(`/sys/payment-batches/${id}/reconcile`, data);
+
+export interface TelegramPageQuery extends BusinessApi.TenantContext {
+  page: number;
+  pageSize: number;
+}
+export async function getTelegramBotsApi(params: TelegramPageQuery) {
+  return toPagination<BusinessApi.TelegramBot>(
+    await requestClient.get('/sys/tg/bots', { params }),
+  );
+}
+export const createTelegramBotApi = (
+  data: BusinessApi.TenantContext & {
+    batchSubmitRequireConfirmation?: boolean;
+    capabilities: BusinessApi.TelegramCapability[];
+    code: string;
+    description?: string;
+    name: string;
+    paymentOrderRequireConfirmation?: boolean;
+    tokenRef: string;
+    webhookSecretRef?: string;
+    webhookUrl?: string;
+  },
+) => requestClient.post<BusinessApi.TelegramBot>('/sys/tg/bots', data);
+export const setTelegramBotStatusApi = (
+  id: string,
+  status: BusinessApi.BusinessStatus,
+  tenantId?: string,
+) =>
+  requestClient.request(`/sys/tg/bots/${id}/status`, {
+    method: 'PATCH',
+    params: { tenantId },
+    data: { status },
+  });
+export const deleteTelegramBotApi = (id: string, tenantId?: string) =>
+  requestClient.delete(`/sys/tg/bots/${id}`, { params: { tenantId } });
+export async function getTelegramGroupsApi(
+  params: TelegramPageQuery & {
+    bindingState?: BusinessApi.TelegramGroupBindingState;
+    botId?: string;
+    merchantId?: string;
+  },
+) {
+  return toPagination<BusinessApi.TelegramGroup>(
+    await requestClient.get('/sys/tg/groups', { params }),
+  );
+}
+export async function getTelegramMembersApi(
+  params: TelegramPageQuery & {
+    groupId?: string;
+    role?: BusinessApi.TelegramGroupRole;
+  },
+) {
+  return toPagination<BusinessApi.TelegramMember>(
+    await requestClient.get('/sys/tg/members', { params }),
+  );
+}
+export async function getTelegramSuperAdminsApi(
+  params: TelegramPageQuery & {
+    scopeType?: BusinessApi.TelegramSuperAdminScopeType;
+  },
+) {
+  return toPagination<BusinessApi.TelegramSuperAdmin>(
+    await requestClient.get('/sys/tg/super-admins', { params }),
+  );
+}

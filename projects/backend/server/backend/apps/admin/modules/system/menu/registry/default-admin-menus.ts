@@ -98,6 +98,62 @@ const businessPages: BusinessPageDefinition[] = [
   },
 ]
 
+const telegramPages: BusinessPageDefinition[] = [
+  {
+    key: 'telegramBots',
+    name: '机器人实例',
+    path: '/business/telegram-bots',
+    permission: 'telegram:bot',
+    icon: 'lucide:bot',
+    actions: [
+      ['read', '查询'],
+      ['create', '新增'],
+      ['update', '编辑与启停'],
+      ['delete', '删除'],
+    ],
+  },
+  {
+    key: 'telegramGroups',
+    name: '群组绑定',
+    path: '/business/telegram-groups',
+    permission: 'telegram:group',
+    icon: 'lucide:messages-square',
+    actions: [
+      ['read', '查询'],
+      ['create', '新增绑定'],
+      ['update', '编辑'],
+      ['approve', '审批绑定'],
+      ['unbind', '解绑'],
+    ],
+  },
+  {
+    key: 'telegramMembers',
+    name: '群组成员',
+    path: '/business/telegram-members',
+    permission: 'telegram:member',
+    icon: 'lucide:user-round-check',
+    actions: [
+      ['read', '查询'],
+      ['create', '新增'],
+      ['update', '编辑'],
+      ['delete', '移除'],
+    ],
+  },
+  {
+    key: 'telegramSuperAdmins',
+    name: '超级管理员',
+    path: '/business/telegram-super-admins',
+    permission: 'telegram:superAdmin',
+    icon: 'lucide:shield-check',
+    actions: [
+      ['read', '查询'],
+      ['create', '新增'],
+      ['update', '编辑'],
+      ['delete', '移除'],
+    ],
+  },
+]
+
 export const DEFAULT_ADMIN_MENUS: AdminMenuDefinition[] = [
   {
     key: 'dashboard',
@@ -142,7 +198,27 @@ export const DEFAULT_ADMIN_MENUS: AdminMenuDefinition[] = [
     icon,
     orderNo: 60 - index * 10,
   })),
+  ...telegramPages.map(({ icon, key, name, path, permission }, index) => ({
+    key: `business.${key}`,
+    type: SysMenuType.MENU,
+    parentKey: 'business',
+    name,
+    path,
+    component: path,
+    permission,
+    icon,
+    orderNo: 5 - index,
+  })),
   ...businessPages.flatMap(({ actions, key, permission }) =>
+    actions.map(([action, name]) => ({
+      key: `business.${key}.${action}`,
+      type: SysMenuType.PERMISSION,
+      parentKey: `business.${key}`,
+      name,
+      permission: `${permission}:${action}`,
+    })),
+  ),
+  ...telegramPages.flatMap(({ actions, key, permission }) =>
     actions.map(([action, name]) => ({
       key: `business.${key}.${action}`,
       type: SysMenuType.PERMISSION,

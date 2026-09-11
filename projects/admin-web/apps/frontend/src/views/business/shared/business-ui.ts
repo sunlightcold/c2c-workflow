@@ -77,6 +77,12 @@ const statusLabels: Record<string, string> = {
   SUBMITTING: '提交中',
   SUCCESS: '支付成功',
   UNKNOWN: '结果未知',
+  ACTIVE: '已绑定',
+  ALL_GROUPS: '全部群组',
+  PENDING: '待验证',
+  PAUSED: '已暂停',
+  SPECIFIED_GROUPS: '指定群组',
+  UNBOUND: '已解绑',
 };
 
 export function businessEnumText(value?: null | string) {
