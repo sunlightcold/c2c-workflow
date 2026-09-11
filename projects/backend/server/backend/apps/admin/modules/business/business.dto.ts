@@ -328,6 +328,76 @@ export class CreatePaymentAccountDto extends TenantContextDto {
   credentialRef: string
 }
 
+export class UpdatePaymentAccountDto extends TenantContextDto {
+  @ApiPropertyOptional()
+  @Transform(trim)
+  @IsOptional()
+  @IsNotEmpty()
+  @MaxLength(100)
+  name?: string
+
+  @ApiPropertyOptional({ description: '支付宝商户号' })
+  @Transform(trim)
+  @IsOptional()
+  @IsNotEmpty()
+  @MaxLength(128)
+  externalAccountId?: string
+
+  @ApiPropertyOptional({ description: '新的 Secret Manager/KMS 凭据引用；不修改时不提交' })
+  @Transform(trim)
+  @IsOptional()
+  @Matches(/^[a-zA-Z][a-zA-Z0-9+._:/-]{7,254}$/)
+  credentialRef?: string
+}
+
+export class PaymentAccountListDto extends TenantContextDto {
+  @ApiPropertyOptional()
+  @Transform(trim)
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  accountName?: string
+
+  @ApiPropertyOptional()
+  @Transform(trim)
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  accountCode?: string
+
+  @ApiPropertyOptional()
+  @Transform(trim)
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  externalAccountId?: string
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  platformId?: string
+
+  @ApiPropertyOptional({ enum: BusinessStatus })
+  @IsOptional()
+  @IsEnum(BusinessStatus)
+  status?: BusinessStatus
+
+  @ApiPropertyOptional({ default: 1 })
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  page = 1
+
+  @ApiPropertyOptional({ default: 20, maximum: 100 })
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize = 20
+}
+
 export class RotateMerchantPlatformCredentialDto extends TenantContextDto {
   @ApiPropertyOptional({ description: '币安 API Key' })
   @Transform(trim)
@@ -383,10 +453,52 @@ export class OpenPaymentAccountChannelDto extends TenantContextDto {
   channelId: string
 
   @ApiPropertyOptional()
+  @Transform(trim)
   @IsOptional()
-  @IsString()
-  @MaxLength(255)
+  @Matches(/^[a-zA-Z][a-zA-Z0-9+._:/-]{7,254}$/)
   configRef?: string
+
+  @ApiPropertyOptional({ example: '1.00' })
+  @IsOptional()
+  @Matches(/^(0|[1-9]\d{0,17})(\.\d{1,2})?$/)
+  minimumAmount?: string
+
+  @ApiPropertyOptional({ example: '50000.00' })
+  @IsOptional()
+  @Matches(/^(0|[1-9]\d{0,17})(\.\d{1,2})?$/)
+  maximumAmount?: string
+
+  @ApiPropertyOptional({ default: 1, minimum: 1, maximum: 1000 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  concurrencyLimit?: number
+}
+
+export class UpdatePaymentAccountChannelDto extends TenantContextDto {
+  @ApiPropertyOptional({ description: '新的通道配置引用；不修改时不提交' })
+  @Transform(trim)
+  @IsOptional()
+  @Matches(/^[a-zA-Z][a-zA-Z0-9+._:/-]{7,254}$/)
+  configRef?: string
+
+  @ApiPropertyOptional({ example: '1.00', nullable: true })
+  @IsOptional()
+  @Matches(/^(0|[1-9]\d{0,17})(\.\d{1,2})?$/)
+  minimumAmount?: string | null
+
+  @ApiPropertyOptional({ example: '50000.00', nullable: true })
+  @IsOptional()
+  @Matches(/^(0|[1-9]\d{0,17})(\.\d{1,2})?$/)
+  maximumAmount?: string | null
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 1000 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  concurrencyLimit?: number
 }
 
 export class PaymentPlanListDto extends TenantContextDto {

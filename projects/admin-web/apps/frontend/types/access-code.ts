@@ -28,6 +28,8 @@ const AccessCodes = [
   'payment:account',
   'payment:account:read',
   'payment:account:create',
+  'payment:account:update',
+  'payment:account:delete',
   'payment:account:bind',
   'payment:order',
   'payment:order:read',

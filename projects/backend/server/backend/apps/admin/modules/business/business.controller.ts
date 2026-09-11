@@ -21,10 +21,13 @@ import {
   CreateTenantDto,
   MerchantListDto,
   OpenPaymentAccountChannelDto,
+  PaymentAccountListDto,
   PaymentPlanListDto,
   RotateMerchantPlatformCredentialDto,
   SetTenantStatusDto,
   TenantContextDto,
+  UpdatePaymentAccountChannelDto,
+  UpdatePaymentAccountDto,
   UpdateMerchantDto,
 } from './business.dto'
 import { MerchantService } from './merchant.service'
@@ -41,7 +44,13 @@ const MerchantPermissions = definePermission('merchant:account', [
   'credential',
   'test',
 ] as const)
-const PaymentPermissions = definePermission('payment:account', ['read', 'create', 'bind'] as const)
+const PaymentPermissions = definePermission('payment:account', [
+  'read',
+  'create',
+  'update',
+  'delete',
+  'bind',
+] as const)
 
 @ApiTags('C2C-业务配置')
 @ApiBearerAuth()
@@ -175,6 +184,45 @@ export class BusinessController {
     return this.payments.createAccount(this.scope.resolveTenantId(actor, tenantId), input)
   }
 
+  @Put('payment-accounts/:id')
+  @Permission(PaymentPermissions.UPDATE)
+  @ApiOperation({ summary: '编辑支付账号' })
+  updatePaymentAccount(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdatePaymentAccountDto,
+    @User() actor: AuthUser,
+  ) {
+    const { tenantId, ...input } = dto
+    return this.payments.updateAccount(this.scope.resolveTenantId(actor, tenantId), id, input)
+  }
+
+  @Patch('payment-accounts/:id/status')
+  @Permission(PaymentPermissions.UPDATE)
+  @ApiOperation({ summary: '启用或停用支付账号' })
+  setPaymentAccountStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() dto: TenantContextDto,
+    @Body() statusDto: SetTenantStatusDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.payments.setAccountStatus(
+      this.scope.resolveTenantId(actor, dto.tenantId),
+      id,
+      statusDto.status,
+    )
+  }
+
+  @Delete('payment-accounts/:id')
+  @Permission(PaymentPermissions.DELETE)
+  @ApiOperation({ summary: '删除尚未被业务使用的支付账号' })
+  removePaymentAccount(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() dto: TenantContextDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.payments.removeAccount(this.scope.resolveTenantId(actor, dto.tenantId), id)
+  }
+
   @Get('payment-platforms')
   @Permission(PaymentPermissions.READ)
   @ApiOperation({ summary: '查询支付平台及通道目录' })
@@ -185,8 +233,8 @@ export class BusinessController {
   @Get('payment-accounts')
   @Permission(PaymentPermissions.READ)
   @ApiOperation({ summary: '查询支付账号' })
-  listPaymentAccounts(@Query() dto: TenantContextDto, @User() actor: AuthUser) {
-    return this.payments.listAccounts(this.scope.resolveTenantId(actor, dto.tenantId))
+  listPaymentAccounts(@Query() dto: PaymentAccountListDto, @User() actor: AuthUser) {
+    return this.payments.listAccounts(this.scope.resolveTenantId(actor, dto.tenantId), dto)
   }
 
   @Get('payment-plans')
@@ -206,6 +254,58 @@ export class BusinessController {
   ) {
     const { tenantId, ...input } = dto
     return this.payments.openAccountChannel(this.scope.resolveTenantId(actor, tenantId), id, input)
+  }
+
+  @Put('payment-accounts/:id/channels/:bindingId')
+  @Permission(PaymentPermissions.BIND)
+  @ApiOperation({ summary: '编辑支付账号通道参数' })
+  updatePaymentChannel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('bindingId', ParseUUIDPipe) bindingId: string,
+    @Body() dto: UpdatePaymentAccountChannelDto,
+    @User() actor: AuthUser,
+  ) {
+    const { tenantId, ...input } = dto
+    return this.payments.updateAccountChannel(
+      this.scope.resolveTenantId(actor, tenantId),
+      id,
+      bindingId,
+      input,
+    )
+  }
+
+  @Patch('payment-accounts/:id/channels/:bindingId/status')
+  @Permission(PaymentPermissions.BIND)
+  @ApiOperation({ summary: '启用或停用支付账号通道' })
+  setPaymentChannelStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('bindingId', ParseUUIDPipe) bindingId: string,
+    @Query() dto: TenantContextDto,
+    @Body() statusDto: SetTenantStatusDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.payments.setAccountChannelStatus(
+      this.scope.resolveTenantId(actor, dto.tenantId),
+      id,
+      bindingId,
+      statusDto.status,
+    )
+  }
+
+  @Delete('payment-accounts/:id/channels/:bindingId')
+  @Permission(PaymentPermissions.BIND)
+  @ApiOperation({ summary: '移除尚未被业务使用的支付账号通道' })
+  removePaymentChannel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('bindingId', ParseUUIDPipe) bindingId: string,
+    @Query() dto: TenantContextDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.payments.removeAccountChannel(
+      this.scope.resolveTenantId(actor, dto.tenantId),
+      id,
+      bindingId,
+    )
   }
 
   @Post('payment-plans')

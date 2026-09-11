@@ -107,6 +107,7 @@ describe('Payment routing database integration', () => {
       dataSource.getRepository(MerchantPaymentPlanEntity),
       dataSource.getRepository(PaymentPlatformEntity),
       dataSource.getRepository(PaymentChannelEntity),
+      dataSource,
     )
   })
 
@@ -170,11 +171,11 @@ describe('Payment routing database integration', () => {
   })
 
   it('returns tenant-scoped payment accounts and plans without secret references', async () => {
-    const accounts = await paymentConfig.listAccounts(tenantId)
+    const accounts = await paymentConfig.listAccounts(tenantId, { page: 1, pageSize: 20 })
     const plans = await paymentConfig.listPlans(tenantId, merchantId)
 
-    expect(accounts).toHaveLength(2)
-    expect(accounts).toEqual(
+    expect(accounts.items).toHaveLength(2)
+    expect(accounts.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: instantAccountId,
@@ -189,14 +190,17 @@ describe('Payment routing database integration', () => {
         }),
       ]),
     )
-    for (const account of accounts) {
+    for (const account of accounts.items) {
       expect(account).not.toHaveProperty('credentialRef')
       for (const channel of account.channels) expect(channel).not.toHaveProperty('configRef')
     }
     expect(plans).toHaveLength(2)
     await expect(
-      paymentConfig.listAccounts('00000000-0000-4000-8000-000000000999'),
-    ).resolves.toEqual([])
+      paymentConfig.listAccounts('00000000-0000-4000-8000-000000000999', {
+        page: 1,
+        pageSize: 20,
+      }),
+    ).resolves.toEqual({ items: [], total: 0, page: 1, pageSize: 20 })
     await expect(paymentConfig.listPlans('00000000-0000-4000-8000-000000000999')).resolves.toEqual(
       [],
     )

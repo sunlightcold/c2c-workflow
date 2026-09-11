@@ -66,6 +66,8 @@ const businessPages: BusinessPageDefinition[] = [
     actions: [
       ['read', '查询'],
       ['create', '新增'],
+      ['update', '编辑与启停'],
+      ['delete', '删除'],
       ['bind', '配置通道与方案'],
     ],
   },

@@ -7,15 +7,22 @@ import {
   createMerchantOrderPaymentApi,
   createTenantApi,
   deleteMerchantApi,
+  deletePaymentAccountApi,
+  deletePaymentAccountChannelApi,
   filterMerchantsApi,
+  filterPaymentAccountsApi,
   getMerchantOrderAppealReasonsApi,
   getPaymentOrdersApi,
   rotateMerchantCredentialApi,
   setMerchantStatusApi,
+  setPaymentAccountChannelStatusApi,
+  setPaymentAccountStatusApi,
   submitMerchantOrderAppealApi,
   syncMerchantOrdersApi,
   testMerchantConnectionApi,
   updateMerchantApi,
+  updatePaymentAccountApi,
+  updatePaymentAccountChannelApi,
 } from './index';
 
 const requestMocks = vi.hoisted(() => ({
@@ -144,6 +151,96 @@ describe('business api', () => {
         secretKey: 'secret-key',
         tenantId: 'tenant-1',
       },
+    );
+  });
+
+  it('maps payment account filters and pagination to the grid contract', async () => {
+    requestMocks.get.mockResolvedValue({
+      items: [{ id: 'account-1', name: '主支付账号' }],
+      page: 2,
+      pageSize: 10,
+      total: 12,
+    });
+
+    const result = await filterPaymentAccountsApi({
+      accountName: '主账号',
+      page: 2,
+      pageSize: 10,
+      platformId: 'platform-1',
+      status: 'active',
+      tenantId: 'tenant-1',
+    });
+
+    expect(requestMocks.get).toHaveBeenCalledWith('/sys/payment-accounts', {
+      params: {
+        accountName: '主账号',
+        page: 2,
+        pageSize: 10,
+        platformId: 'platform-1',
+        status: 'active',
+        tenantId: 'tenant-1',
+      },
+    });
+    expect(result.meta).toEqual({
+      currentPage: 2,
+      itemsPerPage: 10,
+      totalItems: 12,
+      totalPages: 2,
+    });
+  });
+
+  it('uses payment account and channel management endpoints', async () => {
+    requestMocks.put.mockResolvedValue({ id: 'account-1' });
+    requestMocks.request.mockResolvedValue({ id: 'account-1' });
+    requestMocks.delete.mockResolvedValue(undefined);
+
+    await updatePaymentAccountApi('account-1', {
+      name: '主支付账号',
+      tenantId: 'tenant-1',
+    });
+    await setPaymentAccountStatusApi('account-1', 'disabled', 'tenant-1');
+    await deletePaymentAccountApi('account-1', 'tenant-1');
+    await updatePaymentAccountChannelApi('account-1', 'binding-1', {
+      concurrencyLimit: 3,
+      maximumAmount: null,
+      minimumAmount: null,
+      tenantId: 'tenant-1',
+    });
+    await setPaymentAccountChannelStatusApi(
+      'account-1',
+      'binding-1',
+      'disabled',
+      'tenant-1',
+    );
+    await deletePaymentAccountChannelApi('account-1', 'binding-1', 'tenant-1');
+
+    expect(requestMocks.put).toHaveBeenNthCalledWith(
+      1,
+      '/sys/payment-accounts/account-1',
+      { name: '主支付账号', tenantId: 'tenant-1' },
+    );
+    expect(requestMocks.request).toHaveBeenNthCalledWith(
+      1,
+      '/sys/payment-accounts/account-1/status',
+      {
+        data: { status: 'disabled' },
+        method: 'PATCH',
+        params: { tenantId: 'tenant-1' },
+      },
+    );
+    expect(requestMocks.put).toHaveBeenNthCalledWith(
+      2,
+      '/sys/payment-accounts/account-1/channels/binding-1',
+      {
+        concurrencyLimit: 3,
+        maximumAmount: null,
+        minimumAmount: null,
+        tenantId: 'tenant-1',
+      },
+    );
+    expect(requestMocks.delete).toHaveBeenCalledWith(
+      '/sys/payment-accounts/account-1/channels/binding-1',
+      { params: { tenantId: 'tenant-1' } },
     );
   });
 

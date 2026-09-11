@@ -36,16 +36,24 @@ Controller：`BusinessController`。基础路径：`/v1/sys`。所有接口均�
 | Method | Path | 权限 | Request | data 来源 |
 | --- | --- | --- | --- | --- |
 | GET | `/payment-platforms` | `payment:account:read` | 无 | 支付平台及其支付通道目录 |
-| GET | `/payment-accounts` | `payment:account:read` | Query `{ tenantId? }` | 当前所属单位的支付账号及已开通通道 |
+| GET | `/payment-accounts` | `payment:account:read` | Query `{ tenantId?, accountName?, accountCode?, externalAccountId?, platformId?, status?, page?, pageSize? }` | 当前所属单位的支付账号分页结果及已开通通道 |
 | POST | `/payment-accounts` | `payment:account:create` | `{ tenantId?, platformId, code, name, externalAccountId, credentialRef }` | `PaymentAccountEntity` |
-| POST | `/payment-accounts/{id}/channels` | `payment:account:bind` | `{ tenantId?, channelId, configRef? }` | `PaymentAccountChannelEntity` |
+| PUT | `/payment-accounts/{id}` | `payment:account:update` | `{ tenantId?, name?, externalAccountId?, credentialRef? }` | 脱敏后的 `PaymentAccountEntity` |
+| PATCH | `/payment-accounts/{id}/status` | `payment:account:update` | Query `{ tenantId? }`；Body `{ status }` | 脱敏后的 `PaymentAccountEntity` |
+| DELETE | `/payment-accounts/{id}` | `payment:account:delete` | Query `{ tenantId? }` | 无 |
+| POST | `/payment-accounts/{id}/channels` | `payment:account:bind` | `{ tenantId?, channelId, configRef?, minimumAmount?, maximumAmount?, concurrencyLimit? }` | 脱敏后的 `PaymentAccountChannelEntity` |
+| PUT | `/payment-accounts/{id}/channels/{bindingId}` | `payment:account:bind` | `{ tenantId?, configRef?, minimumAmount?: string\|null, maximumAmount?: string\|null, concurrencyLimit? }` | 脱敏后的 `PaymentAccountChannelEntity` |
+| PATCH | `/payment-accounts/{id}/channels/{bindingId}/status` | `payment:account:bind` | Query `{ tenantId? }`；Body `{ status }` | 脱敏后的 `PaymentAccountChannelEntity` |
+| DELETE | `/payment-accounts/{id}/channels/{bindingId}` | `payment:account:bind` | Query `{ tenantId? }` | 无 |
 | GET | `/payment-plans` | `payment:account:read` | Query `{ tenantId?, merchantId? }` | 当前所属单位的 `MerchantPaymentPlanEntity[]` |
 | POST | `/payment-plans` | `payment:account:bind` | `{ tenantId?, merchantId, paymentAccountId, paymentAccountChannelId, scene, currency, priority, weight }` | `MerchantPaymentPlanEntity` |
 
 支付方案中的 `paymentAccountChannelId` 必须属于 `paymentAccountId` 且已启用；商家和支付账号
 必须属于同一所属单位。账号只提交 Secret Manager/KMS 的 `credentialRef`，不通过本接口保存明文秘钥；创建响应、后续查询和导出均不返回 `credentialRef` 或 Secret 内容。
 
-支付账号查询返回账号基本信息、`credentialConfigured` 和已开通通道；不返回账号 `credentialRef` 或通道 `configRef`。支付方案查询始终按当前所属单位隔离，可再按商家筛选。
+支付账号查询按经营单位隔离并返回 `{ items, total, page, pageSize }`。账号编码、支付平台和经营单位创建后不可修改；名称、支付宝商户号和账号凭据引用可覆盖更新。账号凭据和通道配置只允许提交新引用，不回显原值。通道金额使用最多两位小数的非负字符串，最小金额不得大于最大金额，并发上限为 1 至 1000；编辑时金额字段提交 `null` 表示清除该项限制，字段不提交表示保留原值。
+
+支付账号查询返回账号基本信息、`credentialConfigured` 和已开通通道；创建、编辑、查询均不返回账号 `credentialRef` 或通道 `configRef`。支付账号或通道一旦被支付方案、支付订单或支付批次引用，不允许删除或移除，只能停用；停用不影响已锁定支付组合的历史回查。支付方案查询始终按当前所属单位隔离，可再按商家筛选。
 
 ## 响应与错误
 
@@ -57,3 +65,4 @@ Controller：`BusinessController`。基础路径：`/v1/sys`。所有接口均�
 | 401 | 未登录或令牌失效 |
 | 403 | 缺少动作权限、所属单位范围不匹配、平台人员未选择经营所属单位 |
 | 404 | 路径资源不存在 |
+| 409 | 支付账号或账号通道已被支付方案、支付订单或支付批次使用，不能删除 |

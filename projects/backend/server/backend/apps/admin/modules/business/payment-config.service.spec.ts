@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common'
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
 import { getRepositoryToken } from '@nestjs/typeorm'
 import { Test } from '@nestjs/testing'
 import {
@@ -8,7 +8,9 @@ import {
   PaymentAccountEntity,
   PaymentChannelEntity,
   PaymentPlatformEntity,
+  PaymentOrderEntity,
 } from '@admin/database'
+import { DataSource } from 'typeorm'
 import { PaymentConfigService } from './payment-config.service'
 
 describe('PaymentConfigService', () => {
@@ -20,18 +22,44 @@ describe('PaymentConfigService', () => {
     merchant: { findOne: jest.fn() },
     account: {
       create: jest.fn((value) => value),
-      find: jest.fn(),
+      findAndCount: jest.fn(),
       findOne: jest.fn(),
       save: jest.fn(async (value) => value),
     },
-    accountChannel: { createQueryBuilder: jest.fn(), findOne: jest.fn() },
+    accountChannel: {
+      create: jest.fn((value) => value),
+      createQueryBuilder: jest.fn(),
+      findOne: jest.fn(),
+      save: jest.fn(async (value) => value),
+    },
     plan: {
       create: jest.fn((value) => value),
       find: jest.fn(),
       save: jest.fn(async (value) => value),
+      exists: jest.fn(),
     },
     platform: { find: jest.fn(), findOne: jest.fn() },
     channel: { find: jest.fn(), findOne: jest.fn() },
+  }
+  const txRepositories = {
+    account: { delete: jest.fn(), findOne: jest.fn() },
+    accountChannel: { delete: jest.fn(), findOne: jest.fn() },
+    plan: { exists: jest.fn() },
+    paymentOrder: { exists: jest.fn() },
+    paymentBatch: { exists: jest.fn() },
+  }
+  const dataSource = {
+    transaction: jest.fn((work) =>
+      work({
+        getRepository: (entity: unknown) => {
+          if (entity === PaymentAccountEntity) return txRepositories.account
+          if (entity === PaymentAccountChannelEntity) return txRepositories.accountChannel
+          if (entity === MerchantPaymentPlanEntity) return txRepositories.plan
+          if (entity === PaymentOrderEntity) return txRepositories.paymentOrder
+          return txRepositories.paymentBatch
+        },
+      }),
+    ),
   }
   let service: PaymentConfigService
 
@@ -44,6 +72,14 @@ describe('PaymentConfigService', () => {
       paymentAccountId: accountId,
       status: 'active',
     })
+    txRepositories.account.findOne.mockResolvedValue({ id: accountId, tenantId })
+    txRepositories.accountChannel.findOne.mockResolvedValue({
+      id: accountChannelId,
+      paymentAccountId: accountId,
+    })
+    txRepositories.plan.exists.mockResolvedValue(false)
+    txRepositories.paymentOrder.exists.mockResolvedValue(false)
+    txRepositories.paymentBatch.exists.mockResolvedValue(false)
     const module = await Test.createTestingModule({
       providers: [
         PaymentConfigService,
@@ -59,6 +95,7 @@ describe('PaymentConfigService', () => {
         },
         { provide: getRepositoryToken(PaymentPlatformEntity), useValue: repositories.platform },
         { provide: getRepositoryToken(PaymentChannelEntity), useValue: repositories.channel },
+        { provide: DataSource, useValue: dataSource },
       ],
     }).compile()
     service = module.get(PaymentConfigService)
@@ -142,17 +179,20 @@ describe('PaymentConfigService', () => {
         status: 'active',
       },
     ])
-    repositories.account.find.mockResolvedValue([
-      {
-        id: accountId,
-        tenantId,
-        platformId: 'platform-1',
-        code: 'alipay-1',
-        name: 'Alipay 1',
-        externalAccountId: '2088',
-        credentialRef: 'secret://must-not-leak',
-        status: 'active',
-      },
+    repositories.account.findAndCount.mockResolvedValue([
+      [
+        {
+          id: accountId,
+          tenantId,
+          platformId: 'platform-1',
+          code: 'alipay-1',
+          name: 'Alipay 1',
+          externalAccountId: '2088',
+          credentialRef: 'secret://must-not-leak',
+          status: 'active',
+        },
+      ],
+      1,
     ])
     accountChannelQuery.getMany.mockResolvedValue([
       {
@@ -166,7 +206,7 @@ describe('PaymentConfigService', () => {
     repositories.accountChannel.createQueryBuilder.mockReturnValue(accountChannelQuery)
 
     const catalog = await service.listCatalog()
-    const accounts = await service.listAccounts(tenantId)
+    const accounts = await service.listAccounts(tenantId, { page: 1, pageSize: 20 })
 
     expect(catalog).toEqual([
       expect.objectContaining({
@@ -174,16 +214,23 @@ describe('PaymentConfigService', () => {
         channels: [expect.objectContaining({ id: 'channel-1' })],
       }),
     ])
-    expect(accounts).toEqual([
+    expect(accounts).toEqual(
       expect.objectContaining({
-        id: accountId,
-        credentialConfigured: true,
-        channels: [expect.objectContaining({ id: accountChannelId, channelId: 'channel-1' })],
+        items: [
+          expect.objectContaining({
+            id: accountId,
+            credentialConfigured: true,
+            channels: [expect.objectContaining({ id: accountChannelId, channelId: 'channel-1' })],
+          }),
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 20,
       }),
-    ])
-    expect(accounts[0]).not.toHaveProperty('credentialRef')
-    expect(accounts[0].channels[0]).not.toHaveProperty('configRef')
-    expect(repositories.account.find).toHaveBeenCalledWith(
+    )
+    expect(accounts.items[0]).not.toHaveProperty('credentialRef')
+    expect(accounts.items[0].channels[0]).not.toHaveProperty('configRef')
+    expect(repositories.account.findAndCount).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId } }),
     )
     expect(accountChannelQuery.where).toHaveBeenCalledWith('account."tenantId" = :tenantId', {
@@ -199,5 +246,103 @@ describe('PaymentConfigService', () => {
     expect(repositories.plan.find).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId, merchantId } }),
     )
+  })
+
+  it('updates editable account fields without returning its credential reference', async () => {
+    repositories.account.findOne.mockResolvedValue({
+      id: accountId,
+      tenantId,
+      name: '旧名称',
+      externalAccountId: '2088',
+      credentialRef: 'env://OLD_SECRET',
+    })
+
+    const result = await service.updateAccount(tenantId, accountId, {
+      name: '主支付账号',
+      credentialRef: 'env://NEW_SECRET',
+    })
+
+    expect(repositories.account.findOne).toHaveBeenCalledWith({
+      where: { id: accountId, tenantId },
+    })
+    expect(repositories.account.save).toHaveBeenCalledWith(
+      expect.objectContaining({ name: '主支付账号', credentialRef: 'env://NEW_SECRET' }),
+    )
+    expect(result).not.toHaveProperty('credentialRef')
+  })
+
+  it('rejects a payment channel amount range whose minimum exceeds its maximum', async () => {
+    repositories.account.findOne.mockResolvedValue({
+      id: accountId,
+      tenantId,
+      platformId: 'platform-1',
+      status: 'active',
+    })
+    repositories.channel.findOne.mockResolvedValue({
+      id: 'channel-1',
+      platformId: 'platform-1',
+      status: 'active',
+    })
+
+    await expect(
+      service.openAccountChannel(tenantId, accountId, {
+        channelId: 'channel-1',
+        minimumAmount: '50000.01',
+        maximumAmount: '50000.00',
+        concurrencyLimit: 2,
+      }),
+    ).rejects.toThrow('最小支付金额不能大于最大支付金额')
+    expect(repositories.accountChannel.save).not.toHaveBeenCalled()
+  })
+
+  it('rejects account channel access through another tenant', async () => {
+    repositories.account.findOne.mockResolvedValue(null)
+
+    await expect(
+      service.updateAccountChannel(tenantId, accountId, accountChannelId, {
+        concurrencyLimit: 2,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException)
+    expect(repositories.accountChannel.save).not.toHaveBeenCalled()
+  })
+
+  it('clears existing payment channel amount limits explicitly', async () => {
+    repositories.account.findOne.mockResolvedValue({ id: accountId, tenantId })
+    repositories.accountChannel.findOne.mockResolvedValue({
+      id: accountChannelId,
+      paymentAccountId: accountId,
+      minimumAmount: '10.00',
+      maximumAmount: '30000.00',
+    })
+
+    await service.updateAccountChannel(tenantId, accountId, accountChannelId, {
+      minimumAmount: null,
+      maximumAmount: null,
+    })
+
+    expect(repositories.accountChannel.save).toHaveBeenCalledWith(
+      expect.objectContaining({ minimumAmount: null, maximumAmount: null }),
+    )
+  })
+
+  it('protects a payment account referenced by a payment order from deletion', async () => {
+    txRepositories.paymentOrder.exists.mockResolvedValue(true)
+
+    await expect(service.removeAccount(tenantId, accountId)).rejects.toBeInstanceOf(
+      ConflictException,
+    )
+    expect(txRepositories.account.delete).not.toHaveBeenCalled()
+  })
+
+  it('deletes an unused channel binding only inside its tenant account', async () => {
+    await service.removeAccountChannel(tenantId, accountId, accountChannelId)
+
+    expect(txRepositories.account.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: accountId, tenantId } }),
+    )
+    expect(txRepositories.accountChannel.delete).toHaveBeenCalledWith({
+      id: accountChannelId,
+      paymentAccountId: accountId,
+    })
   })
 })

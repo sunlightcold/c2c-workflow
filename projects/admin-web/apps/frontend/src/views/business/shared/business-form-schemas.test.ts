@@ -4,6 +4,10 @@ import {
   cancelMerchantOrderModalOptions,
   createMerchantOrderAppealModalOptions,
   createMerchantOrderPaymentModalOptions,
+  editPaymentAccountModalOptions,
+  editPaymentChannelModalOptions,
+  normalizePaymentChannelFormData,
+  openPaymentChannelModalOptions,
 } from './business-form-schemas';
 
 describe('merchant order operation forms', () => {
@@ -52,4 +56,51 @@ describe('merchant order operation forms', () => {
     expect((receipt?.props as any).beforeUpload(file)).toBe(false);
     expect(onReceipt).toHaveBeenCalledWith(file);
   });
+
+  it('keeps payment account secrets write-only when editing', () => {
+    const options = editPaymentAccountModalOptions();
+    const fields = options.formProps?.rule?.map(({ field }) => field);
+    const credential = options.formProps?.rule?.find(
+      ({ field }) => field === 'credentialRef',
+    );
+
+    expect(fields).toEqual(['name', 'externalAccountId', 'credentialRef']);
+    expect(credential?.value).toBe('');
+    expect(credential?.props).toMatchObject({ autocomplete: 'new-password' });
+  });
+
+  it('maps cleared channel limits to null without clearing the secret reference', () => {
+    expect(
+      normalizePaymentChannelFormData({
+        concurrencyLimit: 3,
+        configRef: '   ',
+        maximumAmount: ' ',
+        minimumAmount: '',
+      }),
+    ).toEqual({
+      concurrencyLimit: 3,
+      configRef: undefined,
+      maximumAmount: null,
+      minimumAmount: null,
+    });
+  });
+
+  it.each([
+    ['open', openPaymentChannelModalOptions('主账号', [])],
+    ['edit', editPaymentChannelModalOptions('支付宝批量有密')],
+  ])(
+    'captures amount range and concurrency when configuring a channel: %s',
+    (_, options) => {
+      const fields = options.formProps?.rule?.map(({ field }) => field);
+
+      expect(fields).toEqual(
+        expect.arrayContaining([
+          'configRef',
+          'minimumAmount',
+          'maximumAmount',
+          'concurrencyLimit',
+        ]),
+      );
+    },
+  );
 });

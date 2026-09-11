@@ -48,6 +48,8 @@ const permissions = [
   'merchant:order:sync',
   'payment:account:read',
   'payment:account:create',
+  'payment:account:update',
+  'payment:account:delete',
   'payment:account:bind',
   'payment:order:read',
   'payment:order:create',
@@ -172,13 +174,62 @@ test.beforeEach(async ({ page }) => {
         break;
       }
       case '/sys/payment-accounts': {
-        data = [];
+        data = {
+          items: [
+            {
+              channels: [
+                {
+                  adapterCode: 'ALIPAY_BATCH_CERT',
+                  channelCode: 'ALIPAY_BATCH',
+                  channelId: '00000000-0000-4000-8000-000000000101',
+                  channelName: '支付宝批量有密',
+                  concurrencyLimit: 5,
+                  executionMode: 'BATCH',
+                  id: '00000000-0000-4000-8000-000000000111',
+                  maximumAmount: '50000.00',
+                  minimumAmount: '1.00',
+                  status: 'active',
+                },
+              ],
+              code: 'alipay-main',
+              createdAt: '2026-09-10T08:00:00.000Z',
+              credentialConfigured: true,
+              externalAccountId: '2088123456789000',
+              id: '00000000-0000-4000-8000-000000000110',
+              name: '总部支付宝主账号',
+              platformId: '00000000-0000-4000-8000-000000000100',
+              status: 'active',
+              tenantId,
+              updatedAt: '2026-09-10T08:00:00.000Z',
+            },
+          ],
+          page: 1,
+          pageSize: 20,
+          total: 1,
+        };
         break;
       }
       case '/sys/payment-platforms': {
         data = [
           {
-            channels: [],
+            channels: [
+              {
+                adapterCode: 'ALIPAY_BATCH_CERT',
+                code: 'ALIPAY_BATCH',
+                executionMode: 'BATCH',
+                id: '00000000-0000-4000-8000-000000000101',
+                name: '支付宝批量有密',
+                status: 'active',
+              },
+              {
+                adapterCode: 'ALIPAY_MERCHANT_TRANSFER',
+                code: 'ALIPAY_MERCHANT_TRANSFER',
+                executionMode: 'INSTANT',
+                id: '00000000-0000-4000-8000-000000000102',
+                name: '支付宝商家转账',
+                status: 'active',
+              },
+            ],
             code: 'ALIPAY',
             id: '00000000-0000-4000-8000-000000000100',
             name: '支付宝',
@@ -286,6 +337,69 @@ test('loads the six second-level business pages under one menu', async ({
     fullPage: true,
     path: `node_modules/.e2e/screenshots/business-operations-${testInfo.project.name}.png`,
   });
+
+  await page.goto('/business/payment-accounts');
+  await page.getByLabel('选择经营单位').click();
+  await page
+    .locator('.ant-select-item-option-content')
+    .getByText('总部自营（总部自营）', { exact: true })
+    .click();
+  await expect(page.getByText('总部支付宝主账号')).toBeVisible();
+  await expect(
+    page.getByRole('textbox', { name: '支付宝商户号' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: '通道配置' }).click();
+  const channelDrawer = page.locator('.ant-drawer-content:visible');
+  const mobileProject = testInfo.project.name.includes('mobile');
+  await expect(
+    channelDrawer.getByText(
+      mobileProject ? '通道配置' : '总部支付宝主账号 · 通道配置',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(channelDrawer.getByText('支付宝批量有密')).toBeVisible();
+  await expect(channelDrawer.getByText('1.00 至 50000.00')).toBeVisible();
+  const channelViewport = page.viewportSize();
+  if (!channelViewport) throw new Error('无法读取通道抽屉尺寸');
+  await expect
+    .poll(async () => {
+      const box = await channelDrawer.boundingBox();
+      return Boolean(
+        box &&
+          box.x >= 0 &&
+          box.x + box.width <= channelViewport.width &&
+          (!mobileProject || box.width >= channelViewport.width * 0.9),
+      );
+    })
+    .toBe(true);
+  await (mobileProject
+    ? expect(
+        channelDrawer.getByTestId('payment-channel-mobile-list'),
+      ).toBeVisible()
+    : expect(channelDrawer.getByTestId('payment-channel-table')).toBeVisible());
+  await expect(
+    channelDrawer.getByRole('button', { name: '开通支付通道' }),
+  ).toBeInViewport({ ratio: 1 });
+  for (const actionName of [/编\s*辑/, /停\s*用/, /移\s*除/]) {
+    await expect(
+      channelDrawer.getByRole('button', { name: actionName }),
+    ).toBeInViewport({ ratio: 1 });
+  }
+  await page.screenshot({
+    fullPage: true,
+    path: `node_modules/.e2e/screenshots/payment-accounts-${testInfo.project.name}.png`,
+  });
+  await channelDrawer.getByRole('button', { name: /编\s*辑/ }).click();
+  const editChannelDialog = page.getByRole('dialog', {
+    name: '编辑支付通道',
+  });
+  await expect(editChannelDialog.getByText('单笔最小金额')).toBeVisible();
+  await expect(editChannelDialog.getByText('并发上限')).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > window.innerWidth,
+    ),
+  ).toBe(false);
 
   await page.goto('/business/payment-orders');
   await page.getByLabel('选择经营单位').click();

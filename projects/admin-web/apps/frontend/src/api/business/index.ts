@@ -241,6 +241,27 @@ export namespace BusinessApi {
     status?: BusinessStatus;
   }
 
+  export interface PaymentAccountQuery extends PageQuery {
+    accountCode?: string;
+    accountName?: string;
+    externalAccountId?: string;
+    platformId?: string;
+    status?: BusinessStatus;
+  }
+
+  export interface UpdatePaymentAccountInput extends TenantContext {
+    credentialRef?: string;
+    externalAccountId?: string;
+    name?: string;
+  }
+
+  export interface PaymentAccountChannelInput extends TenantContext {
+    concurrencyLimit?: number;
+    configRef?: string;
+    maximumAmount?: null | string;
+    minimumAmount?: null | string;
+  }
+
   export interface MerchantOrderQuery extends PageQuery {
     endTime?: string;
     merchantId: string;
@@ -416,10 +437,21 @@ export const rotateMerchantCredentialApi = (
 
 export const getPaymentPlatformsApi = () =>
   requestClient.get<BusinessApi.PaymentPlatform[]>('/sys/payment-platforms');
-export const getPaymentAccountsApi = (params: BusinessApi.TenantContext) =>
-  requestClient.get<BusinessApi.PaymentAccount[]>('/sys/payment-accounts', {
-    params,
+export async function filterPaymentAccountsApi(
+  params: BusinessApi.PaymentAccountQuery,
+) {
+  return toPagination<BusinessApi.PaymentAccount>(
+    await requestClient.get('/sys/payment-accounts', { params }),
+  );
+}
+export async function getPaymentAccountsApi(params: BusinessApi.TenantContext) {
+  const result = await filterPaymentAccountsApi({
+    ...params,
+    page: 1,
+    pageSize: 100,
   });
+  return result.items;
+}
 export const createPaymentAccountApi = (
   data: BusinessApi.TenantContext &
     Pick<
@@ -430,10 +462,63 @@ export const createPaymentAccountApi = (
     },
 ) =>
   requestClient.post<BusinessApi.PaymentAccount>('/sys/payment-accounts', data);
+export const updatePaymentAccountApi = (
+  id: string,
+  data: BusinessApi.UpdatePaymentAccountInput,
+) =>
+  requestClient.put<BusinessApi.PaymentAccount>(
+    `/sys/payment-accounts/${id}`,
+    data,
+  );
+export const setPaymentAccountStatusApi = (
+  id: string,
+  status: BusinessApi.BusinessStatus,
+  tenantId?: string,
+) =>
+  requestClient.request<BusinessApi.PaymentAccount>(
+    `/sys/payment-accounts/${id}/status`,
+    {
+      data: { status },
+      method: 'PATCH',
+      params: { tenantId },
+    },
+  );
+export const deletePaymentAccountApi = (id: string, tenantId?: string) =>
+  requestClient.delete(`/sys/payment-accounts/${id}`, {
+    params: { tenantId },
+  });
 export const openPaymentAccountChannelApi = (
   id: string,
-  data: BusinessApi.TenantContext & { channelId: string; configRef?: string },
+  data: BusinessApi.PaymentAccountChannelInput & { channelId: string },
 ) => requestClient.post(`/sys/payment-accounts/${id}/channels`, data);
+export const updatePaymentAccountChannelApi = (
+  id: string,
+  bindingId: string,
+  data: BusinessApi.PaymentAccountChannelInput,
+) =>
+  requestClient.put(`/sys/payment-accounts/${id}/channels/${bindingId}`, data);
+export const setPaymentAccountChannelStatusApi = (
+  id: string,
+  bindingId: string,
+  status: BusinessApi.BusinessStatus,
+  tenantId?: string,
+) =>
+  requestClient.request(
+    `/sys/payment-accounts/${id}/channels/${bindingId}/status`,
+    {
+      data: { status },
+      method: 'PATCH',
+      params: { tenantId },
+    },
+  );
+export const deletePaymentAccountChannelApi = (
+  id: string,
+  bindingId: string,
+  tenantId?: string,
+) =>
+  requestClient.delete(`/sys/payment-accounts/${id}/channels/${bindingId}`, {
+    params: { tenantId },
+  });
 export const getPaymentPlansApi = (
   params: BusinessApi.TenantContext & { merchantId?: string },
 ) =>

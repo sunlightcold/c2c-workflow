@@ -1,5 +1,6 @@
 import type { Api } from '@form-create/ant-design-vue';
 
+import type { BusinessApi } from '#/api';
 import type { FormModalOptions } from '#/hooks';
 
 import { merchantPlatformOptions } from './business-ui';
@@ -453,6 +454,111 @@ export function createPaymentAccountModalOptions(
   };
 }
 
+export function editPaymentAccountModalOptions(): FormModalOptions {
+  return {
+    props: { centered: true, title: '编辑支付账号' },
+    formProps: {
+      option: verticalForm,
+      rule: [
+        {
+          field: 'name',
+          props: { maxlength: 100, placeholder: '请输入账号名称' },
+          title: '账号名称',
+          type: 'input',
+          validate: required('请输入账号名称'),
+          value: '',
+        },
+        {
+          field: 'externalAccountId',
+          props: { maxlength: 128, placeholder: '请输入支付宝商户号' },
+          title: '支付宝商户号',
+          type: 'input',
+          validate: required('请输入支付宝商户号'),
+          value: '',
+        },
+        {
+          field: 'credentialRef',
+          props: {
+            autocomplete: 'new-password',
+            placeholder: '不修改凭据时留空',
+          },
+          title: '新 Secret 引用',
+          type: 'inputPassword',
+          value: '',
+        },
+      ],
+    },
+  };
+}
+
+const paymentAmountPattern = /^(0|[1-9]\d{0,17})(\.\d{1,2})?$/;
+
+export function normalizePaymentChannelFormData(
+  value: BusinessApi.PaymentAccountChannelInput,
+): BusinessApi.PaymentAccountChannelInput {
+  const normalizeAmount = (amount: null | string | undefined) => {
+    if (typeof amount !== 'string') return amount;
+    return amount.trim() || null;
+  };
+  return {
+    ...value,
+    configRef: value.configRef?.trim() || undefined,
+    maximumAmount: normalizeAmount(value.maximumAmount),
+    minimumAmount: normalizeAmount(value.minimumAmount),
+  };
+}
+
+function paymentChannelParameterRules() {
+  return [
+    {
+      field: 'configRef',
+      props: {
+        autocomplete: 'new-password',
+        placeholder: '没有独立配置时可留空',
+      },
+      title: '通道配置引用',
+      type: 'inputPassword',
+      value: '',
+    },
+    {
+      field: 'minimumAmount',
+      props: { placeholder: '不限制时留空' },
+      title: '单笔最小金额',
+      type: 'input',
+      validate: [
+        {
+          message: '请输入非负金额，最多两位小数',
+          pattern: paymentAmountPattern,
+          trigger: 'blur',
+        },
+      ],
+      value: '',
+    },
+    {
+      field: 'maximumAmount',
+      props: { placeholder: '不限制时留空' },
+      title: '单笔最大金额',
+      type: 'input',
+      validate: [
+        {
+          message: '请输入非负金额，最多两位小数',
+          pattern: paymentAmountPattern,
+          trigger: 'blur',
+        },
+      ],
+      value: '',
+    },
+    {
+      field: 'concurrencyLimit',
+      props: { max: 1000, min: 1, precision: 0 },
+      title: '并发上限',
+      type: 'inputNumber',
+      validate: required('请输入并发上限'),
+      value: 1,
+    },
+  ];
+}
+
 export function openPaymentChannelModalOptions(
   accountName: string,
   channels: SelectOption[],
@@ -478,16 +584,28 @@ export function openPaymentChannelModalOptions(
           validate: required('请选择支付通道'),
           value: '',
         },
+        ...paymentChannelParameterRules(),
+      ],
+    },
+  };
+}
+
+export function editPaymentChannelModalOptions(
+  channelName: string,
+): FormModalOptions {
+  return {
+    props: { centered: true, title: '编辑支付通道' },
+    formProps: {
+      option: verticalForm,
+      rule: [
         {
-          field: 'configRef',
-          props: {
-            autocomplete: 'new-password',
-            placeholder: '没有独立配置时可留空',
-          },
-          title: '通道配置引用',
-          type: 'inputPassword',
-          value: '',
+          field: 'channelName',
+          props: { disabled: true },
+          title: '支付通道',
+          type: 'input',
+          value: channelName,
         },
+        ...paymentChannelParameterRules(),
       ],
     },
   };

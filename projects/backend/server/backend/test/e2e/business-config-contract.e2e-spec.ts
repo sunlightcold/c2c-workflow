@@ -32,7 +32,13 @@ describe('Business configuration API contract (e2e)', () => {
   }
   const payments = {
     createAccount: jest.fn(),
+    updateAccount: jest.fn(),
+    setAccountStatus: jest.fn(),
+    removeAccount: jest.fn(),
     openAccountChannel: jest.fn(),
+    updateAccountChannel: jest.fn(),
+    setAccountChannelStatus: jest.fn(),
+    removeAccountChannel: jest.fn(),
     createPlan: jest.fn(),
     listCatalog: jest.fn(),
     listAccounts: jest.fn(),
@@ -126,13 +132,27 @@ describe('Business configuration API contract (e2e)', () => {
 
   it('lists the payment catalog, tenant accounts and merchant plans', async () => {
     payments.listCatalog.mockResolvedValue([{ id: 'platform-1', channels: [] }])
-    payments.listAccounts.mockResolvedValue([{ id: 'account-1', channels: [] }])
+    payments.listAccounts.mockResolvedValue({
+      items: [{ id: 'account-1', channels: [] }],
+      page: 2,
+      pageSize: 10,
+      total: 1,
+    })
     payments.listPlans.mockResolvedValue([{ id: 'plan-1', merchantId: 'merchant-1' }])
 
     const catalog = await request(app.getHttpServer()).get('/v1/sys/payment-platforms').expect(200)
     const accounts = await request(app.getHttpServer())
       .get('/v1/sys/payment-accounts')
-      .query({ tenantId: '00000000-0000-4000-8000-000000000010' })
+      .query({
+        tenantId: '00000000-0000-4000-8000-000000000010',
+        accountName: 'main',
+        accountCode: 'alipay',
+        externalAccountId: '2088',
+        platformId: '00000000-0000-4000-8000-000000000011',
+        status: 'active',
+        page: 2,
+        pageSize: 10,
+      })
       .expect(200)
     const plans = await request(app.getHttpServer())
       .get('/v1/sys/payment-plans')
@@ -146,7 +166,18 @@ describe('Business configuration API contract (e2e)', () => {
     expectWrappedSuccess(accounts.body)
     expectWrappedSuccess(plans.body)
     expect(payments.listCatalog).toHaveBeenCalled()
-    expect(payments.listAccounts).toHaveBeenCalledWith('tenant-1')
+    expect(payments.listAccounts).toHaveBeenCalledWith(
+      'tenant-1',
+      expect.objectContaining({
+        accountName: 'main',
+        accountCode: 'alipay',
+        externalAccountId: '2088',
+        platformId: '00000000-0000-4000-8000-000000000011',
+        status: 'active',
+        page: 2,
+        pageSize: 10,
+      }),
+    )
     expect(payments.listPlans).toHaveBeenCalledWith(
       'tenant-1',
       '00000000-0000-4000-8000-000000000020',
@@ -217,6 +248,119 @@ describe('Business configuration API contract (e2e)', () => {
       'tenant-1',
       expect.objectContaining({ credentialRef: 'env://ALIPAY_ACCOUNT_1' }),
     )
+  })
+
+  it('edits, disables and deletes payment accounts and their channel bindings in the tenant', async () => {
+    const tenantId = '00000000-0000-4000-8000-000000000010'
+    const accountId = '00000000-0000-4000-8000-000000000030'
+    const bindingId = '00000000-0000-4000-8000-000000000040'
+    payments.updateAccount.mockResolvedValue({ id: accountId, name: '主支付账号' })
+    payments.setAccountStatus.mockResolvedValue({ id: accountId, status: 'disabled' })
+    payments.removeAccount.mockResolvedValue(undefined)
+    payments.openAccountChannel.mockResolvedValue({ id: bindingId })
+    payments.updateAccountChannel.mockResolvedValue({ id: bindingId, concurrencyLimit: 5 })
+    payments.setAccountChannelStatus.mockResolvedValue({ id: bindingId, status: 'disabled' })
+    payments.removeAccountChannel.mockResolvedValue(undefined)
+
+    await request(app.getHttpServer())
+      .put(`/v1/sys/payment-accounts/${accountId}`)
+      .send({
+        tenantId,
+        name: '主支付账号',
+        externalAccountId: '20881234',
+        credentialRef: 'env://ALIPAY_ACCOUNT_MAIN_V2',
+      })
+      .expect(200)
+    await request(app.getHttpServer())
+      .patch(`/v1/sys/payment-accounts/${accountId}/status`)
+      .query({ tenantId })
+      .send({ status: 'disabled' })
+      .expect(200)
+    await request(app.getHttpServer())
+      .post(`/v1/sys/payment-accounts/${accountId}/channels`)
+      .send({
+        tenantId,
+        channelId: '00000000-0000-4000-8000-000000000050',
+        configRef: 'env://ALIPAY_BATCH_MAIN',
+        minimumAmount: '1.00',
+        maximumAmount: '50000.00',
+        concurrencyLimit: 5,
+      })
+      .expect(201)
+    await request(app.getHttpServer())
+      .put(`/v1/sys/payment-accounts/${accountId}/channels/${bindingId}`)
+      .send({
+        tenantId,
+        configRef: 'env://ALIPAY_BATCH_MAIN_V2',
+        minimumAmount: null,
+        maximumAmount: null,
+        concurrencyLimit: 3,
+      })
+      .expect(200)
+    await request(app.getHttpServer())
+      .patch(`/v1/sys/payment-accounts/${accountId}/channels/${bindingId}/status`)
+      .query({ tenantId })
+      .send({ status: 'disabled' })
+      .expect(200)
+    await request(app.getHttpServer())
+      .delete(`/v1/sys/payment-accounts/${accountId}/channels/${bindingId}`)
+      .query({ tenantId })
+      .expect(200)
+    await request(app.getHttpServer())
+      .delete(`/v1/sys/payment-accounts/${accountId}`)
+      .query({ tenantId })
+      .expect(200)
+
+    expect(payments.updateAccount).toHaveBeenCalledWith(
+      'tenant-1',
+      accountId,
+      expect.objectContaining({ name: '主支付账号' }),
+    )
+    expect(payments.setAccountStatus).toHaveBeenCalledWith('tenant-1', accountId, 'disabled')
+    expect(payments.openAccountChannel).toHaveBeenCalledWith(
+      'tenant-1',
+      accountId,
+      expect.objectContaining({ concurrencyLimit: 5, minimumAmount: '1.00' }),
+    )
+    expect(payments.updateAccountChannel).toHaveBeenCalledWith(
+      'tenant-1',
+      accountId,
+      bindingId,
+      expect.objectContaining({
+        concurrencyLimit: 3,
+        minimumAmount: null,
+        maximumAmount: null,
+      }),
+    )
+    expect(payments.setAccountChannelStatus).toHaveBeenCalledWith(
+      'tenant-1',
+      accountId,
+      bindingId,
+      'disabled',
+    )
+    expect(payments.removeAccountChannel).toHaveBeenCalledWith(
+      'tenant-1',
+      accountId,
+      bindingId,
+    )
+    expect(payments.removeAccount).toHaveBeenCalledWith('tenant-1', accountId)
+  })
+
+  it.each([
+    { minimumAmount: '-1.00', maximumAmount: '10.00', concurrencyLimit: 1 },
+    { minimumAmount: '1.001', maximumAmount: '10.00', concurrencyLimit: 1 },
+    { minimumAmount: '1.00', maximumAmount: '10.00', concurrencyLimit: 0 },
+  ])('rejects invalid payment channel limits: %j', async (limits) => {
+    const response = await request(app.getHttpServer())
+      .post('/v1/sys/payment-accounts/00000000-0000-4000-8000-000000000030/channels')
+      .send({
+        tenantId: '00000000-0000-4000-8000-000000000010',
+        channelId: '00000000-0000-4000-8000-000000000050',
+        ...limits,
+      })
+      .expect(400)
+    expectWrappedError(response.body, 400)
+    expect(payments.openAccountChannel).not.toHaveBeenCalled()
   })
 
   it('rotates merchant platform credentials without returning a secret reference', async () => {
