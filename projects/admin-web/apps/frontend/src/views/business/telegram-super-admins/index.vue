@@ -23,6 +23,7 @@ import {
   useResourceGrid,
 } from '#/hooks';
 
+import { createEmptyBusinessPage } from '../shared/business-grid';
 import {
   businessStatusColor,
   businessStatusOptions,
@@ -35,7 +36,7 @@ import {
 } from '../shared/telegram-ui';
 import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 
-const { fixedTenantId, loadDefaultTenantId, tenantOptions } =
+const { fixedTenantId, loadTenantOptions, tenantOptions } =
   useBusinessTenantFilter();
 const selectedTenantId = ref('');
 const groups = ref<BusinessApi.TelegramGroup[]>([]);
@@ -161,8 +162,12 @@ const [Grid, gridApi] = useResourceGrid<
     pageSize: page.pageSize,
     tenantId: selectedTenantId.value,
   }),
-  query: ({ pageIndex, ...params }) =>
-    getTelegramSuperAdminsApi({ ...params, page: pageIndex }),
+  query: async ({ pageIndex, ...params }) => {
+    if (!params.tenantId) {
+      return createEmptyBusinessPage(pageIndex, params.pageSize);
+    }
+    return getTelegramSuperAdminsApi({ ...params, page: pageIndex });
+  },
 });
 
 const { FormModalRender, formModalClose, formModalShow } = useFormModal();
@@ -344,7 +349,7 @@ function groupNames(groupIds: string[]) {
 }
 
 onMounted(async () => {
-  selectedTenantId.value = (await loadDefaultTenantId()) || '';
+  selectedTenantId.value = await loadTenantOptions();
   if (!selectedTenantId.value) return;
   await loadTenantReferences(selectedTenantId.value);
   await gridApi.formApi.setFieldValue('tenantId', selectedTenantId.value);

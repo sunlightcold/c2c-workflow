@@ -105,8 +105,33 @@ function ok(data: unknown) {
   return { code: 200, data, message: 'ok' };
 }
 
+async function selectHeadquartersTenant(page: Page) {
+  const tenantSelect = page.getByLabel('选择经营单位');
+  await tenantSelect.click();
+  await page
+    .locator('.ant-select-item-option-content')
+    .getByText('总部自营（总部自营）', { exact: true })
+    .click();
+  await expect(tenantSelect.locator('.ant-select-selection-item')).toHaveText(
+    '总部自营（总部自营）',
+  );
+}
+
 test.beforeEach(async ({ page }) => {
   const errors: string[] = [];
+  const tenantScopedPaths = new Set([
+    '/sys/merchant-orders',
+    '/sys/merchants',
+    '/sys/payment-accounts',
+    '/sys/payment-batches',
+    '/sys/payment-orders',
+    '/sys/tg/bots',
+    '/sys/tg/groups',
+    '/sys/tg/members',
+    '/sys/tg/members/eligible-users',
+    '/sys/tg/super-admins',
+    '/sys/tg/super-admins/eligible-users',
+  ]);
   let paymentPlans = [
     {
       currency: 'CNY',
@@ -130,6 +155,9 @@ test.beforeEach(async ({ page }) => {
     const request = route.request();
     const url = new URL(request.url());
     const path = url.pathname.replace('/v1', '');
+    if (tenantScopedPaths.has(path) && !url.searchParams.get('tenantId')) {
+      errors.push(`租户业务接口缺少经营单位：${path}`);
+    }
     const paymentPlanMatch = path.match(
       /^\/sys\/payment-plans\/([^/]+)(\/status)?$/,
     );
@@ -503,16 +531,16 @@ test('loads all second-level business pages under one menu', async ({
     await page.goto(path);
     await expect(page).toHaveURL(new RegExp(`${path}$`));
     if (name !== '所属单位') {
-      await expect(page.getByLabel('选择经营单位')).toBeVisible();
+      const tenantSelect = page.getByLabel('选择经营单位');
+      await expect(tenantSelect).toBeVisible();
+      await expect(
+        tenantSelect.locator('.ant-select-selection-item'),
+      ).toHaveCount(0);
     }
   }
 
   await page.goto('/business/merchants');
-  await page.getByLabel('选择经营单位').click();
-  await page
-    .locator('.ant-select-item-option-content')
-    .getByText('总部自营（总部自营）', { exact: true })
-    .click();
+  await selectHeadquartersTenant(page);
   await expect(
     page.getByRole('button', { name: '新增商家账号' }),
   ).toBeEnabled();
@@ -523,10 +551,14 @@ test('loads all second-level business pages under one menu', async ({
   await expect(
     createMerchantDialog.getByRole('combobox', { name: /交易平台/ }),
   ).toBeVisible();
-  const selectedPlatform = createMerchantDialog.getByText('币安', {
-    exact: true,
-  });
-  await expect(selectedPlatform).toBeVisible();
+  await expect(
+    createMerchantDialog
+      .getByRole('combobox', { name: /交易平台/ })
+      .locator('.ant-select-selection-item'),
+  ).toHaveCount(0);
+  await expect(
+    createMerchantDialog.getByText('账号编码', { exact: true }),
+  ).toHaveCount(0);
   await createMerchantDialog.locator('.ant-btn-primary').click();
   await expect(createMerchantDialog.getByText('请输入账号名称')).toBeVisible();
   const dialogBox = await createMerchantDialog.boundingBox();
@@ -539,11 +571,7 @@ test('loads all second-level business pages under one menu', async ({
     path: `node_modules/.e2e/screenshots/business-operations-${testInfo.project.name}.png`,
   });
   await page.goto('/business/payment-accounts');
-  await page.getByLabel('选择经营单位').click();
-  await page
-    .locator('.ant-select-item-option-content')
-    .getByText('总部自营（总部自营）', { exact: true })
-    .click();
+  await selectHeadquartersTenant(page);
   await expect(page.getByText('总部支付宝主账号')).toBeVisible();
   await expect(
     page.getByRole('textbox', { name: '支付宝商户号' }),
@@ -602,11 +630,7 @@ test('loads all second-level business pages under one menu', async ({
   ).toBe(false);
 
   await page.goto('/business/payment-orders');
-  await page.getByLabel('选择经营单位').click();
-  await page
-    .locator('.ant-select-item-option-content')
-    .getByText('总部自营（总部自营）', { exact: true })
-    .click();
+  await selectHeadquartersTenant(page);
   await expect(
     page.getByRole('button', { name: '新增手工支付' }),
   ).toBeEnabled();
@@ -616,23 +640,42 @@ test('loads all second-level business pages under one menu', async ({
   });
   await expect(createPaymentDialog).toBeVisible();
   await expect(
-    createPaymentDialog.getByText('币安主账号 · 币安', { exact: true }),
-  ).toBeVisible();
+    createPaymentDialog
+      .getByRole('combobox', { name: /商家/ })
+      .locator('.ant-select-selection-item'),
+  ).toHaveCount(0);
   const hasGlobalHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,
   );
   expect(hasGlobalHorizontalOverflow).toBe(false);
+
+  await page.goto('/business/merchant-orders');
+  await selectHeadquartersTenant(page);
+  await expect(
+    page
+      .getByRole('combobox', { name: '商家账号' })
+      .locator('.ant-select-selection-item'),
+  ).toHaveCount(0);
+
+  await page.goto('/business/payment-batches');
+  await selectHeadquartersTenant(page);
+  await expect(
+    page
+      .getByRole('combobox', { name: '商家' })
+      .locator('.ant-select-selection-item'),
+  ).toHaveCount(0);
+  await expect(
+    page
+      .getByRole('combobox', { name: '支付账号' })
+      .locator('.ant-select-selection-item'),
+  ).toHaveCount(0);
 });
 
 test('manages payment plans inside the merchant configuration drawer', async ({
   page,
 }) => {
   await page.goto('/business/merchants');
-  await page.getByLabel('选择经营单位').click();
-  await page
-    .locator('.ant-select-item-option-content')
-    .getByText('总部自营（总部自营）', { exact: true })
-    .click();
+  await selectHeadquartersTenant(page);
   await page.getByRole('button', { name: /搜\s*索/ }).click();
   await page.getByRole('button', { name: /配\s*置/ }).click();
 
@@ -743,6 +786,7 @@ test('provides complete Telegram administration actions', async ({ page }) => {
 
   for (const assertion of assertions) {
     await page.goto(assertion.path);
+    await selectHeadquartersTenant(page);
     await expect(
       page.getByText(assertion.rowText, { exact: true }),
     ).toBeVisible();
@@ -762,14 +806,49 @@ test('provides complete Telegram administration actions', async ({ page }) => {
   }
 
   await page.goto('/business/telegram-groups');
+  await selectHeadquartersTenant(page);
   await expect(page.getByRole('button', { name: /审\s*批/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /解\s*绑/ })).toBeVisible();
 
   await page.goto('/business/telegram-members');
+  await selectHeadquartersTenant(page);
   await expect(page.getByRole('button', { name: /停\s*用/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /移\s*除/ })).toBeVisible();
 
   await page.goto('/business/telegram-super-admins');
+  await selectHeadquartersTenant(page);
   await expect(page.getByRole('button', { name: /停\s*用/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /移\s*除/ })).toBeVisible();
+});
+
+test('keeps internal business codes out of create forms', async ({ page }) => {
+  await page.goto('/business/tenants');
+  await page.getByRole('button', { name: '新增代理商' }).click();
+  const tenantDialog = page.getByRole('dialog', { name: '新增代理商' });
+  await expect(
+    tenantDialog.getByText('代理商编码', { exact: true }),
+  ).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  await page.goto('/business/payment-accounts');
+  await selectHeadquartersTenant(page);
+  await page.getByRole('button', { name: '新增支付账号' }).click();
+  const accountDialog = page.getByRole('dialog', { name: '新增支付账号' });
+  await expect(
+    accountDialog.getByText('账号编码', { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    accountDialog
+      .getByRole('combobox', { name: /支付平台/ })
+      .locator('.ant-select-selection-item'),
+  ).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  await page.goto('/business/telegram-bots');
+  await selectHeadquartersTenant(page);
+  await page.getByRole('button', { name: '新增机器人' }).click();
+  const botDialog = page.getByRole('dialog', { name: '新增支付机器人' });
+  await expect(botDialog.getByText('机器人编码', { exact: true })).toHaveCount(
+    0,
+  );
 });

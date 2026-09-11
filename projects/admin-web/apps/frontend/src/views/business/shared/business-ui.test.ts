@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   matchesPaymentRoute,
+  merchantPlatformApiBaseUrl,
   merchantPlatformOptions,
   paymentRouteKey,
   toBusinessGridData,
@@ -13,6 +14,14 @@ describe('merchant platform options', () => {
       { label: '币安', value: 'BINANCE' },
       { label: '欧易', value: 'OKX' },
     ]);
+  });
+
+  it('maps supported platforms to their API base URLs', () => {
+    expect(merchantPlatformApiBaseUrl('BINANCE')).toBe(
+      'https://api.binance.com',
+    );
+    expect(merchantPlatformApiBaseUrl('OKX')).toBe('https://www.okx.com');
+    expect(merchantPlatformApiBaseUrl()).toBe('');
   });
 });
 

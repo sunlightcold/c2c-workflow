@@ -3,7 +3,7 @@ import type { VbenFormProps } from '#/adapter/form';
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { BusinessApi } from '#/api';
 
-import { onMounted, ref } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
 
@@ -25,6 +25,7 @@ import {
 } from '#/hooks';
 
 import { createPaymentBatchModalOptions } from '../shared/business-form-schemas';
+import { createEmptyBusinessPage } from '../shared/business-grid';
 import {
   businessEnumText,
   businessStateColor,
@@ -47,13 +48,13 @@ type SearchValues = {
 };
 type QueryParams = SearchValues & { pageIndex: number; pageSize: number };
 
-const { fixedTenantId, loadDefaultTenantId, tenantOptions } =
+const { fixedTenantId, loadTenantOptions, tenantOptions } =
   useBusinessTenantFilter();
 const selectedTenantId = ref('');
 const merchants = ref<BusinessApi.Merchant[]>([]);
 const accounts = ref<BusinessApi.PaymentAccount[]>([]);
-const merchantOptions: Array<{ label: string; value: string }> = [];
-const accountOptions: Array<{ label: string; value: string }> = [];
+const merchantOptions = reactive<Array<{ label: string; value: string }>>([]);
+const accountOptions = reactive<Array<{ label: string; value: string }>>([]);
 const detailOpen = ref(false);
 const detail = ref<BatchDetail>();
 
@@ -179,15 +180,7 @@ const [Grid, gApi] = useResourceGrid<
   }),
   query: async (params) => {
     if (!params.tenantId) {
-      return {
-        items: [],
-        meta: {
-          currentPage: 1,
-          itemsPerPage: params.pageSize,
-          totalItems: 0,
-          totalPages: 0,
-        },
-      };
+      return createEmptyBusinessPage(params.pageIndex, params.pageSize);
     }
     return getPaymentBatchesApi({
       merchantId: params.merchantId,
@@ -339,7 +332,7 @@ function accountName(id: string) {
 }
 
 onMounted(async () => {
-  selectedTenantId.value = await loadDefaultTenantId();
+  selectedTenantId.value = await loadTenantOptions();
   if (!selectedTenantId.value) return;
   await gApi.formApi.setFieldValue('tenantId', selectedTenantId.value);
   await selectTenant(selectedTenantId.value, false);

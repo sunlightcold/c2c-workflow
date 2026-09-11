@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { BusinessNoPrefix, IdUtils } from '@/common/utils/id'
 import {
   BusinessStatus,
   MerchantPaymentPlanEntity,
@@ -235,7 +235,7 @@ export class PaymentBatchService {
       manager.create(PaymentBatchEntity, {
         tenantId,
         merchantId: first.merchantId,
-        batchNo: `BAT${randomUUID().replaceAll('-', '').toUpperCase()}`,
+        batchNo: IdUtils.generateBusinessNo(BusinessNoPrefix.PAYMENT_BATCH),
         paymentAccountId: account.id,
         paymentAccountChannelId: accountChannel.id,
         currency: first.currency,

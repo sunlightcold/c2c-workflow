@@ -70,16 +70,6 @@ const createModalOptions: FormModalOptions = {
         ],
         value: '',
       },
-      {
-        field: 'code',
-        props: { maxlength: 32, placeholder: '请输入代理商编码' },
-        title: '代理商编码',
-        type: 'input',
-        validate: [
-          { message: '请输入代理商编码', required: true, trigger: 'blur' },
-        ],
-        value: '',
-      },
     ],
   },
 };
@@ -88,7 +78,7 @@ function onCreateClick() {
   formModalShow(createModalOptions, {
     onOk: async (api) => {
       await api.validate();
-      const data = api.formData() as Pick<BusinessApi.Tenant, 'code' | 'name'>;
+      const data = api.formData() as Pick<BusinessApi.Tenant, 'name'>;
       await runResourceAction({
         action: () => createTenantApi(data),
         onSuccess: async () => {

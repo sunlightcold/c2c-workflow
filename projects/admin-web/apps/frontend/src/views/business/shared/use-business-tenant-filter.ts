@@ -1,6 +1,6 @@
 import type { BusinessApi } from '#/api';
 
-import { computed } from 'vue';
+import { computed, reactive } from 'vue';
 
 import { useUserStore } from '@vben/stores';
 
@@ -22,17 +22,6 @@ export function toTenantFilterOptions(tenants: readonly TenantOptionSource[]) {
   }));
 }
 
-export function chooseDefaultTenantId(tenants: readonly TenantOptionSource[]) {
-  return (
-    tenants.find(
-      (tenant) =>
-        tenant.type === 'HEADQUARTERS_SELF' && tenant.status === 'active',
-    )?.id ??
-    tenants.find((tenant) => tenant.status === 'active')?.id ??
-    ''
-  );
-}
-
 export function useBusinessTenantFilter() {
   const userStore = useUserStore();
   const fixedTenantId = computed(
@@ -43,13 +32,15 @@ export function useBusinessTenantFilter() {
         }
       )?.tenantId ?? undefined,
   );
-  const tenantOptions: Array<{
-    disabled?: boolean;
-    label: string;
-    value: string;
-  }> = [];
+  const tenantOptions = reactive<
+    Array<{
+      disabled?: boolean;
+      label: string;
+      value: string;
+    }>
+  >([]);
 
-  async function loadDefaultTenantId() {
+  async function loadTenantOptions() {
     if (fixedTenantId.value) {
       tenantOptions.splice(0, tenantOptions.length, {
         label: '当前经营单位',
@@ -63,8 +54,8 @@ export function useBusinessTenantFilter() {
       tenantOptions.length,
       ...toTenantFilterOptions(tenants),
     );
-    return chooseDefaultTenantId(tenants);
+    return '';
   }
 
-  return { fixedTenantId, loadDefaultTenantId, tenantOptions };
+  return { fixedTenantId, loadTenantOptions, tenantOptions };
 }

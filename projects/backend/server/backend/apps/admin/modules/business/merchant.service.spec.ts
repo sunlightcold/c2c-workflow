@@ -36,7 +36,6 @@ describe('MerchantService', () => {
   it('creates one Binance merchant account and its encrypted credential atomically', async () => {
     await expect(
       service.create(tenantId, {
-        code: 'merchant-1',
         name: 'Merchant One',
         platform: MerchantPlatform.BINANCE,
         externalMerchantId: 'binance-merchant-1',
@@ -51,6 +50,9 @@ describe('MerchantService', () => {
     })
 
     expect(dataSource.transaction).toHaveBeenCalledTimes(1)
+    expect(merchantTxRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({ code: expect.stringMatching(/^MCH\d{20}$/) }),
+    )
     expect(cipher.encrypt).toHaveBeenCalledWith(
       JSON.stringify({ apiKey: 'binance-api-key', secretKey: 'binance-secret-key' }),
     )
@@ -70,7 +72,6 @@ describe('MerchantService', () => {
   it('rejects credentials that do not match the selected platform', async () => {
     expect(() =>
       service.create(tenantId, {
-        code: 'merchant-1',
         name: 'Merchant One',
         platform: MerchantPlatform.OKX,
         externalMerchantId: 'okx-merchant-1',

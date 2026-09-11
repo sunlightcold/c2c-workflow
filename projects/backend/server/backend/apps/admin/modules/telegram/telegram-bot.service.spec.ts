@@ -21,6 +21,7 @@ describe('TelegramBotService', () => {
     getOne: jest.fn().mockResolvedValue({ ...bot }),
   }
   const bots = {
+    create: jest.fn((value) => value),
     createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
     save: jest.fn(async (value) => value),
   }
@@ -34,6 +35,21 @@ describe('TelegramBotService', () => {
   }
 
   beforeEach(() => jest.clearAllMocks())
+
+  it('creates a bot with a server-generated business code', async () => {
+    const service = new TelegramBotService(bots as never, groups as never)
+
+    await service.create('tenant-1', {
+      name: 'Main bot',
+      botType: TelegramBotType.PAYMENT,
+      tokenRef: 'env://BOT_TOKEN',
+      capabilities: [TelegramCapability.ORDER_QUERY],
+    })
+
+    expect(bots.save).toHaveBeenCalledWith(
+      expect.objectContaining({ code: expect.stringMatching(/^BOT\d{20}$/) }),
+    )
+  })
 
   it('does not remove a capability still used by a bound group', async () => {
     const service = new TelegramBotService(bots as never, groups as never)

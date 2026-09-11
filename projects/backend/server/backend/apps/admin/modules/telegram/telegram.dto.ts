@@ -66,11 +66,6 @@ export class TelegramPageDto extends TelegramTenantContextDto {
 
 export class CreateTelegramBotDto extends TelegramTenantContextDto {
   @ApiProperty()
-  @Transform(upper)
-  @Matches(/^[A-Z][A-Z0-9_]{1,63}$/)
-  code: string
-
-  @ApiProperty()
   @Transform(trim)
   @IsNotEmpty()
   @MaxLength(100)
@@ -128,9 +123,7 @@ export class CreateTelegramBotDto extends TelegramTenantContextDto {
   description?: string
 }
 
-export class UpdateTelegramBotDto extends PartialType(
-  OmitType(CreateTelegramBotDto, ['code'] as const),
-) {
+export class UpdateTelegramBotDto extends PartialType(CreateTelegramBotDto) {
   @ApiPropertyOptional()
   @IsOptional()
   @IsEnum(BusinessStatus)

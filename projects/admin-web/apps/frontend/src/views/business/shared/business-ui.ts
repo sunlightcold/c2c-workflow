@@ -24,6 +24,14 @@ export function merchantPlatformText(platform: BusinessApi.MerchantPlatform) {
   return platform === 'BINANCE' ? '币安' : '欧易';
 }
 
+export function merchantPlatformApiBaseUrl(
+  platform?: BusinessApi.MerchantPlatform,
+) {
+  if (platform === 'BINANCE') return 'https://api.binance.com';
+  if (platform === 'OKX') return 'https://www.okx.com';
+  return '';
+}
+
 export function formatBusinessTime(value?: null | string) {
   if (!value) return '-';
   return new Intl.DateTimeFormat('zh-CN', {

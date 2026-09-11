@@ -34,6 +34,7 @@ import {
   normalizePaymentChannelFormData,
   openPaymentChannelModalOptions,
 } from '../shared/business-form-schemas';
+import { createEmptyBusinessPage } from '../shared/business-grid';
 import {
   businessStatusColor,
   businessStatusOptions,
@@ -54,7 +55,7 @@ type QueryParams = Omit<BusinessApi.PaymentAccountQuery, 'page'> & {
   pageIndex: number;
 };
 
-const { fixedTenantId, loadDefaultTenantId, tenantOptions } =
+const { fixedTenantId, loadTenantOptions, tenantOptions } =
   useBusinessTenantFilter();
 const { isMobile } = usePreferences();
 const selectedTenantId = ref('');
@@ -213,15 +214,7 @@ const [Grid, gridApi] = useResourceGrid<
     const tenantId = params.tenantId ?? selectedTenantId.value;
     selectedTenantId.value = tenantId;
     if (!tenantId) {
-      return {
-        items: [],
-        meta: {
-          currentPage: params.pageIndex,
-          itemsPerPage: params.pageSize,
-          totalItems: 0,
-          totalPages: 0,
-        },
-      };
+      return createEmptyBusinessPage(params.pageIndex, params.pageSize);
     }
     const { pageIndex, ...query } = params;
     const result = await filterPaymentAccountsApi({
@@ -261,7 +254,6 @@ function openCreate() {
     onOk: async (api) => {
       await api.validate();
       const data = api.formData() as {
-        code: string;
         credentialRef: string;
         externalAccountId: string;
         name: string;
@@ -462,7 +454,7 @@ function amountRangeText(channel: BusinessApi.PaymentChannelBinding) {
 onMounted(async () => {
   [platforms.value, selectedTenantId.value] = await Promise.all([
     getPaymentPlatformsApi(),
-    loadDefaultTenantId(),
+    loadTenantOptions(),
   ]);
   if (!selectedTenantId.value) return;
   await gridApi.formApi.setFieldValue('tenantId', selectedTenantId.value);

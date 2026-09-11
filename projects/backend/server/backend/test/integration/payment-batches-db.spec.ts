@@ -195,6 +195,7 @@ describe('Payment batch migration database integration', () => {
     const result = await service.create(tenantId, [orderId])
 
     expect(result.batch).toMatchObject({
+      batchNo: expect.stringMatching(/^BAT\d{20}$/),
       tenantId,
       merchantId,
       paymentAccountId: accountId,

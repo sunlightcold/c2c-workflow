@@ -3,7 +3,10 @@ import type { Api } from '@form-create/ant-design-vue';
 import type { BusinessApi } from '#/api';
 import type { FormModalOptions } from '#/hooks';
 
-import { merchantPlatformOptions } from './business-ui';
+import {
+  merchantPlatformApiBaseUrl,
+  merchantPlatformOptions,
+} from './business-ui';
 
 type SelectOption = { disabled?: boolean; label: string; value: string };
 
@@ -43,7 +46,7 @@ const paidMessage =
   '您好，我方已完成付款，请核实收款账户实际到账情况，确认无误后及时放币。';
 const completedMessage = '感谢您的配合，本次交易已顺利完成。';
 
-function accountSettingRules(platform: 'BINANCE' | 'OKX') {
+function accountSettingRules(platform?: 'BINANCE' | 'OKX') {
   const binanceOnly = platform !== 'BINANCE';
   return [
     {
@@ -68,10 +71,7 @@ function accountSettingRules(platform: 'BINANCE' | 'OKX') {
       title: 'API 地址',
       type: 'input',
       validate: required('请输入平台 API 地址'),
-      value:
-        platform === 'BINANCE'
-          ? 'https://api.binance.com'
-          : 'https://www.okx.com',
+      value: merchantPlatformApiBaseUrl(platform),
     },
     {
       field: 'pageSize',
@@ -204,7 +204,7 @@ function accountSettingRules(platform: 'BINANCE' | 'OKX') {
 }
 
 export function createMerchantAccountModalOptions(
-  platform: 'BINANCE' | 'OKX' = 'BINANCE',
+  platform?: 'BINANCE' | 'OKX',
 ): FormModalOptions {
   const binanceOnly = platform !== 'BINANCE';
   return {
@@ -212,14 +212,6 @@ export function createMerchantAccountModalOptions(
     formProps: {
       option: verticalForm,
       rule: [
-        {
-          field: 'code',
-          props: { maxlength: 32, placeholder: '请输入账号编码' },
-          title: '账号编码',
-          type: 'input',
-          validate: required('请输入账号编码'),
-          value: '',
-        },
         {
           field: 'platform',
           options: merchantPlatformOptions,
@@ -240,7 +232,7 @@ export function createMerchantAccountModalOptions(
             api.setValue('paidConfirmIntervalMaxMs', isBinance ? 0 : 3000);
           },
           validate: required('请选择交易平台'),
-          value: platform,
+          value: platform ?? '',
         },
         {
           field: 'apiKey',
@@ -414,21 +406,13 @@ export function createPaymentAccountModalOptions(
           value: '',
         },
         {
-          field: 'code',
-          props: { maxlength: 32, placeholder: '请输入账号编码' },
-          title: '账号编码',
-          type: 'input',
-          validate: required('请输入账号编码'),
-          value: '',
-        },
-        {
           field: 'platformId',
           options: platforms,
           props: { placeholder: '请选择支付平台' },
           title: '支付平台',
           type: 'select',
           validate: required('请选择支付平台'),
-          value: platforms[0]?.value ?? '',
+          value: '',
         },
         {
           field: 'externalAccountId',
@@ -664,7 +648,7 @@ export function createManualPaymentModalOptions(
           title: '商家',
           type: 'select',
           validate: required('请选择商家'),
-          value: merchants[0]?.value ?? '',
+          value: '',
         },
         {
           field: 'sourceBusinessNo',
@@ -755,7 +739,7 @@ export function createPaymentBatchModalOptions({
             });
           },
           validate: required('请选择商家'),
-          value: merchants[0]?.value ?? '',
+          value: '',
         },
         {
           field: 'routeKey',

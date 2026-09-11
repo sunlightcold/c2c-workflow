@@ -4,13 +4,25 @@ import {
   cancelMerchantOrderModalOptions,
   createMerchantOrderAppealModalOptions,
   createMerchantOrderPaymentModalOptions,
+  createPaymentAccountModalOptions,
   editPaymentAccountModalOptions,
   editPaymentChannelModalOptions,
   normalizePaymentChannelFormData,
   openPaymentChannelModalOptions,
+  paymentAccountCredentialModalOptions,
+  readAlipayCredentialFiles,
 } from './business-form-schemas';
 
 describe('merchant order operation forms', () => {
+  it('does not expose an internal code or preselect a payment platform', () => {
+    const rules = createPaymentAccountModalOptions([
+      { label: '支付宝', value: 'platform-1' },
+    ]).formProps?.rule;
+
+    expect(rules?.some(({ field }) => field === 'code')).toBe(false);
+    expect(rules?.find(({ field }) => field === 'platformId')?.value).toBe('');
+  });
+
   it('offers only the two implemented Alipay execution modes', () => {
     const rule = createMerchantOrderPaymentModalOptions().formProps?.rule?.find(
       ({ field }) => field === 'executionMode',
@@ -57,16 +69,58 @@ describe('merchant order operation forms', () => {
     expect(onReceipt).toHaveBeenCalledWith(file);
   });
 
-  it('keeps payment account secrets write-only when editing', () => {
+  it('keeps basic payment account editing separate from credentials', () => {
     const options = editPaymentAccountModalOptions();
     const fields = options.formProps?.rule?.map(({ field }) => field);
-    const credential = options.formProps?.rule?.find(
-      ({ field }) => field === 'credentialRef',
-    );
 
-    expect(fields).toEqual(['name', 'externalAccountId', 'credentialRef']);
-    expect(credential?.value).toBe('');
-    expect(credential?.props).toMatchObject({ autocomplete: 'new-password' });
+    expect(fields).toEqual(['name', 'externalAccountId']);
+  });
+
+  it('offers key and certificate modes for the one account credential', () => {
+    const options = paymentAccountCredentialModalOptions('KEY', vi.fn());
+    const rules = options.formProps?.rule ?? [];
+    const fields = rules.map(({ field }) => field);
+
+    expect(fields).toEqual(
+      expect.arrayContaining([
+        'authMode',
+        'appId',
+        'gateway',
+        'privateKeyFile',
+        'alipayPublicKeyFile',
+        'appCertFile',
+        'alipayPublicCertFile',
+        'alipayRootCertFile',
+      ]),
+    );
+    expect(rules.find(({ field }) => field === 'authMode')?.options).toEqual([
+      { label: '公钥模式', value: 'KEY' },
+      { label: '证书模式', value: 'CERT' },
+    ]);
+  });
+
+  it('reads selected key files into a mode-specific credential payload', async () => {
+    const files = {
+      alipayPublicKey: new File(['alipay-public-key'], 'alipayPublicKey.pem'),
+      privateKey: new File(['application-private-key'], 'appPrivateKey.pem'),
+    };
+
+    await expect(
+      readAlipayCredentialFiles(
+        {
+          appId: '2026000000000001',
+          authMode: 'KEY',
+          gateway: 'https://openapi.alipay.com/gateway.do',
+        },
+        files,
+      ),
+    ).resolves.toEqual({
+      alipayPublicKey: 'alipay-public-key',
+      appId: '2026000000000001',
+      authMode: 'KEY',
+      gateway: 'https://openapi.alipay.com/gateway.do',
+      privateKey: 'application-private-key',
+    });
   });
 
   it('maps cleared channel limits to null without clearing the secret reference', () => {

@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import {
-  chooseDefaultTenantId,
-  toTenantFilterOptions,
-} from './use-business-tenant-filter';
+import { toTenantFilterOptions } from './use-business-tenant-filter';
 
 vi.mock('@vben/stores', () => ({
   useUserStore: () => ({ userInfo: {} }),
@@ -29,10 +26,6 @@ const tenants = [
 ] as const;
 
 describe('business tenant filter', () => {
-  it('prefers the headquarters self-operated unit for platform users', () => {
-    expect(chooseDefaultTenantId(tenants as any)).toBe('hq-1');
-  });
-
   it('marks disabled units and labels the self-operated unit explicitly', () => {
     expect(
       toTenantFilterOptions([

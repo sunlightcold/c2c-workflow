@@ -27,8 +27,16 @@ describe('merchant account form schemas', () => {
       ]),
     );
     expect(names).not.toEqual(
-      expect.arrayContaining(['currency', 'timezone', 'riskLevel']),
+      expect.arrayContaining(['code', 'currency', 'timezone', 'riskLevel']),
     );
+  });
+
+  it('does not preselect a platform for a new merchant account', () => {
+    const platform = createMerchantAccountModalOptions().formProps?.rule?.find(
+      (rule) => rule.field === 'platform',
+    );
+
+    expect(platform?.value).toBe('');
   });
 
   it('keeps platform and secrets out of editable account settings', () => {

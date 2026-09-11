@@ -315,7 +315,6 @@ export namespace BusinessApi {
     c2cChatOrderPaidMessage?: string;
     chatId?: string;
     clientType?: string;
-    code: string;
     description?: string;
     externalMerchantId: string;
     name: string;
@@ -450,9 +449,8 @@ function toPagination<T>(response: {
 
 export const getTenantsApi = () =>
   requestClient.get<BusinessApi.Tenant[]>('/sys/tenants');
-export const createTenantApi = (
-  data: Pick<BusinessApi.Tenant, 'code' | 'name'>,
-) => requestClient.post<BusinessApi.Tenant>('/sys/tenants', data);
+export const createTenantApi = (data: Pick<BusinessApi.Tenant, 'name'>) =>
+  requestClient.post<BusinessApi.Tenant>('/sys/tenants', data);
 export const setTenantStatusApi = (
   id: string,
   status: BusinessApi.BusinessStatus,
@@ -547,7 +545,7 @@ export const createPaymentAccountApi = (
   data: BusinessApi.TenantContext &
     Pick<
       BusinessApi.PaymentAccount,
-      'code' | 'externalAccountId' | 'name' | 'platformId'
+      'externalAccountId' | 'name' | 'platformId'
     > & {
       credentialRef: string;
     },
@@ -812,7 +810,6 @@ export const createTelegramBotApi = (
     batchSubmitRequireConfirmation?: boolean;
     botType: BusinessApi.TelegramBotType;
     capabilities: BusinessApi.TelegramCapability[];
-    code: string;
     description?: string;
     name: string;
     paymentOrderRequireConfirmation?: boolean;

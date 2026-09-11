@@ -71,6 +71,7 @@ describe('PaymentOrderService', () => {
     })
 
     await expect(service.create(tenantId, input)).resolves.toMatchObject({
+      paymentNo: expect.stringMatching(/^PAY\d{20}$/),
       status: PaymentOrderStatus.READY,
       paymentPlanId: 'plan-1',
       paymentAccountId: 'account-1',

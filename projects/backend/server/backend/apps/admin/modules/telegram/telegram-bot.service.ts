@@ -7,6 +7,7 @@ import {
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { In, Repository } from 'typeorm'
+import { BusinessNoPrefix, IdUtils } from '@/common/utils/id'
 import type { CreateTelegramBotDto, TelegramBotListDto, UpdateTelegramBotDto } from './telegram.dto'
 import {
   assertBotCapabilities,
@@ -50,6 +51,7 @@ export class TelegramBotService {
       this.bots.create({
         ...input,
         tenantId,
+        code: IdUtils.generateBusinessNo(BusinessNoPrefix.TELEGRAM_BOT),
         language: input.language ?? 'zh-CN',
         webhookSecretRef: input.webhookSecretRef ?? null,
         webhookUrl: input.webhookUrl ?? null,

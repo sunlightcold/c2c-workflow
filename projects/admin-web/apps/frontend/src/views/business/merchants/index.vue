@@ -31,6 +31,7 @@ import {
   useResourceGrid,
 } from '#/hooks';
 
+import { createEmptyBusinessPage } from '../shared/business-grid';
 import {
   businessStatusColor,
   businessStatusOptions,
@@ -61,7 +62,7 @@ type MerchantQueryParams = Omit<BusinessApi.MerchantQuery, 'page'> & {
   pageIndex: number;
 };
 
-const { fixedTenantId, loadDefaultTenantId, tenantOptions } =
+const { fixedTenantId, loadTenantOptions, tenantOptions } =
   useBusinessTenantFilter();
 const selectedTenantId = ref('');
 const configOpen = ref(false);
@@ -211,15 +212,7 @@ const [Grid, gridApi] = useResourceGrid<
     const tenantId = params.tenantId ?? selectedTenantId.value;
     selectedTenantId.value = tenantId;
     if (!tenantId) {
-      return {
-        items: [],
-        meta: {
-          currentPage: params.pageIndex,
-          itemsPerPage: params.pageSize,
-          totalItems: 0,
-          totalPages: 0,
-        },
-      };
+      return createEmptyBusinessPage(params.pageIndex, params.pageSize);
     }
     const { pageIndex, ...query } = params;
     return filterMerchantsApi({ ...query, page: pageIndex, tenantId });
@@ -556,7 +549,7 @@ function paymentChannelName(accountId: string, channelId: string) {
 }
 
 onMounted(async () => {
-  selectedTenantId.value = await loadDefaultTenantId();
+  selectedTenantId.value = await loadTenantOptions();
   if (selectedTenantId.value) {
     await gridApi.formApi.setFieldValue('tenantId', selectedTenantId.value);
     await gridApi.query();

@@ -33,6 +33,7 @@ describe('Business configuration API contract (e2e)', () => {
   const payments = {
     createAccount: jest.fn(),
     updateAccount: jest.fn(),
+    updateAccountCredential: jest.fn(),
     setAccountStatus: jest.fn(),
     removeAccount: jest.fn(),
     openAccountChannel: jest.fn(),
@@ -72,7 +73,6 @@ describe('Business configuration API contract (e2e)', () => {
       .post('/v1/sys/merchants')
       .send({
         tenantId: '00000000-0000-4000-8000-000000000010',
-        code: 'm-1',
         name: 'M1',
         platform: 'BINANCE',
         externalMerchantId: 'binance-merchant-1',
@@ -192,7 +192,6 @@ describe('Business configuration API contract (e2e)', () => {
       .post('/v1/sys/merchants')
       .send({
         tenantId: '00000000-0000-4000-8000-000000000010',
-        code: 'm-1',
         name: 'M1',
         platform: 'WECHAT',
         externalMerchantId: 'merchant-1',
@@ -257,7 +256,7 @@ describe('Business configuration API contract (e2e)', () => {
     expect(payments.removePlan).toHaveBeenCalledWith('tenant-1', planId)
   })
 
-  it('creates a payment account without returning its Secret reference', async () => {
+  it('creates a payment account with one write-only Alipay credential', async () => {
     payments.createAccount.mockResolvedValue({
       id: '00000000-0000-4000-8000-000000000030',
       code: 'alipay-1',
@@ -268,10 +267,15 @@ describe('Business configuration API contract (e2e)', () => {
       .send({
         tenantId: '00000000-0000-4000-8000-000000000010',
         platformId: '00000000-0000-4000-8000-000000000011',
-        code: 'alipay-1',
         name: 'Alipay 1',
         externalAccountId: '2088',
-        credentialRef: 'env://ALIPAY_ACCOUNT_1',
+        credential: {
+          authMode: 'KEY',
+          appId: '2026000000000001',
+          gateway: 'https://openapi.alipay.com/gateway.do',
+          privateKey: 'application-private-key',
+          alipayPublicKey: 'alipay-public-key',
+        },
       })
       .expect(201)
 
@@ -279,7 +283,41 @@ describe('Business configuration API contract (e2e)', () => {
     expect(response.body.data).not.toHaveProperty('credentialRef')
     expect(payments.createAccount).toHaveBeenCalledWith(
       'tenant-1',
-      expect.objectContaining({ credentialRef: 'env://ALIPAY_ACCOUNT_1' }),
+      expect.objectContaining({
+        credential: expect.objectContaining({ authMode: 'KEY' }),
+      }),
+    )
+  })
+
+  it('replaces the single payment account credential through a dedicated endpoint', async () => {
+    const tenantId = '00000000-0000-4000-8000-000000000010'
+    const accountId = '00000000-0000-4000-8000-000000000030'
+    payments.updateAccountCredential.mockResolvedValue({
+      id: accountId,
+      credentialAuthMode: 'CERT',
+      credentialConfigured: true,
+    })
+
+    const response = await request(app.getHttpServer())
+      .put(`/v1/sys/payment-accounts/${accountId}/credential`)
+      .send({
+        tenantId,
+        authMode: 'CERT',
+        appId: '2026000000000001',
+        gateway: 'https://openapi.alipay.com/gateway.do',
+        privateKey: 'application-private-key',
+        appCertContent: 'application-certificate',
+        alipayPublicCertContent: 'alipay-public-certificate',
+        alipayRootCertContent: 'alipay-root-certificate',
+      })
+      .expect(200)
+
+    expectWrappedSuccess(response.body)
+    expect(response.body.data).not.toHaveProperty('privateKey')
+    expect(payments.updateAccountCredential).toHaveBeenCalledWith(
+      'tenant-1',
+      accountId,
+      expect.objectContaining({ authMode: 'CERT' }),
     )
   })
 
@@ -301,7 +339,6 @@ describe('Business configuration API contract (e2e)', () => {
         tenantId,
         name: '主支付账号',
         externalAccountId: '20881234',
-        credentialRef: 'env://ALIPAY_ACCOUNT_MAIN_V2',
       })
       .expect(200)
     await request(app.getHttpServer())

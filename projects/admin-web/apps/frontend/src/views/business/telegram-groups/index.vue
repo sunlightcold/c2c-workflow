@@ -25,6 +25,7 @@ import {
   useResourceGrid,
 } from '#/hooks';
 
+import { createEmptyBusinessPage } from '../shared/business-grid';
 import { businessEnumText, businessStateColor } from '../shared/business-ui';
 import {
   telegramBindingStateOptions,
@@ -33,7 +34,7 @@ import {
 } from '../shared/telegram-ui';
 import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 
-const { fixedTenantId, loadDefaultTenantId, tenantOptions } =
+const { fixedTenantId, loadTenantOptions, tenantOptions } =
   useBusinessTenantFilter();
 const selectedTenantId = ref('');
 const bots = ref<BusinessApi.TelegramBot[]>([]);
@@ -199,8 +200,12 @@ const [Grid, gridApi] = useResourceGrid<
     pageSize: page.pageSize,
     tenantId: selectedTenantId.value,
   }),
-  query: ({ pageIndex, ...params }) =>
-    getTelegramGroupsApi({ ...params, page: pageIndex }),
+  query: async ({ pageIndex, ...params }) => {
+    if (!params.tenantId) {
+      return createEmptyBusinessPage(pageIndex, params.pageSize);
+    }
+    return getTelegramGroupsApi({ ...params, page: pageIndex });
+  },
 });
 
 const { FormModalRender, formModalClose, formModalShow } = useFormModal();
@@ -410,7 +415,7 @@ function unbind(row: BusinessApi.TelegramGroup) {
 }
 
 onMounted(async () => {
-  selectedTenantId.value = (await loadDefaultTenantId()) || '';
+  selectedTenantId.value = await loadTenantOptions();
   if (!selectedTenantId.value) return;
   await loadTenantReferences(selectedTenantId.value);
   await gridApi.formApi.setFieldValue('tenantId', selectedTenantId.value);

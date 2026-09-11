@@ -2,7 +2,10 @@ import type { Rule } from '@form-create/ant-design-vue';
 
 import type { FormModalOptions } from '#/hooks';
 
-import { merchantPlatformOptions } from '../shared/business-ui';
+import {
+  merchantPlatformApiBaseUrl,
+  merchantPlatformOptions,
+} from '../shared/business-ui';
 
 type Platform = 'BINANCE' | 'OKX';
 type SelectOption = { label: string; value: string };
@@ -73,17 +76,14 @@ function secretRule(field: string, title: string): Rule {
   };
 }
 
-function settings(platform: Platform): Rule[] {
+function settings(platform?: Platform): Rule[] {
   const hideAutomation = platform !== 'BINANCE';
   return [
     textRule('name', '账号名称', '请输入账号名称'),
     textRule('externalMerchantId', '平台商家编号', '请输入平台商家编号'),
     {
       ...textRule('apiBaseUrl', 'API 地址', '请输入平台 API 地址'),
-      value:
-        platform === 'BINANCE'
-          ? 'https://api.binance.com'
-          : 'https://www.okx.com',
+      value: merchantPlatformApiBaseUrl(platform),
     },
     numberRule('pageSize', '每页同步笔数', 20, 1, 100),
     numberRule('overlapSeconds', '同步重叠秒数', 120, 0, 3600),
@@ -186,15 +186,15 @@ function settings(platform: Platform): Rule[] {
 }
 
 export function createMerchantAccountModalOptions(
-  platform: Platform = 'BINANCE',
+  platform?: Platform,
 ): FormModalOptions {
   const binance = platform === 'BINANCE';
+  const okx = platform === 'OKX';
   return {
     props: { centered: true, title: '新增商家账号', width: 760 },
     formProps: {
       option: formOption,
       rule: [
-        textRule('code', '账号编码', '请输入账号编码'),
         {
           field: 'platform',
           options: merchantPlatformOptions,
@@ -214,7 +214,7 @@ export function createMerchantAccountModalOptions(
             api.setValue('paidConfirmIntervalMaxMs', isBinance ? 0 : 3000);
           },
           validate: required('请选择交易平台'),
-          value: platform,
+          value: platform ?? '',
         },
         { ...secretRule('apiKey', 'API Key'), hidden: !binance },
         { ...secretRule('secretKey', 'Secret Key'), hidden: !binance },
@@ -224,8 +224,8 @@ export function createMerchantAccountModalOptions(
           value: 'WEB',
         },
         { ...textRule('xUserId', 'X-User-ID'), hidden: !binance },
-        { ...secretRule('authorization', 'Authorization'), hidden: binance },
-        { ...secretRule('sessionCookie', 'Cookie'), hidden: binance },
+        { ...secretRule('authorization', 'Authorization'), hidden: !okx },
+        { ...secretRule('sessionCookie', 'Cookie'), hidden: !okx },
         ...settings(platform),
       ],
     },

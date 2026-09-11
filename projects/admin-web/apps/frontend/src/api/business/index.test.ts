@@ -37,6 +37,7 @@ import {
   updateMerchantApi,
   updatePaymentAccountApi,
   updatePaymentAccountChannelApi,
+  updatePaymentAccountCredentialApi,
   updateTelegramBotApi,
   updateTelegramGroupApi,
   updateTelegramMemberApi,
@@ -100,10 +101,9 @@ describe('business api', () => {
   it('creates a tenant without exposing internal timezone configuration', async () => {
     requestMocks.post.mockResolvedValue({ id: 'tenant-1' });
 
-    await createTenantApi({ code: 'agent-one', name: '代理商一' });
+    await createTenantApi({ name: '代理商一' });
 
     expect(requestMocks.post).toHaveBeenCalledWith('/sys/tenants', {
-      code: 'agent-one',
       name: '代理商一',
     });
   });
@@ -205,6 +205,25 @@ describe('business api', () => {
       totalItems: 12,
       totalPages: 2,
     });
+  });
+
+  it('sends the one write-only credential through its dedicated endpoint', async () => {
+    requestMocks.put.mockResolvedValue({ id: 'account-1' });
+    const credential = {
+      alipayPublicKey: 'alipay-public-key',
+      appId: '2026000000000001',
+      authMode: 'KEY' as const,
+      gateway: 'https://openapi.alipay.com/gateway.do',
+      privateKey: 'application-private-key',
+      tenantId: 'tenant-1',
+    };
+
+    await updatePaymentAccountCredentialApi('account-1', credential);
+
+    expect(requestMocks.put).toHaveBeenCalledWith(
+      '/sys/payment-accounts/account-1/credential',
+      credential,
+    );
   });
 
   it('uses payment account and channel management endpoints', async () => {
@@ -384,7 +403,6 @@ describe('business api', () => {
     await createTelegramBotApi({
       botType: 'PAYMENT',
       capabilities: ['MANUAL_PAYMENT'],
-      code: 'PAY_MAIN',
       name: '支付机器人',
       tenantId: 'tenant-1',
       tokenRef: 'env://PAY_MAIN_TOKEN',
@@ -417,7 +435,6 @@ describe('business api', () => {
     expect(requestMocks.post).toHaveBeenNthCalledWith(1, '/sys/tg/bots', {
       botType: 'PAYMENT',
       capabilities: ['MANUAL_PAYMENT'],
-      code: 'PAY_MAIN',
       name: '支付机器人',
       tenantId: 'tenant-1',
       tokenRef: 'env://PAY_MAIN_TOKEN',

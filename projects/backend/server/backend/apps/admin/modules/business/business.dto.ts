@@ -32,11 +32,6 @@ export class TenantContextDto {
 
 export class CreateTenantDto {
   @ApiProperty()
-  @Transform(upper)
-  @Matches(/^[A-Z][A-Z0-9_-]{1,31}$/)
-  code: string
-
-  @ApiProperty()
   @Transform(trim)
   @IsNotEmpty()
   @MaxLength(100)
@@ -57,11 +52,6 @@ export class SetTenantStatusDto {
 }
 
 export class CreateMerchantDto extends TenantContextDto {
-  @ApiProperty()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
-  @Matches(/^[a-z][a-z0-9-]{1,31}$/)
-  code: string
-
   @ApiProperty()
   @Transform(trim)
   @IsNotEmpty()
@@ -242,7 +232,6 @@ export class CreateMerchantDto extends TenantContextDto {
 
 export class UpdateMerchantDto extends PartialType(
   OmitType(CreateMerchantDto, [
-    'code',
     'platform',
     'authMode',
     'apiKey',
@@ -304,11 +293,6 @@ export class CreatePaymentAccountDto extends TenantContextDto {
   @ApiProperty()
   @IsUUID()
   platformId: string
-
-  @ApiProperty()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
-  @Matches(/^[a-z][a-z0-9-]{1,63}$/)
-  code: string
 
   @ApiProperty()
   @Transform(trim)

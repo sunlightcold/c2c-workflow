@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { BusinessNoPrefix, IdUtils } from '@/common/utils/id'
 import {
   BusinessStatus,
   MerchantEntity,
@@ -100,7 +100,7 @@ export class PaymentOrderService {
     const order = this.orders.create({
       ...normalizedInput,
       tenantId,
-      paymentNo: `PAY${randomUUID().replaceAll('-', '').toUpperCase()}`,
+      paymentNo: IdUtils.generateBusinessNo(BusinessNoPrefix.PAYMENT_ORDER),
       ...this.routeFields(route),
       status: route ? PaymentOrderStatus.READY : PaymentOrderStatus.PENDING_CONFIG,
       upstreamId: null,

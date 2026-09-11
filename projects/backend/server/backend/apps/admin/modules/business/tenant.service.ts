@@ -2,6 +2,7 @@ import { BusinessStatus, TenantEntity, TenantType } from '@admin/database'
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
+import { BusinessNoPrefix, IdUtils } from '@/common/utils/id'
 
 @Injectable()
 export class TenantService {
@@ -14,10 +15,11 @@ export class TenantService {
     return this.repository.find({ order: { type: 'ASC', createdAt: 'ASC' } })
   }
 
-  async create(input: { code: string; name: string; timezone: string }) {
+  async create(input: { name: string; timezone: string }) {
     return this.repository.save(
       this.repository.create({
         ...input,
+        code: IdUtils.generateBusinessNo(BusinessNoPrefix.AGENT),
         type: TenantType.AGENT,
         status: BusinessStatus.ACTIVE,
         systemLocked: false,

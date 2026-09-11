@@ -14,9 +14,9 @@ import {
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, ILike, Repository } from 'typeorm'
 import { CredentialCipherService } from '../system/credential/credential-cipher.service'
+import { BusinessNoPrefix, IdUtils } from '@/common/utils/id'
 
 export interface CreateMerchantInput {
-  code: string
   name: string
   platform: MerchantPlatform
   externalMerchantId: string
@@ -60,7 +60,7 @@ export interface MerchantListInput {
 type UpdateMerchantInput = Partial<
   Omit<
     CreateMerchantInput,
-    'apiKey' | 'authMode' | 'authorization' | 'code' | 'platform' | 'secretKey' | 'sessionCookie'
+    'apiKey' | 'authMode' | 'authorization' | 'platform' | 'secretKey' | 'sessionCookie'
   >
 >
 
@@ -126,7 +126,7 @@ export class MerchantService {
       const merchant = await merchants.save(
         merchants.create({
           tenantId,
-          code: input.code,
+          code: IdUtils.generateBusinessNo(BusinessNoPrefix.MERCHANT),
           name: input.name,
           platform: input.platform,
           externalMerchantId: input.externalMerchantId,

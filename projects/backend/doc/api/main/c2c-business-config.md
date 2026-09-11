@@ -8,7 +8,7 @@ Controller：`BusinessController`。基础路径：`/v1/sys`。所有接口均�
 | Method | Path | 权限 | Request | data 来源 |
 | --- | --- | --- | --- | --- |
 | GET | `/tenants` | `agency:tenant:read` | 无 | `TenantEntity[]` |
-| POST | `/tenants` | `agency:tenant:create` | `{ code, name, timezone? }` | `TenantEntity` |
+| POST | `/tenants` | `agency:tenant:create` | `{ name, timezone? }` | `TenantEntity` |
 | PATCH | `/tenants/{id}/status` | `agency:tenant:update` | `{ status: active/disabled }` | `TenantEntity` |
 
 `POST /tenants` 只创建代理商所属单位。总部自营由迁移固定创建且不可停用。
@@ -37,7 +37,7 @@ Controller：`BusinessController`。基础路径：`/v1/sys`。所有接口均�
 | --- | --- | --- | --- | --- |
 | GET | `/payment-platforms` | `payment:account:read` | 无 | 支付平台及其支付通道目录 |
 | GET | `/payment-accounts` | `payment:account:read` | Query `{ tenantId?, accountName?, accountCode?, externalAccountId?, platformId?, status?, page?, pageSize? }` | 当前所属单位的支付账号分页结果及已开通通道 |
-| POST | `/payment-accounts` | `payment:account:create` | `{ tenantId?, platformId, code, name, externalAccountId, credentialRef }` | `PaymentAccountEntity` |
+| POST | `/payment-accounts` | `payment:account:create` | `{ tenantId?, platformId, name, externalAccountId, credentialRef }` | `PaymentAccountEntity` |
 | PUT | `/payment-accounts/{id}` | `payment:account:update` | `{ tenantId?, name?, externalAccountId?, credentialRef? }` | 脱敏后的 `PaymentAccountEntity` |
 | PATCH | `/payment-accounts/{id}/status` | `payment:account:update` | Query `{ tenantId? }`；Body `{ status }` | 脱敏后的 `PaymentAccountEntity` |
 | DELETE | `/payment-accounts/{id}` | `payment:account:delete` | Query `{ tenantId? }` | 无 |
@@ -57,6 +57,8 @@ Controller：`BusinessController`。基础路径：`/v1/sys`。所有接口均�
 支付账号查询按经营单位隔离并返回 `{ items, total, page, pageSize }`。账号编码、支付平台和经营单位创建后不可修改；名称、支付宝商户号和账号凭据引用可覆盖更新。账号凭据和通道配置只允许提交新引用，不回显原值。通道金额使用最多两位小数的非负字符串，最小金额不得大于最大金额，并发上限为 1 至 1000；编辑时金额字段提交 `null` 表示清除该项限制，字段不提交表示保留原值。
 
 支付账号查询返回账号基本信息、`credentialConfigured` 和已开通通道；创建、编辑、查询均不返回账号 `credentialRef` 或通道 `configRef`。支付账号或通道一旦被支付方案、支付订单或支付批次引用，不允许删除或移除，只能停用；停用不影响已锁定支付组合的历史回查。支付方案查询始终按当前所属单位隔离，可再按商家筛选。
+
+内部业务编号全部由服务端生成，客户端不得提交：代理商 `AGT`、商家账号 `MCH`、支付账号 `PAC`、Telegram 机器人 `BOT`、支付订单 `PAY`、支付批次 `BAT`。编号格式为三位前缀、十四位业务时间和六位随机数字。平台商家编号、支付宝商户号、Telegram User ID 和外部商户订单号属于外部业务标识，仍由业务方提交。
 
 支付方案可修改支付账号与通道、使用顺序和分配比例；修改支付路由时必须同时提交支付账号与通道，且两者属于当前经营单位并处于启用状态。重新启用支付方案时会再次校验支付账号和通道。已被支付订单引用的支付方案不能删除，只能停用。
 

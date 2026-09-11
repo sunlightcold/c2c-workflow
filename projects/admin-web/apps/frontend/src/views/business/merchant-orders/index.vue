@@ -3,7 +3,7 @@ import type { VbenFormProps } from '#/adapter/form';
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { BusinessApi } from '#/api';
 
-import { onMounted, ref } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
 
@@ -30,6 +30,7 @@ import {
   createMerchantOrderAppealModalOptions,
   createMerchantOrderPaymentModalOptions,
 } from '../shared/business-form-schemas';
+import { createEmptyBusinessPage } from '../shared/business-grid';
 import {
   businessEnumText,
   businessStateColor,
@@ -53,13 +54,15 @@ type QueryParams = Omit<BusinessApi.MerchantOrderQuery, 'page'> & {
   pageIndex: number;
 };
 
-const { fixedTenantId, loadDefaultTenantId, tenantOptions } =
+const { fixedTenantId, loadTenantOptions, tenantOptions } =
   useBusinessTenantFilter();
-const merchantOptions: Array<{
-  disabled?: boolean;
-  label: string;
-  value: string;
-}> = [];
+const merchantOptions = reactive<
+  Array<{
+    disabled?: boolean;
+    label: string;
+    value: string;
+  }>
+>([]);
 const merchants = ref<BusinessApi.Merchant[]>([]);
 const selectedTenantId = ref('');
 const detailOpen = ref(false);
@@ -229,25 +232,13 @@ const [Grid, gridApi] = useResourceGrid<
   query: async (params) => {
     selectedTenantId.value = params.tenantId ?? '';
     if (!params.tenantId || !params.merchantId) {
-      return emptyGridData(params.pageIndex, params.pageSize);
+      return createEmptyBusinessPage(params.pageIndex, params.pageSize);
     }
     const { createdAt: _createdAt, pageIndex, ...query } = params;
     return getMerchantOrdersApi({ ...query, page: pageIndex });
   },
 });
 const { FormModalRender, formModalClose, formModalShow } = useFormModal();
-
-function emptyGridData(page: number, pageSize: number) {
-  return {
-    items: [],
-    meta: {
-      currentPage: page,
-      itemsPerPage: pageSize,
-      totalItems: 0,
-      totalPages: 0,
-    },
-  };
-}
 
 async function selectTenant(tenantId: string, refresh: boolean) {
   selectedTenantId.value = tenantId;
@@ -261,9 +252,7 @@ async function selectTenant(tenantId: string, refresh: boolean) {
       value: merchant.id,
     })),
   );
-  const merchantId =
-    merchants.value.find((merchant) => merchant.status === 'active')?.id ?? '';
-  await gridApi.formApi.setFieldValue('merchantId', merchantId);
+  await gridApi.formApi.setFieldValue('merchantId', undefined);
   if (refresh) await gridApi.query();
 }
 
@@ -440,7 +429,7 @@ function canAppeal(order: BusinessApi.MerchantOrder) {
 }
 
 onMounted(async () => {
-  selectedTenantId.value = await loadDefaultTenantId();
+  selectedTenantId.value = await loadTenantOptions();
   if (!selectedTenantId.value) return;
   await gridApi.formApi.setFieldValue('tenantId', selectedTenantId.value);
   await selectTenant(selectedTenantId.value, false);

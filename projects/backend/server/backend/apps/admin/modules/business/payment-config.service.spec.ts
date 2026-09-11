@@ -196,7 +196,6 @@ describe('PaymentConfigService', () => {
 
     const result = await service.createAccount(tenantId, {
       platformId: 'platform-1',
-      code: 'alipay-1',
       name: 'Alipay 1',
       externalAccountId: '2088',
       credentialRef: 'env://ALIPAY_ACCOUNT_1',
@@ -204,7 +203,10 @@ describe('PaymentConfigService', () => {
 
     expect(result).not.toHaveProperty('credentialRef')
     expect(repositories.account.save).toHaveBeenCalledWith(
-      expect.objectContaining({ credentialRef: 'env://ALIPAY_ACCOUNT_1' }),
+      expect.objectContaining({
+        code: expect.stringMatching(/^PAC\d{20}$/),
+        credentialRef: 'env://ALIPAY_ACCOUNT_1',
+      }),
     )
   })
 

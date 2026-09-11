@@ -78,7 +78,6 @@ describe('Telegram administration API contract (e2e)', () => {
       .post('/v1/sys/tg/bots')
       .send({
         tenantId: '00000000-0000-4000-8000-000000000010',
-        code: 'PAY_MAIN',
         name: '主支付机器人',
         botType: 'PAYMENT',
         tokenRef: 'env://TELEGRAM_PAY_MAIN_TOKEN',
@@ -91,8 +90,9 @@ describe('Telegram administration API contract (e2e)', () => {
     expect(response.body.data).not.toHaveProperty('tokenRef')
     expect(bots.create).toHaveBeenCalledWith(
       'tenant-1',
-      expect.objectContaining({ code: 'PAY_MAIN', tokenRef: 'env://TELEGRAM_PAY_MAIN_TOKEN' }),
+      expect.objectContaining({ tokenRef: 'env://TELEGRAM_PAY_MAIN_TOKEN' }),
     )
+    expect(bots.create.mock.calls[0][1]).not.toHaveProperty('code')
   })
 
   it('creates a pending group challenge and approves the captured Telegram group', async () => {

@@ -17,6 +17,7 @@ import {
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, ILike, In, Repository } from 'typeorm'
+import { BusinessNoPrefix, IdUtils } from '@/common/utils/id'
 
 export interface PaymentAccountListInput {
   accountCode?: string
@@ -176,7 +177,6 @@ export class PaymentConfigService {
     tenantId: string,
     input: {
       platformId: string
-      code: string
       name: string
       externalAccountId: string
       credentialRef: string
@@ -187,7 +187,12 @@ export class PaymentConfigService {
     })
     if (!platform) throw new BadRequestException('支付平台不可用')
     const account = await this.accountRepository.save(
-      this.accountRepository.create({ ...input, tenantId, status: BusinessStatus.ACTIVE }),
+      this.accountRepository.create({
+        ...input,
+        tenantId,
+        code: IdUtils.generateBusinessNo(BusinessNoPrefix.PAYMENT_ACCOUNT),
+        status: BusinessStatus.ACTIVE,
+      }),
     )
     const { credentialRef: _credentialRef, ...response } = account
     return response
