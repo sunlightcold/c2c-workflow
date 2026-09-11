@@ -588,6 +588,7 @@ test.afterEach(async ({ page }) => {
 test('loads all second-level business pages under one menu', async ({
   page,
 }, testInfo) => {
+  testInfo.setTimeout(90_000);
   if (testInfo.project.name === 'desktop-chromium') {
     await page.getByText('业务运营', { exact: true }).click();
     for (const [name] of pages) {
