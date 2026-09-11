@@ -17,6 +17,7 @@ import { C2cPaymentBatches1789005000000 } from './c2c-payment-batches.migration'
 import { C2cMerchantAccountOperations1789006000000 } from './c2c-merchant-account-operations.migration'
 import { C2cMerchantOrderAppeals1789007000000 } from './c2c-merchant-order-appeals.migration'
 import { C2cTelegramAdministration1789008000000 } from './c2c-telegram-administration.migration'
+import { C2cTelegramUpdateInbox1789009000000 } from './c2c-telegram-update-inbox.migration'
 
 export type AdminMigrationConstructor = new () => MigrationInterface
 
@@ -39,4 +40,5 @@ export const adminMigrations: AdminMigrationConstructor[] = [
   C2cMerchantAccountOperations1789006000000,
   C2cMerchantOrderAppeals1789007000000,
   C2cTelegramAdministration1789008000000,
+  C2cTelegramUpdateInbox1789009000000,
 ]

@@ -21,6 +21,7 @@ describe('admin migration registry', () => {
       'C2cMerchantAccountOperations1789006000000',
       'C2cMerchantOrderAppeals1789007000000',
       'C2cTelegramAdministration1789008000000',
+      'C2cTelegramUpdateInbox1789009000000',
     ])
   })
 })

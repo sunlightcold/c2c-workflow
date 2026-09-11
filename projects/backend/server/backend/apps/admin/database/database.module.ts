@@ -44,6 +44,7 @@ import {
   TelegramGroupEntity,
   TelegramGroupMemberEntity,
   TelegramSuperAdminEntity,
+  TelegramUpdateEventEntity,
 } from './business'
 
 const sysEntities = [
@@ -91,6 +92,7 @@ const entities = [
   TelegramGroupEntity,
   TelegramGroupMemberEntity,
   TelegramSuperAdminEntity,
+  TelegramUpdateEventEntity,
 ]
 
 /**
