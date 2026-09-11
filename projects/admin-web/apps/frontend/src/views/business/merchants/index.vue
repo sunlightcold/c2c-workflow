@@ -16,6 +16,8 @@ import {
   getMerchantCredentialsApi,
   getPaymentAccountsApi,
   getPaymentPlansApi,
+  getTelegramBotsApi,
+  getTelegramGroupsApi,
   rotateMerchantCredentialApi,
   setMerchantStatusApi,
   setPaymentPlanStatusApi,
@@ -44,6 +46,9 @@ import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 import {
   createMerchantAccountModalOptions,
   createPaymentPlanModalOptions,
+  DEFAULT_ORDER_COMPLETED_CHAT_MESSAGE,
+  DEFAULT_ORDER_CREATED_CHAT_MESSAGE,
+  DEFAULT_ORDER_PAID_CHAT_MESSAGE,
   editMerchantAccountModalOptions,
   editPaymentPlanModalOptions,
   rotateMerchantCredentialModalOptions,
@@ -73,6 +78,12 @@ const paymentAccounts = ref<BusinessApi.PaymentAccount[]>([]);
 const paymentPlans = ref<BusinessApi.PaymentPlan[]>([]);
 const testingId = ref<string>();
 const syncingId = ref<string>();
+const editingId = ref<string>();
+
+type MerchantGroupBinding = {
+  bot: BusinessApi.TelegramBot;
+  group: BusinessApi.TelegramGroup;
+};
 
 const formOptions: VbenFormProps = {
   commonConfig: { labelWidth: 86 },
@@ -248,8 +259,6 @@ function normalizeCreateForm(
     delete payload.clientType;
     delete payload.xUserId;
     for (const field of [
-      'botCode',
-      'chatId',
       'c2cChatOrderCreatedEnabled',
       'c2cChatOrderCreatedMessage',
       'c2cChatOrderPaidEnabled',
@@ -289,34 +298,95 @@ async function createMerchant() {
 }
 
 async function editMerchant(merchant: BusinessApi.Merchant) {
-  const [formApi] = await formModalShow(
-    editMerchantAccountModalOptions(merchant.platform),
-    {
-      onOk: async (api) => {
-        await api.validate();
-        const data = cleanOptionalStrings(
-          api.formData() as BusinessApi.UpdateMerchantInput,
-        );
-        await runResourceAction({
-          action: () =>
-            updateMerchantApi(merchant.id, {
-              ...data,
-              tenantId: selectedTenantId.value,
-            }),
-          onSuccess: async () => {
-            formModalClose();
-            await gridApi.query();
-          },
-          successMessage: '商家账号已更新',
-        });
+  editingId.value = merchant.id;
+  try {
+    const groupBindings = await loadMerchantGroupBindings(merchant);
+    const currentGroupId = groupBindings.find(
+      ({ bot, group }) =>
+        bot.code === merchant.botCode && group.chatId === merchant.chatId,
+    )?.group.id;
+    const groupOptions = groupBindings.map(({ bot, group }) => ({
+      label: `${group.name} · ${bot.name}`,
+      value: group.id,
+    }));
+    const [formApi] = await formModalShow(
+      editMerchantAccountModalOptions(merchant.platform, groupOptions),
+      {
+        onOk: async (api) => {
+          await api.validate();
+          const raw = api.formData() as BusinessApi.UpdateMerchantInput;
+          const data = cleanOptionalStrings({ ...raw });
+          if (!raw.telegramGroupId && currentGroupId) {
+            data.telegramGroupId = null;
+          } else if (!raw.telegramGroupId) {
+            delete data.telegramGroupId;
+          }
+          await runResourceAction({
+            action: () =>
+              updateMerchantApi(merchant.id, {
+                ...data,
+                tenantId: selectedTenantId.value,
+              }),
+            onSuccess: async () => {
+              formModalClose();
+              await gridApi.query();
+            },
+            successMessage: '商家账号已更新',
+          });
+        },
       },
-    },
+    );
+    formApi?.setValue({
+      ...merchant,
+      c2cChatOrderCompletedMessage:
+        merchant.c2cChatOrderCompletedMessage ||
+        DEFAULT_ORDER_COMPLETED_CHAT_MESSAGE,
+      c2cChatOrderCreatedMessage:
+        merchant.c2cChatOrderCreatedMessage ||
+        DEFAULT_ORDER_CREATED_CHAT_MESSAGE,
+      c2cChatOrderPaidMessage:
+        merchant.c2cChatOrderPaidMessage || DEFAULT_ORDER_PAID_CHAT_MESSAGE,
+      description: merchant.description ?? '',
+      telegramGroupId: currentGroupId ?? '',
+    });
+  } finally {
+    editingId.value = undefined;
+  }
+}
+
+async function loadMerchantGroupBindings(
+  merchant: BusinessApi.Merchant,
+): Promise<MerchantGroupBinding[]> {
+  const [groups, bots] = await Promise.all([
+    getTelegramGroupsApi({
+      bindingState: 'ACTIVE',
+      merchantId: merchant.id,
+      page: 1,
+      pageSize: 100,
+      tenantId: selectedTenantId.value,
+    }),
+    getTelegramBotsApi({
+      page: 1,
+      pageSize: 100,
+      status: 'active',
+      tenantId: selectedTenantId.value,
+    }),
+  ]);
+  const botById = new Map(
+    bots.items
+      .filter(
+        ({ botType, status }) => botType === 'PAYMENT' && status === 'active',
+      )
+      .map((bot) => [bot.id, bot]),
   );
-  formApi?.setValue({
-    ...merchant,
-    botCode: merchant.botCode ?? '',
-    chatId: merchant.chatId ?? '',
-    description: merchant.description ?? '',
+  return groups.items.flatMap((group) => {
+    const bot = botById.get(group.botId);
+    return group.bindingState === 'ACTIVE' &&
+      group.paymentScene === 'C2C_BUY' &&
+      group.chatId &&
+      bot
+      ? [{ bot, group }]
+      : [];
   });
 }
 
@@ -630,6 +700,7 @@ onMounted(async () => {
           <AButton size="small" @click="openConfig(row)">配置</AButton>
           <AButton
             v-access:code="['merchant:account:update']"
+            :loading="editingId === row.id"
             size="small"
             type="link"
             @click="editMerchant(row)"

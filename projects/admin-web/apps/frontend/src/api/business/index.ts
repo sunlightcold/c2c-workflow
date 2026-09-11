@@ -326,14 +326,12 @@ export namespace BusinessApi {
     authorization?: string;
     autoAppealDelayMinutes?: number;
     autoAppealEnabled?: boolean;
-    botCode?: string;
     c2cChatOrderCompletedEnabled?: boolean;
     c2cChatOrderCompletedMessage?: string;
     c2cChatOrderCreatedEnabled?: boolean;
     c2cChatOrderCreatedMessage?: string;
     c2cChatOrderPaidEnabled?: boolean;
     c2cChatOrderPaidMessage?: string;
-    chatId?: string;
     clientType?: string;
     description?: string;
     externalMerchantId: string;
@@ -361,7 +359,7 @@ export namespace BusinessApi {
       | 'sessionCookie'
     >
   > &
-    TenantContext;
+    TenantContext & { telegramGroupId?: null | string };
 
   export interface PaymentOrderQuery extends PageQuery {
     executionMode?: PaymentExecutionMode;

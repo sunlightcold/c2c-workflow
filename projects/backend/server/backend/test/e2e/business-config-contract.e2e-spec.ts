@@ -103,7 +103,12 @@ describe('Business configuration API contract (e2e)', () => {
       .expect(200)
     await request(app.getHttpServer())
       .put(`/v1/sys/merchants/${merchantId}`)
-      .send({ tenantId, name: 'Main Account', overlapSeconds: 180 })
+      .send({
+        tenantId,
+        name: 'Main Account',
+        overlapSeconds: 180,
+        telegramGroupId: '00000000-0000-4000-8000-000000000030',
+      })
       .expect(200)
     await request(app.getHttpServer())
       .patch(`/v1/sys/merchants/${merchantId}/status`)
@@ -126,11 +131,32 @@ describe('Business configuration API contract (e2e)', () => {
     expect(merchants.update).toHaveBeenCalledWith(
       'tenant-1',
       merchantId,
-      expect.objectContaining({ name: 'Main Account', overlapSeconds: 180 }),
+      expect.objectContaining({
+        name: 'Main Account',
+        overlapSeconds: 180,
+        telegramGroupId: '00000000-0000-4000-8000-000000000030',
+      }),
     )
     expect(merchants.setStatus).toHaveBeenCalledWith('tenant-1', merchantId, 'disabled')
     expect(credentials.testConnection).toHaveBeenCalledWith('tenant-1', merchantId)
     expect(merchants.remove).toHaveBeenCalledWith('tenant-1', merchantId)
+  })
+
+  it('does not pass raw bot and Telegram chat identifiers to merchant updates', async () => {
+    await request(app.getHttpServer())
+      .put('/v1/sys/merchants/00000000-0000-4000-8000-000000000020')
+      .send({
+        tenantId: '00000000-0000-4000-8000-000000000010',
+        botCode: 'PAYMENT_MAIN',
+        chatId: '-1001234567890',
+      })
+      .expect(200)
+
+    expect(merchants.update).toHaveBeenCalledWith(
+      'tenant-1',
+      '00000000-0000-4000-8000-000000000020',
+      {},
+    )
   })
 
   it('lists the payment catalog, tenant accounts and merchant plans', async () => {

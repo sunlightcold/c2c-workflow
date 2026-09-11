@@ -7,6 +7,8 @@ import {
   PaymentPlatformEntity,
   TenantEntity,
   MerchantPlatformCredentialEntity,
+  TelegramBotEntity,
+  TelegramGroupEntity,
 } from '@admin/database'
 import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
@@ -30,6 +32,8 @@ import { C2cPlatformModule } from '../c2c-platform'
       PaymentAccountChannelEntity,
       MerchantPaymentPlanEntity,
       MerchantPlatformCredentialEntity,
+      TelegramBotEntity,
+      TelegramGroupEntity,
     ]),
   ],
   controllers: [BusinessController],

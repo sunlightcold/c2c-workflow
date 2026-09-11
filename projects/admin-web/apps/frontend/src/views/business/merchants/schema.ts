@@ -16,14 +16,30 @@ import {
 type Platform = 'BINANCE' | 'OKX';
 type SelectOption = { label: string; value: string };
 
+export const DEFAULT_ORDER_CREATED_CHAT_MESSAGE = `您好，请确认本订单由您本人自主发起，所出售 USDT 为本人合法持有。
+
+⚠️ 请使用您本人实名收款账户，原则上不接受亲友、公司、员工、客户或其他第三方账户代收。如需更换收款方式，请先联系本商家沟通确认。
+
+同时请确认不存在代他人卖币、第三方代收或受他人委托变现等情况。如有任何信息不符或异常，请暂停交易并及时告知我们，感谢您的配合 🤝`;
+
+export const DEFAULT_ORDER_PAID_CHAT_MESSAGE = `您好，我方已完成付款 ✅
+
+请您登录核实收款账户实际到账情况，确认款项无误后，请及时释放 USDT。
+
+感谢您的配合，祝交易顺利 🤝`;
+
+export const DEFAULT_ORDER_COMPLETED_CHAT_MESSAGE = `感谢您的信任与配合 ❤️ 本次交易已顺利完成！
+
+如果这次交易体验让您满意，期待您给我们一个好评 ⭐️ 并关注本商家～
+
+您的每一次认可都是我们持续做好服务的动力，期待下次还能继续为您服务 🤝`;
+
 const required = (message: string) => [
   { message, required: true, trigger: 'blur' },
 ];
 const binanceFields = ['apiKey', 'secretKey', 'clientType', 'xUserId'];
 const okxFields = ['authorization', 'sessionCookie'];
 const automationFields = [
-  'botCode',
-  'chatId',
   'c2cChatOrderCreatedEnabled',
   'c2cChatOrderCreatedMessage',
   'c2cChatOrderPaidEnabled',
@@ -39,11 +55,15 @@ function textRule(
   title: string,
   requiredMessage?: string,
 ): Rule {
+  const textarea = title === '备注';
   return {
     field,
-    props: { maxlength: title === '备注' ? 500 : 128 },
+    props: {
+      maxlength: textarea ? 500 : 128,
+      ...(textarea ? { rows: 3, type: 'textarea' } : {}),
+    },
     title,
-    type: title === '备注' ? 'textarea' : 'input',
+    type: 'input',
     validate: requiredMessage ? required(requiredMessage) : undefined,
     value: '',
   };
@@ -77,8 +97,11 @@ function secretRule(field: string, title: string): Rule {
   };
 }
 
-function settings(platform?: Platform): Rule[] {
-  const hideAutomation = platform !== 'BINANCE';
+function settings(
+  platform?: Platform,
+  telegramGroupOptions?: SelectOption[],
+): Rule[] {
+  const hideAutomation = !platform;
   return [
     textRule('name', '账号名称', '请输入账号名称'),
     textRule('externalMerchantId', '平台商家编号', '请输入平台商家编号'),
@@ -121,8 +144,28 @@ function settings(platform?: Platform): Rule[] {
       60_000,
       100,
     ),
-    { ...textRule('botCode', '支付机器人编码'), hidden: hideAutomation },
-    { ...textRule('chatId', 'Telegram 群组 ID'), hidden: hideAutomation },
+    ...(telegramGroupOptions
+      ? [
+          {
+            field: 'telegramGroupId',
+            hidden: hideAutomation,
+            options: telegramGroupOptions,
+            props: {
+              allowClear: true,
+              disabled: telegramGroupOptions.length === 0,
+              optionFilterProp: 'label',
+              placeholder:
+                telegramGroupOptions.length === 0
+                  ? '暂无可绑定群组'
+                  : '请选择机器人群组',
+              showSearch: true,
+            },
+            title: '机器人群组',
+            type: 'select',
+            value: '',
+          } satisfies Rule,
+        ]
+      : []),
     {
       field: 'c2cChatOrderCreatedEnabled',
       hidden: hideAutomation,
@@ -133,9 +176,9 @@ function settings(platform?: Platform): Rule[] {
     {
       ...textRule('c2cChatOrderCreatedMessage', '下单后消息'),
       hidden: hideAutomation,
-      props: { maxlength: 500, rows: 3, showCount: true },
-      type: 'textarea',
-      value: '您好，请确认订单由您本人发起，并使用本人实名收款账户。',
+      props: { maxlength: 500, rows: 3, showCount: true, type: 'textarea' },
+      type: 'input',
+      value: DEFAULT_ORDER_CREATED_CHAT_MESSAGE,
     },
     {
       field: 'c2cChatOrderPaidEnabled',
@@ -147,9 +190,9 @@ function settings(platform?: Platform): Rule[] {
     {
       ...textRule('c2cChatOrderPaidMessage', '付款后消息'),
       hidden: hideAutomation,
-      props: { maxlength: 500, rows: 3, showCount: true },
-      type: 'textarea',
-      value: '您好，我方已完成付款，请核实到账后及时放币。',
+      props: { maxlength: 500, rows: 3, showCount: true, type: 'textarea' },
+      type: 'input',
+      value: DEFAULT_ORDER_PAID_CHAT_MESSAGE,
     },
     {
       field: 'c2cChatOrderCompletedEnabled',
@@ -161,9 +204,9 @@ function settings(platform?: Platform): Rule[] {
     {
       ...textRule('c2cChatOrderCompletedMessage', '完成后消息'),
       hidden: hideAutomation,
-      props: { maxlength: 500, rows: 3, showCount: true },
-      type: 'textarea',
-      value: '感谢您的配合，本次交易已顺利完成。',
+      props: { maxlength: 500, rows: 3, showCount: true, type: 'textarea' },
+      type: 'input',
+      value: DEFAULT_ORDER_COMPLETED_CHAT_MESSAGE,
     },
     {
       field: 'autoAppealEnabled',
@@ -205,15 +248,18 @@ export function createMerchantAccountModalOptions(
             update: (value, _rule, api, { origin }) => {
               if (origin !== 'change') return;
               const isBinance = value === 'BINANCE';
+              const isOkx = value === 'OKX';
               api.hidden(!isBinance, binanceFields);
-              api.hidden(isBinance, okxFields);
-              api.hidden(!isBinance, automationFields);
-              api.setValue(
-                'apiBaseUrl',
-                isBinance ? 'https://api.binance.com' : 'https://www.okx.com',
-              );
-              api.setValue('paidConfirmIntervalMinMs', isBinance ? 0 : 2000);
-              api.setValue('paidConfirmIntervalMaxMs', isBinance ? 0 : 3000);
+              api.hidden(!isOkx, okxFields);
+              api.hidden(!isBinance && !isOkx, automationFields);
+              if (isBinance || isOkx) {
+                api.setValue(
+                  'apiBaseUrl',
+                  isBinance ? 'https://api.binance.com' : 'https://www.okx.com',
+                );
+                api.setValue('paidConfirmIntervalMinMs', isBinance ? 0 : 2000);
+                api.setValue('paidConfirmIntervalMaxMs', isBinance ? 0 : 3000);
+              }
             },
             validate: required('请选择交易平台'),
             value: platform ?? '',
@@ -249,12 +295,13 @@ export function createMerchantAccountModalOptions(
 
 export function editMerchantAccountModalOptions(
   platform: Platform,
+  telegramGroupOptions: SelectOption[] = [],
 ): FormModalOptions {
   return {
     props: businessModalProps('编辑商家账号'),
     formProps: {
       option: businessFormOption,
-      rule: layoutBusinessFormRules(settings(platform), [
+      rule: layoutBusinessFormRules(settings(platform, telegramGroupOptions), [
         'apiBaseUrl',
         'c2cChatOrderCompletedMessage',
         'c2cChatOrderCreatedMessage',

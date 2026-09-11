@@ -163,18 +163,6 @@ export class CreateMerchantDto extends TenantContextDto {
   @Max(60000)
   paidConfirmIntervalMaxMs?: number
 
-  @ApiPropertyOptional({ description: '支付机器人编码' })
-  @Transform(upper)
-  @IsOptional()
-  @Matches(/^[A-Z][A-Z0-9_]{1,63}$/)
-  botCode?: string
-
-  @ApiPropertyOptional({ description: 'Telegram 群组 ID' })
-  @Transform(trim)
-  @IsOptional()
-  @Matches(/^-\d+$/)
-  chatId?: string
-
   @ApiPropertyOptional({ default: false })
   @IsOptional()
   @IsBoolean()
@@ -240,7 +228,16 @@ export class UpdateMerchantDto extends PartialType(
     'sessionCookie',
     'authorization',
   ] as const),
-) {}
+) {
+  @ApiPropertyOptional({
+    description: '该商家账号已完成绑定的机器人群组；传 null 解除绑定',
+    format: 'uuid',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsUUID()
+  telegramGroupId?: string | null
+}
 
 export class MerchantListDto extends TenantContextDto {
   @ApiPropertyOptional()

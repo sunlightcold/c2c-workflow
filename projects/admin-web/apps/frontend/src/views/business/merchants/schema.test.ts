@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   createMerchantAccountModalOptions,
   createPaymentPlanModalOptions,
+  DEFAULT_ORDER_COMPLETED_CHAT_MESSAGE,
+  DEFAULT_ORDER_CREATED_CHAT_MESSAGE,
+  DEFAULT_ORDER_PAID_CHAT_MESSAGE,
   editMerchantAccountModalOptions,
   editPaymentPlanModalOptions,
   rotateMerchantCredentialModalOptions,
@@ -37,13 +40,79 @@ describe('merchant account form schemas', () => {
         'secretKey',
         'pageSize',
         'overlapSeconds',
-        'botCode',
         'autoAppealEnabled',
       ]),
     );
+    expect(names).not.toEqual(expect.arrayContaining(['botCode', 'chatId']));
     expect(names).not.toEqual(
       expect.arrayContaining(['code', 'currency', 'timezone', 'riskLevel']),
     );
+  });
+
+  it('uses the complete pfa-pay chat messages as form defaults', () => {
+    const rules = createMerchantAccountModalOptions('BINANCE').formProps?.rule;
+    const createdMessage = rules?.find(
+      ({ field }) => field === 'c2cChatOrderCreatedMessage',
+    );
+
+    expect(createdMessage?.value).toBe(DEFAULT_ORDER_CREATED_CHAT_MESSAGE);
+    expect(createdMessage).toMatchObject({
+      props: { type: 'textarea' },
+      type: 'input',
+    });
+    expect(
+      rules?.find(({ field }) => field === 'c2cChatOrderPaidMessage')?.value,
+    ).toBe(DEFAULT_ORDER_PAID_CHAT_MESSAGE);
+    expect(
+      rules?.find(({ field }) => field === 'c2cChatOrderCompletedMessage')
+        ?.value,
+    ).toBe(DEFAULT_ORDER_COMPLETED_CHAT_MESSAGE);
+    expect(DEFAULT_ORDER_CREATED_CHAT_MESSAGE).toContain(
+      '原则上不接受亲友、公司、员工、客户或其他第三方账户代收',
+    );
+    expect(DEFAULT_ORDER_PAID_CHAT_MESSAGE).toContain(
+      '请您登录核实收款账户实际到账情况',
+    );
+    expect(DEFAULT_ORDER_COMPLETED_CHAT_MESSAGE).toContain(
+      '您的每一次认可都是我们持续做好服务的动力',
+    );
+  });
+
+  it('binds an existing merchant account through a searchable group selector', () => {
+    const groupOptions = [
+      { label: '总部支付群 · 总部支付机器人', value: 'group-1' },
+    ];
+    const rules = editMerchantAccountModalOptions('BINANCE', groupOptions)
+      .formProps?.rule;
+    const group = rules?.find(({ field }) => field === 'telegramGroupId');
+
+    expect(rules?.map(({ field }) => field)).not.toEqual(
+      expect.arrayContaining(['botCode', 'chatId']),
+    );
+    expect(group).toMatchObject({
+      options: groupOptions,
+      title: '机器人群组',
+      type: 'select',
+    });
+    expect(group?.props).toMatchObject({
+      allowClear: true,
+      optionFilterProp: 'label',
+      showSearch: true,
+    });
+  });
+
+  it('supports robot groups and chat messages for OKX merchant accounts', () => {
+    const rules = editMerchantAccountModalOptions('OKX', [
+      { label: '欧易支付群 · 支付机器人', value: 'group-okx' },
+    ]).formProps?.rule;
+
+    expect(
+      rules?.find(({ field }) => field === 'telegramGroupId')?.hidden,
+    ).toBe(false);
+    expect(
+      rules?.find(({ field }) => field === 'c2cChatOrderCreatedMessage')
+        ?.hidden,
+    ).toBe(false);
   });
 
   it('does not preselect a platform for a new merchant account', () => {

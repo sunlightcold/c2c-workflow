@@ -1,4 +1,14 @@
-import { MerchantEntity, MerchantPlatform } from '@admin/database'
+import {
+  BusinessStatus,
+  MerchantEntity,
+  MerchantPlatform,
+  MerchantPlatformCredentialEntity,
+  PaymentSourceType,
+  TelegramBotEntity,
+  TelegramBotType,
+  TelegramGroupBindingState,
+  TelegramGroupEntity,
+} from '@admin/database'
 import { BadRequestException } from '@nestjs/common'
 import { MerchantService } from './merchant.service'
 
@@ -10,17 +20,25 @@ describe('MerchantService', () => {
   const cipher = { encrypt: jest.fn().mockReturnValue('encrypted-value') }
   const merchantTxRepository = {
     create: jest.fn((value) => value),
+    findOne: jest.fn(),
     save: jest.fn(async (value) => ({ id: merchantId, ...value })),
   }
   const credentialTxRepository = {
     create: jest.fn((value) => value),
     save: jest.fn(async (value) => ({ id: 'credential-1', ...value })),
   }
+  const groupTxRepository = { findOne: jest.fn() }
+  const botTxRepository = { findOne: jest.fn() }
   const dataSource = {
     transaction: jest.fn((work) =>
       work({
-        getRepository: (entity: unknown) =>
-          entity === MerchantEntity ? merchantTxRepository : credentialTxRepository,
+        getRepository: (entity: unknown) => {
+          if (entity === MerchantEntity) return merchantTxRepository
+          if (entity === MerchantPlatformCredentialEntity) return credentialTxRepository
+          if (entity === TelegramGroupEntity) return groupTxRepository
+          if (entity === TelegramBotEntity) return botTxRepository
+          throw new Error('Unexpected repository')
+        },
       }),
     ),
   }
@@ -67,6 +85,16 @@ describe('MerchantService', () => {
     const saved = credentialTxRepository.save.mock.calls[0][0]
     expect(JSON.stringify(saved)).not.toContain('binance-api-key')
     expect(JSON.stringify(saved)).not.toContain('binance-secret-key')
+    expect(merchantTxRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        c2cChatOrderCreatedMessage: expect.stringContaining(
+          '原则上不接受亲友、公司、员工、客户或其他第三方账户代收',
+        ),
+        c2cChatOrderPaidMessage: expect.stringContaining('请您登录核实收款账户实际到账情况'),
+        c2cChatOrderCompletedMessage:
+          expect.stringContaining('您的每一次认可都是我们持续做好服务的动力'),
+      }),
+    )
   })
 
   it('rejects credentials that do not match the selected platform', async () => {
@@ -91,6 +119,64 @@ describe('MerchantService', () => {
     await expect(service.update(tenantId, merchantId, maliciousInput)).rejects.toBeInstanceOf(
       BadRequestException,
     )
+  })
+
+  it('binds a merchant only to its active C2C payment bot group', async () => {
+    merchantTxRepository.findOne.mockResolvedValue({
+      id: merchantId,
+      tenantId,
+      paidConfirmIntervalMinMs: 0,
+      paidConfirmIntervalMaxMs: 0,
+    })
+    groupTxRepository.findOne.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000030',
+      tenantId,
+      merchantId,
+      botId: '00000000-0000-4000-8000-000000000040',
+      chatId: '-1001234567890',
+      bindingState: TelegramGroupBindingState.ACTIVE,
+      paymentScene: PaymentSourceType.C2C_BUY,
+    })
+    botTxRepository.findOne.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000040',
+      tenantId,
+      code: 'PAYMENT_BOT',
+      botType: TelegramBotType.PAYMENT,
+      status: BusinessStatus.ACTIVE,
+    })
+
+    await service.update(tenantId, merchantId, {
+      telegramGroupId: '00000000-0000-4000-8000-000000000030',
+    })
+
+    expect(groupTxRepository.findOne).toHaveBeenCalledWith({
+      where: {
+        id: '00000000-0000-4000-8000-000000000030',
+        tenantId,
+        merchantId,
+        bindingState: TelegramGroupBindingState.ACTIVE,
+        paymentScene: PaymentSourceType.C2C_BUY,
+      },
+    })
+    expect(merchantTxRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({ botCode: 'PAYMENT_BOT', chatId: '-1001234567890' }),
+    )
+  })
+
+  it('rejects a group that is not an active C2C group of the merchant', async () => {
+    merchantTxRepository.findOne.mockResolvedValue({
+      id: merchantId,
+      tenantId,
+      paidConfirmIntervalMinMs: 0,
+      paidConfirmIntervalMaxMs: 0,
+    })
+    groupTxRepository.findOne.mockResolvedValue(null)
+
+    await expect(
+      service.update(tenantId, merchantId, {
+        telegramGroupId: '00000000-0000-4000-8000-000000000031',
+      }),
+    ).rejects.toThrow('机器人群组未绑定到该商家账号')
   })
 
   it('lists only accounts from the selected tenant and marks configured credentials', async () => {

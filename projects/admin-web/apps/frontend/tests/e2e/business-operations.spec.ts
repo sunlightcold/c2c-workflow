@@ -70,6 +70,7 @@ const permissions = [
   'merchant:account:read',
   'merchant:account:create',
   'merchant:account:credential',
+  'merchant:account:update',
   'merchant:order:read',
   'merchant:order:sync',
   'payment:account:read',
@@ -346,10 +347,30 @@ test.beforeEach(async ({ page }) => {
         data = {
           items: [
             {
-              accountCode: 'BINANCE_MAIN',
+              apiBaseUrl: 'https://api.binance.com',
+              autoAppealDelayMinutes: 18,
+              autoAppealEnabled: false,
+              botCode: null,
+              c2cChatOrderCompletedEnabled: false,
+              c2cChatOrderCompletedMessage: null,
+              c2cChatOrderCreatedEnabled: false,
+              c2cChatOrderCreatedMessage: null,
+              c2cChatOrderPaidEnabled: false,
+              c2cChatOrderPaidMessage: null,
+              chatId: null,
+              code: 'BINANCE_MAIN',
+              credentialConfigured: true,
+              description: null,
+              externalMerchantId: 'binance-merchant-main',
               id: '00000000-0000-4000-8000-000000000020',
               name: '币安主账号',
+              orderStatusList: [1],
+              overlapSeconds: 120,
+              pageSize: 20,
+              paidConfirmIntervalMaxMs: 0,
+              paidConfirmIntervalMinMs: 0,
               platform: 'BINANCE',
+              requestTimeoutMs: 15_000,
               status: 'active',
               tenantId,
             },
@@ -497,10 +518,26 @@ test.beforeEach(async ({ page }) => {
               updatedAt: '2026-09-10T08:00:00.000Z',
               verifiedAt: null,
             },
+            {
+              bindingState: 'ACTIVE',
+              botId: '00000000-0000-4000-8000-000000000201',
+              capabilities: ['C2C_ORDER_PAYMENT'],
+              chatId: '-1001234567890',
+              chatType: 'supergroup',
+              createdAt: '2026-09-10T08:00:00.000Z',
+              id: '00000000-0000-4000-8000-000000000205',
+              merchantId: '00000000-0000-4000-8000-000000000020',
+              name: '总部 C2C 支付群',
+              notificationsEnabled: true,
+              paymentScene: 'C2C_BUY',
+              tenantId,
+              updatedAt: '2026-09-10T08:00:00.000Z',
+              verifiedAt: '2026-09-10T08:05:00.000Z',
+            },
           ],
           page: 1,
           pageSize: 20,
-          total: 1,
+          total: 2,
         };
         break;
       }
@@ -837,6 +874,59 @@ test('manages payment plans inside the merchant configuration drawer', async ({
   await expect(planTable.getByText('总部支付宝主账号')).toHaveCount(0);
 });
 
+test('selects a bound robot group and restores default merchant chat messages', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/business/merchants');
+  await selectHeadquartersTenant(page);
+  await page.getByRole('button', { name: /搜\s*索/ }).click();
+  await page.getByRole('button', { name: /编\s*辑/ }).click();
+
+  const dialog = page.getByRole('dialog', { name: '编辑商家账号' });
+  await expect(dialog.getByText('支付机器人编码', { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(
+    dialog.getByText('Telegram 群组 ID', { exact: true }),
+  ).toHaveCount(0);
+  await expect(dialog.getByRole('textbox', { name: /下单后消息/ })).toHaveValue(
+    /原则上不接受亲友、公司、员工、客户或其他第三方账户代收/,
+  );
+  await expect(dialog.getByRole('textbox', { name: /付款后消息/ })).toHaveValue(
+    /请您登录核实收款账户实际到账情况/,
+  );
+  await expect(dialog.getByRole('textbox', { name: /完成后消息/ })).toHaveValue(
+    /您的每一次认可都是我们持续做好服务的动力/,
+  );
+
+  const groupCombobox = dialog.getByRole('combobox', { name: /机器人群组/ });
+  await groupCombobox.press('ArrowDown');
+  await page
+    .getByText('总部 C2C 支付群 · 总部支付机器人', { exact: true })
+    .click();
+  await expect(page.locator('.ant-select-dropdown:visible')).toHaveCount(0);
+  await page.screenshot({
+    fullPage: true,
+    path: `node_modules/.e2e/screenshots/merchant-robot-group-${testInfo.project.name}.png`,
+  });
+  const requestPromise = page.waitForRequest(
+    (request) =>
+      request.method() === 'PUT' &&
+      request
+        .url()
+        .includes('/v1/sys/merchants/00000000-0000-4000-8000-000000000020'),
+  );
+  await dialog.getByRole('button', { name: /确\s*定/ }).click();
+  const request = await requestPromise;
+
+  expect(request.postDataJSON()).toMatchObject({
+    telegramGroupId: '00000000-0000-4000-8000-000000000205',
+    tenantId,
+  });
+  expect(request.postDataJSON()).not.toHaveProperty('botCode');
+  expect(request.postDataJSON()).not.toHaveProperty('chatId');
+});
+
 test('provides complete Telegram administration actions', async ({ page }) => {
   const assertions = [
     {
@@ -874,7 +964,10 @@ test('provides complete Telegram administration actions', async ({ page }) => {
     await expect(
       page.getByRole('button', { name: assertion.create }),
     ).toBeEnabled();
-    await page.getByRole('button', { name: /编\s*辑/ }).click();
+    await page
+      .getByRole('button', { name: /编\s*辑/ })
+      .first()
+      .click();
     await expect(
       page.getByRole('dialog', { name: assertion.editDialog }),
     ).toBeVisible();
@@ -893,7 +986,9 @@ test('provides complete Telegram administration actions', async ({ page }) => {
   await page.goto('/business/telegram-groups');
   await selectHeadquartersTenant(page);
   await expect(page.getByRole('button', { name: /审\s*批/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /解\s*绑/ })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /解\s*绑/ }).first(),
+  ).toBeVisible();
 
   await page.goto('/business/telegram-members');
   await selectHeadquartersTenant(page);

@@ -4,6 +4,11 @@ import {
   MerchantOrderEntity,
   MerchantPlatform,
   MerchantPlatformCredentialEntity,
+  PaymentSourceType,
+  TelegramBotEntity,
+  TelegramBotType,
+  TelegramGroupBindingState,
+  TelegramGroupEntity,
 } from '@admin/database'
 import {
   BadRequestException,
@@ -12,9 +17,14 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { DataSource, ILike, Repository } from 'typeorm'
+import { DataSource, EntityManager, ILike, Repository } from 'typeorm'
 import { CredentialCipherService } from '../system/credential/credential-cipher.service'
 import { BusinessNoPrefix, IdUtils } from '@/common/utils/id'
+import {
+  DEFAULT_ORDER_COMPLETED_CHAT_MESSAGE,
+  DEFAULT_ORDER_CREATED_CHAT_MESSAGE,
+  DEFAULT_ORDER_PAID_CHAT_MESSAGE,
+} from './merchant-chat-message.constants'
 
 export interface CreateMerchantInput {
   name: string
@@ -34,8 +44,6 @@ export interface CreateMerchantInput {
   requestTimeoutMs?: number
   paidConfirmIntervalMinMs?: number
   paidConfirmIntervalMaxMs?: number
-  botCode?: string
-  chatId?: string
   c2cChatOrderCreatedEnabled?: boolean
   c2cChatOrderCreatedMessage?: string
   c2cChatOrderPaidEnabled?: boolean
@@ -62,7 +70,7 @@ type UpdateMerchantInput = Partial<
     CreateMerchantInput,
     'apiKey' | 'authMode' | 'authorization' | 'platform' | 'secretKey' | 'sessionCookie'
   >
->
+> & { telegramGroupId?: string | null }
 
 @Injectable()
 export class MerchantService {
@@ -100,7 +108,7 @@ export class MerchantService {
     const byMerchant = new Map(credentials.map((credential) => [credential.merchantId, credential]))
     return {
       items: items.map((item) => ({
-        ...item,
+        ...this.withDefaultChatMessages(item),
         authMode: byMerchant.get(item.id)?.authMode ?? null,
         credentialConfigured: byMerchant.has(item.id),
       })),
@@ -137,14 +145,17 @@ export class MerchantService {
           requestTimeoutMs,
           paidConfirmIntervalMinMs: this.valueOr(input.paidConfirmIntervalMinMs, 0),
           paidConfirmIntervalMaxMs: this.valueOr(input.paidConfirmIntervalMaxMs, 0),
-          botCode: this.valueOr(input.botCode, null),
-          chatId: this.valueOr(input.chatId, null),
+          botCode: null,
+          chatId: null,
           c2cChatOrderCreatedEnabled: this.valueOr(input.c2cChatOrderCreatedEnabled, false),
-          c2cChatOrderCreatedMessage: this.valueOr(input.c2cChatOrderCreatedMessage, null),
+          c2cChatOrderCreatedMessage:
+            input.c2cChatOrderCreatedMessage?.trim() || DEFAULT_ORDER_CREATED_CHAT_MESSAGE,
           c2cChatOrderPaidEnabled: this.valueOr(input.c2cChatOrderPaidEnabled, false),
-          c2cChatOrderPaidMessage: this.valueOr(input.c2cChatOrderPaidMessage, null),
+          c2cChatOrderPaidMessage:
+            input.c2cChatOrderPaidMessage?.trim() || DEFAULT_ORDER_PAID_CHAT_MESSAGE,
           c2cChatOrderCompletedEnabled: this.valueOr(input.c2cChatOrderCompletedEnabled, false),
-          c2cChatOrderCompletedMessage: this.valueOr(input.c2cChatOrderCompletedMessage, null),
+          c2cChatOrderCompletedMessage:
+            input.c2cChatOrderCompletedMessage?.trim() || DEFAULT_ORDER_COMPLETED_CHAT_MESSAGE,
           autoAppealEnabled: this.valueOr(input.autoAppealEnabled, false),
           autoAppealDelayMinutes: this.valueOr(input.autoAppealDelayMinutes, 18),
           description: this.valueOr(input.description, null),
@@ -191,8 +202,6 @@ export class MerchantService {
         'orderStatusList',
         'paidConfirmIntervalMinMs',
         'paidConfirmIntervalMaxMs',
-        'botCode',
-        'chatId',
         'c2cChatOrderCreatedEnabled',
         'c2cChatOrderCreatedMessage',
         'c2cChatOrderPaidEnabled',
@@ -206,6 +215,9 @@ export class MerchantService {
       for (const key of editable) {
         if (input[key] !== undefined)
           (merchant as unknown as Record<string, unknown>)[key] = input[key]
+      }
+      if ('telegramGroupId' in input) {
+        await this.applyTelegramGroup(manager, merchant, input.telegramGroupId)
       }
       if (input.apiBaseUrl !== undefined)
         merchant.apiBaseUrl = this.normalizeBaseUrl(input.apiBaseUrl)
@@ -296,6 +308,52 @@ export class MerchantService {
 
   private validatePaidInterval(minimum: number, maximum: number): void {
     if (minimum > maximum) throw new BadRequestException('付款确认最小间隔不能大于最大间隔')
+  }
+
+  private async applyTelegramGroup(
+    manager: EntityManager,
+    merchant: MerchantEntity,
+    telegramGroupId: string | null | undefined,
+  ): Promise<void> {
+    if (!telegramGroupId) {
+      merchant.botCode = null
+      merchant.chatId = null
+      return
+    }
+    const group = await manager.getRepository(TelegramGroupEntity).findOne({
+      where: {
+        id: telegramGroupId,
+        tenantId: merchant.tenantId,
+        merchantId: merchant.id,
+        bindingState: TelegramGroupBindingState.ACTIVE,
+        paymentScene: PaymentSourceType.C2C_BUY,
+      },
+    })
+    if (!group?.chatId) {
+      throw new BadRequestException('机器人群组未绑定到该商家账号')
+    }
+    const bot = await manager.getRepository(TelegramBotEntity).findOne({
+      where: {
+        id: group.botId,
+        tenantId: merchant.tenantId,
+        botType: TelegramBotType.PAYMENT,
+        status: BusinessStatus.ACTIVE,
+      },
+    })
+    if (!bot) throw new BadRequestException('机器人群组未绑定有效的支付机器人')
+    merchant.botCode = bot.code
+    merchant.chatId = group.chatId
+  }
+
+  private withDefaultChatMessages(merchant: MerchantEntity) {
+    return {
+      ...merchant,
+      c2cChatOrderCreatedMessage:
+        merchant.c2cChatOrderCreatedMessage || DEFAULT_ORDER_CREATED_CHAT_MESSAGE,
+      c2cChatOrderPaidMessage: merchant.c2cChatOrderPaidMessage || DEFAULT_ORDER_PAID_CHAT_MESSAGE,
+      c2cChatOrderCompletedMessage:
+        merchant.c2cChatOrderCompletedMessage || DEFAULT_ORDER_COMPLETED_CHAT_MESSAGE,
+    }
   }
 
   private valueOr<T, F>(value: T | undefined, fallback: F): T | F {
