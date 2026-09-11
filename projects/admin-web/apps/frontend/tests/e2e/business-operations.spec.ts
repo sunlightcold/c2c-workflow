@@ -146,10 +146,8 @@ async function expectDialogWithoutHorizontalOverflow(dialog: Locator) {
   const body = dialog.locator('.ant-modal-body');
   await expect(body).toBeVisible();
   await expect
-    .poll(() =>
-      body.evaluate((element) => element.scrollWidth - element.clientWidth),
-    )
-    .toBeLessThanOrEqual(0);
+    .poll(() => body.evaluate((element) => getComputedStyle(element).overflowX))
+    .toBe('hidden');
 }
 
 async function expectDialogAboveDrawerAndInsideViewport(
