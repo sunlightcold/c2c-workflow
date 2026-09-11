@@ -23,6 +23,11 @@ import {
   useResourceGrid,
 } from '#/hooks';
 
+import {
+  businessFormOption,
+  businessModalProps,
+  layoutBusinessFormRules,
+} from '../shared/business-form-layout';
 import { createEmptyBusinessPage } from '../shared/business-grid';
 import {
   businessStatusColor,
@@ -278,10 +283,10 @@ function memberRules(editing = false) {
 function memberModalOptions(title: string, editing = false) {
   return {
     formProps: {
-      option: { form: { layout: 'vertical' as const }, submitBtn: false },
-      rule: memberRules(editing),
+      option: businessFormOption,
+      rule: layoutBusinessFormRules(memberRules(editing), ['capabilities']),
     },
-    props: { centered: true, title, width: 640 },
+    props: businessModalProps(title),
   };
 }
 

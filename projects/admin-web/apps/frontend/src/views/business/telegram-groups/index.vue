@@ -25,6 +25,11 @@ import {
   useResourceGrid,
 } from '#/hooks';
 
+import {
+  businessFormOption,
+  businessModalProps,
+  layoutBusinessFormRules,
+} from '../shared/business-form-layout';
 import { createEmptyBusinessPage } from '../shared/business-grid';
 import { businessEnumText, businessStateColor } from '../shared/business-ui';
 import {
@@ -278,10 +283,13 @@ function groupRules() {
 function groupModalOptions(title: string) {
   return {
     formProps: {
-      option: { form: { layout: 'vertical' as const }, submitBtn: false },
-      rule: groupRules(),
+      option: businessFormOption,
+      rule: layoutBusinessFormRules(groupRules(), [
+        'capabilities',
+        'description',
+      ]),
     },
-    props: { centered: true, title, width: 680 },
+    props: businessModalProps(title),
   };
 }
 
@@ -353,31 +361,34 @@ function approve(row: BusinessApi.TelegramGroup) {
   formModalShow(
     {
       formProps: {
-        option: { form: { layout: 'vertical' as const }, submitBtn: false },
-        rule: [
-          {
-            field: 'chatId',
-            props: { placeholder: '例如 -1001234567890' },
-            title: 'Telegram Chat ID',
-            type: 'input',
-            validate: [
-              { message: '请输入 Chat ID', required: true, trigger: 'blur' },
-            ],
-          },
-          { field: 'chatName', title: 'Telegram 群名', type: 'input' },
-          {
-            field: 'chatType',
-            options: [
-              { label: '超级群组', value: 'supergroup' },
-              { label: '普通群组', value: 'group' },
-            ],
-            title: '群类型',
-            type: 'radio',
-            value: 'supergroup',
-          },
-        ],
+        option: businessFormOption,
+        rule: layoutBusinessFormRules(
+          [
+            {
+              field: 'chatId',
+              props: { placeholder: '例如 -1001234567890' },
+              title: 'Telegram Chat ID',
+              type: 'input',
+              validate: [
+                { message: '请输入 Chat ID', required: true, trigger: 'blur' },
+              ],
+            },
+            { field: 'chatName', title: 'Telegram 群名', type: 'input' },
+            {
+              field: 'chatType',
+              options: [
+                { label: '超级群组', value: 'supergroup' },
+                { label: '普通群组', value: 'group' },
+              ],
+              title: '群类型',
+              type: 'radio',
+              value: 'supergroup',
+            },
+          ],
+          ['chatId'],
+        ),
       },
-      props: { centered: true, title: '审批群组绑定', width: 520 },
+      props: businessModalProps('审批群组绑定', 680),
     },
     {
       onOk: async (api) => {

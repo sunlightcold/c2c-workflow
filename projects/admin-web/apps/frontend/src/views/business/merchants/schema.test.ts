@@ -13,6 +13,21 @@ function fields(options: ReturnType<typeof createMerchantAccountModalOptions>) {
 }
 
 describe('merchant account form schemas', () => {
+  it('uses responsive columns while keeping long settings on full rows', () => {
+    const rules = createMerchantAccountModalOptions('BINANCE').formProps?.rule;
+
+    expect(rules?.find(({ field }) => field === 'name')?.col).toEqual({
+      md: 12,
+      xs: 24,
+    });
+    expect(rules?.find(({ field }) => field === 'apiBaseUrl')?.col).toEqual({
+      span: 24,
+    });
+    expect(
+      rules?.find(({ field }) => field === 'c2cChatOrderCreatedMessage')?.col,
+    ).toEqual({ span: 24 });
+  });
+
   it('collects credentials and operational settings without unrelated fields', () => {
     const names = fields(createMerchantAccountModalOptions('BINANCE'));
     expect(names).toEqual(

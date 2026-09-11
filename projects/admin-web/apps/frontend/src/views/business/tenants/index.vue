@@ -9,6 +9,11 @@ import { createTenantApi, getTenantsApi, setTenantStatusApi } from '#/api';
 import { runResourceAction, useFormModal, useResourceGrid } from '#/hooks';
 
 import {
+  businessFormOption,
+  businessModalProps,
+  layoutBusinessFormRules,
+} from '../shared/business-form-layout';
+import {
   businessStatusText,
   formatBusinessTime,
   toBusinessGridData,
@@ -52,25 +57,24 @@ const [Grid, gApi] = useResourceGrid({
 const { FormModalRender, formModalClose, formModalShow } = useFormModal();
 
 const createModalOptions: FormModalOptions = {
-  props: { centered: true, title: '新增代理商' },
+  props: businessModalProps('新增代理商', 520),
   formProps: {
-    option: {
-      appendValue: false,
-      form: { layout: 'vertical' },
-      submitBtn: false,
-    },
-    rule: [
-      {
-        field: 'name',
-        props: { maxlength: 100, placeholder: '请输入代理商名称' },
-        title: '代理商名称',
-        type: 'input',
-        validate: [
-          { message: '请输入代理商名称', required: true, trigger: 'blur' },
-        ],
-        value: '',
-      },
-    ],
+    option: businessFormOption,
+    rule: layoutBusinessFormRules(
+      [
+        {
+          field: 'name',
+          props: { maxlength: 100, placeholder: '请输入代理商名称' },
+          title: '代理商名称',
+          type: 'input',
+          validate: [
+            { message: '请输入代理商名称', required: true, trigger: 'blur' },
+          ],
+          value: '',
+        },
+      ],
+      ['name'],
+    ),
   },
 };
 

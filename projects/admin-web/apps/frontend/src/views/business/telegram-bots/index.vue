@@ -21,6 +21,11 @@ import {
   useResourceGrid,
 } from '#/hooks';
 
+import {
+  businessFormOption,
+  businessModalProps,
+  layoutBusinessFormRules,
+} from '../shared/business-form-layout';
 import { createEmptyBusinessPage } from '../shared/business-grid';
 import {
   businessStatusColor,
@@ -220,10 +225,16 @@ function botFormRules(editing = false) {
 function botModalOptions(title: string, editing = false) {
   return {
     formProps: {
-      option: { form: { layout: 'vertical' as const }, submitBtn: false },
-      rule: botFormRules(editing),
+      option: businessFormOption,
+      rule: layoutBusinessFormRules(botFormRules(editing), [
+        'capabilities',
+        'description',
+        'tokenRef',
+        'webhookSecretRef',
+        'webhookUrl',
+      ]),
     },
-    props: { centered: true, title, width: 680 },
+    props: businessModalProps(title),
   };
 }
 

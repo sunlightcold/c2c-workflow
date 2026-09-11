@@ -23,6 +23,11 @@ import {
   useResourceGrid,
 } from '#/hooks';
 
+import {
+  businessFormOption,
+  businessModalProps,
+  layoutBusinessFormRules,
+} from '../shared/business-form-layout';
 import { createEmptyBusinessPage } from '../shared/business-grid';
 import {
   businessStatusColor,
@@ -212,6 +217,7 @@ function superAdminRules(editing = false) {
         {
           rule: [
             {
+              col: { span: 24 },
               field: 'groupIds',
               props: {
                 mode: 'multiple',
@@ -247,10 +253,10 @@ function superAdminRules(editing = false) {
 function superAdminModalOptions(title: string, editing = false) {
   return {
     formProps: {
-      option: { form: { layout: 'vertical' as const }, submitBtn: false },
-      rule: superAdminRules(editing),
+      option: businessFormOption,
+      rule: layoutBusinessFormRules(superAdminRules(editing), ['scopeType']),
     },
-    props: { centered: true, title, width: 620 },
+    props: businessModalProps(title),
   };
 }
 

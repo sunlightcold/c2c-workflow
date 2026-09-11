@@ -3,6 +3,11 @@ import type { Rule } from '@form-create/ant-design-vue';
 import type { FormModalOptions } from '#/hooks';
 
 import {
+  businessFormOption,
+  businessModalProps,
+  layoutBusinessFormRules,
+} from '../shared/business-form-layout';
+import {
   merchantPlatformApiBaseUrl,
   merchantPlatformOptions,
 } from '../shared/business-ui';
@@ -10,11 +15,6 @@ import {
 type Platform = 'BINANCE' | 'OKX';
 type SelectOption = { label: string; value: string };
 
-const formOption = {
-  appendValue: false,
-  form: { layout: 'vertical' as const },
-  submitBtn: false,
-};
 const required = (message: string) => [
   { message, required: true, trigger: 'blur' },
 ];
@@ -191,43 +191,57 @@ export function createMerchantAccountModalOptions(
   const binance = platform === 'BINANCE';
   const okx = platform === 'OKX';
   return {
-    props: { centered: true, title: '新增商家账号', width: 760 },
+    props: businessModalProps('新增商家账号'),
     formProps: {
-      option: formOption,
-      rule: [
-        {
-          field: 'platform',
-          options: merchantPlatformOptions,
-          title: '交易平台',
-          type: 'select',
-          update: (value, _rule, api, { origin }) => {
-            if (origin !== 'change') return;
-            const isBinance = value === 'BINANCE';
-            api.hidden(!isBinance, binanceFields);
-            api.hidden(isBinance, okxFields);
-            api.hidden(!isBinance, automationFields);
-            api.setValue(
-              'apiBaseUrl',
-              isBinance ? 'https://api.binance.com' : 'https://www.okx.com',
-            );
-            api.setValue('paidConfirmIntervalMinMs', isBinance ? 0 : 2000);
-            api.setValue('paidConfirmIntervalMaxMs', isBinance ? 0 : 3000);
+      option: businessFormOption,
+      rule: layoutBusinessFormRules(
+        [
+          {
+            field: 'platform',
+            options: merchantPlatformOptions,
+            title: '交易平台',
+            type: 'select',
+            update: (value, _rule, api, { origin }) => {
+              if (origin !== 'change') return;
+              const isBinance = value === 'BINANCE';
+              api.hidden(!isBinance, binanceFields);
+              api.hidden(isBinance, okxFields);
+              api.hidden(!isBinance, automationFields);
+              api.setValue(
+                'apiBaseUrl',
+                isBinance ? 'https://api.binance.com' : 'https://www.okx.com',
+              );
+              api.setValue('paidConfirmIntervalMinMs', isBinance ? 0 : 2000);
+              api.setValue('paidConfirmIntervalMaxMs', isBinance ? 0 : 3000);
+            },
+            validate: required('请选择交易平台'),
+            value: platform ?? '',
           },
-          validate: required('请选择交易平台'),
-          value: platform ?? '',
-        },
-        { ...secretRule('apiKey', 'API Key'), hidden: !binance },
-        { ...secretRule('secretKey', 'Secret Key'), hidden: !binance },
-        {
-          ...textRule('clientType', '客户端类型'),
-          hidden: !binance,
-          value: 'WEB',
-        },
-        { ...textRule('xUserId', 'X-User-ID'), hidden: !binance },
-        { ...secretRule('authorization', 'Authorization'), hidden: !okx },
-        { ...secretRule('sessionCookie', 'Cookie'), hidden: !okx },
-        ...settings(platform),
-      ],
+          { ...secretRule('apiKey', 'API Key'), hidden: !binance },
+          { ...secretRule('secretKey', 'Secret Key'), hidden: !binance },
+          {
+            ...textRule('clientType', '客户端类型'),
+            hidden: !binance,
+            value: 'WEB',
+          },
+          { ...textRule('xUserId', 'X-User-ID'), hidden: !binance },
+          { ...secretRule('authorization', 'Authorization'), hidden: !okx },
+          { ...secretRule('sessionCookie', 'Cookie'), hidden: !okx },
+          ...settings(platform),
+        ],
+        [
+          'apiBaseUrl',
+          'apiKey',
+          'authorization',
+          'c2cChatOrderCompletedMessage',
+          'c2cChatOrderCreatedMessage',
+          'c2cChatOrderPaidMessage',
+          'description',
+          'orderStatusList',
+          'secretKey',
+          'sessionCookie',
+        ],
+      ),
     },
   };
 }
@@ -236,8 +250,18 @@ export function editMerchantAccountModalOptions(
   platform: Platform,
 ): FormModalOptions {
   return {
-    props: { centered: true, title: '编辑商家账号', width: 760 },
-    formProps: { option: formOption, rule: settings(platform) },
+    props: businessModalProps('编辑商家账号'),
+    formProps: {
+      option: businessFormOption,
+      rule: layoutBusinessFormRules(settings(platform), [
+        'apiBaseUrl',
+        'c2cChatOrderCompletedMessage',
+        'c2cChatOrderCreatedMessage',
+        'c2cChatOrderPaidMessage',
+        'description',
+        'orderStatusList',
+      ]),
+    },
   };
 }
 
@@ -257,20 +281,23 @@ export function rotateMerchantCredentialModalOptions(
           secretRule('sessionCookie', 'Cookie'),
         ];
   return {
-    props: { centered: true, title: '更新平台凭据', width: 620 },
+    props: businessModalProps('更新平台凭据', 680),
     formProps: {
-      option: formOption,
-      rule: [
-        ...rules,
-        numberRule(
-          'requestTimeoutMs',
-          '请求超时（毫秒）',
-          15_000,
-          1000,
-          60_000,
-          1000,
-        ),
-      ],
+      option: businessFormOption,
+      rule: layoutBusinessFormRules(
+        [
+          ...rules,
+          numberRule(
+            'requestTimeoutMs',
+            '请求超时（毫秒）',
+            15_000,
+            1000,
+            60_000,
+            1000,
+          ),
+        ],
+        ['apiKey', 'authorization', 'secretKey', 'sessionCookie'],
+      ),
     },
   };
 }
@@ -280,21 +307,24 @@ function paymentPlanModalOptions(
   routes: SelectOption[],
 ): FormModalOptions {
   return {
-    props: { centered: true, title, zIndex: 2100 },
+    props: { ...businessModalProps(title, 680), zIndex: 2100 },
     formProps: {
-      option: formOption,
-      rule: [
-        {
-          field: 'routeKey',
-          options: routes,
-          title: '支付账号与通道',
-          type: 'select',
-          validate: required('请选择支付账号与通道'),
-          value: '',
-        },
-        numberRule('priority', '使用顺序', 100, 1, 1000),
-        numberRule('weight', '分配比例', 100, 1, 100),
-      ],
+      option: businessFormOption,
+      rule: layoutBusinessFormRules(
+        [
+          {
+            field: 'routeKey',
+            options: routes,
+            title: '支付账号与通道',
+            type: 'select',
+            validate: required('请选择支付账号与通道'),
+            value: '',
+          },
+          numberRule('priority', '使用顺序', 100, 1, 1000),
+          numberRule('weight', '分配比例', 100, 1, 100),
+        ],
+        ['routeKey'],
+      ),
     },
   };
 }
