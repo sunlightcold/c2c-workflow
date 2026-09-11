@@ -1,4 +1,7 @@
+jest.mock('nanoid', () => ({ customAlphabet: () => () => 'fixed-test-id' }))
+
 import { Test } from '@nestjs/testing'
+import { MODULE_METADATA } from '@nestjs/common/constants'
 import { C2C_SECRET_RESOLVER } from '../c2c-order/c2c-secret-resolver'
 import {
   BinanceC2cClient,
@@ -8,6 +11,8 @@ import {
 import { ALIPAY_ACCOUNT_GATEWAY_FACTORY } from './alipay-account-gateway.provider'
 import { AlipayBatchPaymentExecutor } from './alipay-batch-payment.executor'
 import { AlipayGatewayFactory } from './alipay-gateway.factory'
+import { PaymentAccountBalanceService } from './payment-account-balance.service'
+import { PaymentModule } from './payment.module'
 import { C2cAlipayPaymentExecutor } from './c2c-alipay-payment.executor'
 import {
   C2cPaymentPreflightVerifier,
@@ -28,6 +33,12 @@ import {
 } from './payment-batch-execution-coordinator'
 
 describe('Payment provider graph', () => {
+  it('exports the account balance service to payment consumers', () => {
+    const exportedProviders = Reflect.getMetadata(MODULE_METADATA.EXPORTS, PaymentModule) ?? []
+
+    expect(exportedProviders).toContain(PaymentAccountBalanceService)
+  })
+
   it('constructs the coordinator with the real executor and platform confirmer', async () => {
     const module = await Test.createTestingModule({
       providers: [

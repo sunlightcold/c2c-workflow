@@ -89,7 +89,6 @@ import { PaymentAccountBalanceService } from './payment-account-balance.service'
     AlipayBatchPaymentExecutor,
     { provide: PAYMENT_BATCH_EXECUTOR, useExisting: AlipayBatchPaymentExecutor },
     PaymentBatchExecutionCoordinator,
-    PaymentAccountBalanceService,
   ],
   exports: [
     C2cPaymentPreflightVerifier,
@@ -98,6 +97,7 @@ import { PaymentAccountBalanceService } from './payment-account-balance.service'
     PaymentExecutionCoordinator,
     PaymentOrderService,
     PaymentBatchService,
+    PaymentAccountBalanceService,
     PaymentBatchExecutionCoordinator,
     PAYMENT_ORDER_STORE,
     PAYMENT_PLAN_RESOLVER,
