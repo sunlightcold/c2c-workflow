@@ -407,8 +407,6 @@ export namespace BusinessApi {
     tenantId: string;
     tokenConfigured: boolean;
     updatedAt: string;
-    webhookSecretConfigured: boolean;
-    webhookUrl: null | string;
   }
   export interface TelegramGroup {
     bindingState: TelegramGroupBindingState;
@@ -842,9 +840,7 @@ export const createTelegramBotApi = (
     description?: string;
     name: string;
     paymentOrderRequireConfirmation?: boolean;
-    tokenRef: string;
-    webhookSecretRef?: string;
-    webhookUrl?: string;
+    token: string;
   },
 ) => requestClient.post<BusinessApi.TelegramBot>('/sys/tg/bots', data);
 export const updateTelegramBotApi = (
@@ -857,9 +853,7 @@ export const updateTelegramBotApi = (
       description: string;
       name: string;
       paymentOrderRequireConfirmation: boolean;
-      tokenRef: string;
-      webhookSecretRef: string;
-      webhookUrl: string;
+      token: string;
     }>,
 ) => requestClient.put<BusinessApi.TelegramBot>(`/sys/tg/bots/${id}`, data);
 export const setTelegramBotStatusApi = (

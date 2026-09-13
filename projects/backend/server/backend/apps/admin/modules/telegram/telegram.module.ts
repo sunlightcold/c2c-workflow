@@ -14,6 +14,7 @@ import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { BusinessModule } from '../business'
 import { PaymentModule } from '../payment'
+import { CredentialModule } from '../system/credential'
 import { TelegramBotService } from './telegram-bot.service'
 import { TelegramApiClient } from './telegram-api.client'
 import { TelegramAuthorizationService } from './telegram-authorization.service'
@@ -35,6 +36,7 @@ import { TelegramQueryService } from './telegram-query.service'
   imports: [
     BusinessModule,
     PaymentModule,
+    CredentialModule,
     TypeOrmModule.forFeature([
       MerchantEntity,
       PaymentBatchEntity,

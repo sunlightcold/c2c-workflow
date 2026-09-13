@@ -51,6 +51,27 @@ describe('TelegramBotService', () => {
     )
   })
 
+  it('accepts a Telegram Bot Token and stores only an encrypted reference', async () => {
+    const cipher = { encrypt: jest.fn().mockReturnValue('ciphertext') }
+    const service = new TelegramBotService(bots as never, groups as never, cipher as never)
+
+    await service.create('tenant-1', {
+      name: 'Main bot',
+      botType: TelegramBotType.PAYMENT,
+      token: '8929220627:AAabcdefghijklmnopQRST',
+      capabilities: [TelegramCapability.ORDER_QUERY],
+    })
+
+    expect(cipher.encrypt).toHaveBeenCalledWith('8929220627:AAabcdefghijklmnopQRST')
+    expect(bots.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tokenRef: 'enc://ciphertext',
+        webhookSecretRef: null,
+        webhookUrl: null,
+      }),
+    )
+  })
+
   it('does not remove a capability still used by a bound group', async () => {
     const service = new TelegramBotService(bots as never, groups as never)
     await expect(
@@ -79,10 +100,10 @@ describe('TelegramBotService', () => {
     expect(result.items[0]).toEqual(
       expect.objectContaining({
         tokenConfigured: true,
-        webhookSecretConfigured: false,
       }),
     )
     expect(result.items[0]).not.toHaveProperty('tokenRef')
     expect(result.items[0]).not.toHaveProperty('webhookSecretRef')
+    expect(result.items[0]).not.toHaveProperty('webhookUrl')
   })
 })

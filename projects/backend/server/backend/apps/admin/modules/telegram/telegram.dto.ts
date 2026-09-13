@@ -16,7 +16,6 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
-  IsUrl,
   IsUUID,
   Matches,
   Max,
@@ -75,23 +74,14 @@ export class CreateTelegramBotDto extends TelegramTenantContextDto {
   @IsEnum(TelegramBotType)
   botType: TelegramBotType
 
-  @ApiProperty({ description: 'Secret Manager/KMS 中的 Telegram Bot Token 引用' })
+  @ApiProperty({ description: 'Telegram Bot Token，例如 123456789:AA...' })
   @Transform(trim)
-  @Matches(/^[a-zA-Z][a-zA-Z0-9+._:/-]{7,254}$/)
-  tokenRef: string
-
-  @ApiPropertyOptional({ description: 'Secret Manager/KMS 中的 Webhook Secret 引用' })
-  @Transform(trim)
-  @IsOptional()
-  @Matches(/^[a-zA-Z][a-zA-Z0-9+._:/-]{7,254}$/)
-  webhookSecretRef?: string
-
-  @ApiPropertyOptional()
-  @Transform(trim)
-  @IsOptional()
-  @IsUrl({ require_protocol: true, require_tld: false })
-  @MaxLength(500)
-  webhookUrl?: string
+  @IsNotEmpty()
+  @MaxLength(255)
+  @Matches(/^\d{5,20}:[A-Za-z0-9_-]{10,}$/, {
+    message: 'Telegram Bot Token 格式无效',
+  })
+  token: string
 
   @ApiPropertyOptional({ default: 'zh-CN' })
   @Transform(trim)

@@ -166,37 +166,25 @@ function botFormRules(editing = false) {
       ],
     },
     {
-      field: 'tokenRef',
+      field: 'token',
       props: {
+        autocomplete: 'new-password',
         placeholder: editing
           ? '不修改请留空'
-          : '例如 env://TELEGRAM_PAYMENT_TOKEN',
+          : '请输入 Telegram Bot Token，例如 123456789:AA...',
+        type: 'password',
       },
-      title: editing ? '更新 Token 引用' : 'Token 引用',
+      title: 'Bot Token',
       type: 'input',
       validate: editing
         ? []
-        : [{ message: '请输入 Token 引用', required: true, trigger: 'blur' }],
-    },
-    {
-      field: 'webhookSecretRef',
-      props: { placeholder: editing ? '不修改请留空' : '选填 Secret 引用' },
-      title: 'Webhook Secret 引用',
-      type: 'input',
-    },
-    {
-      field: 'webhookUrl',
-      props: {
-        placeholder: 'https://example.com/v1/webhooks/telegram/机器人编码',
-      },
-      title: 'Webhook 地址',
-      type: 'input',
+        : [{ message: '请输入 Bot Token', required: true, trigger: 'blur' }],
     },
     {
       field: 'capabilities',
-      props: { mode: 'multiple', options: telegramCapabilityOptions },
+      options: telegramCapabilityOptions,
       title: '机器人能力',
-      type: 'select',
+      type: 'checkbox',
       validate: [
         { message: '请选择至少一项能力', required: true, trigger: 'change' },
       ],
@@ -229,9 +217,7 @@ function botModalOptions(title: string, editing = false) {
       rule: layoutBusinessFormRules(botFormRules(editing), [
         'capabilities',
         'description',
-        'tokenRef',
-        'webhookSecretRef',
-        'webhookUrl',
+        'token',
       ]),
     },
     props: businessModalProps(title),
@@ -240,12 +226,7 @@ function botModalOptions(title: string, editing = false) {
 
 function cleanOptionalSecrets<T extends Record<string, unknown>>(data: T) {
   const value = { ...data };
-  for (const key of [
-    'description',
-    'tokenRef',
-    'webhookSecretRef',
-    'webhookUrl',
-  ]) {
+  for (const key of ['description', 'token']) {
     if (value[key] === '') delete value[key];
   }
   return value;
@@ -301,9 +282,7 @@ async function openEdit(row: BusinessApi.TelegramBot) {
     description: row.description ?? '',
     name: row.name,
     paymentOrderRequireConfirmation: row.paymentOrderRequireConfirmation,
-    tokenRef: '',
-    webhookSecretRef: '',
-    webhookUrl: row.webhookUrl ?? '',
+    token: '',
   });
 }
 

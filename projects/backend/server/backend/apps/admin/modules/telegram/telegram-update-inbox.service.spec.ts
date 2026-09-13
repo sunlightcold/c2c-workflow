@@ -39,4 +39,17 @@ describe('TelegramUpdateInboxService', () => {
       expect.objectContaining({ botId: 'bot-1', updateId: '123' }),
     )
   })
+
+  it('accepts updates without a webhook secret when the bot only has a token configured', async () => {
+    botQuery.getOne.mockResolvedValueOnce({
+      id: 'bot-1',
+      tenantId: 'tenant-1',
+      webhookSecretRef: null,
+    })
+
+    const service = new TelegramUpdateInboxService(bots as never, updates as never)
+    await expect(service.receive('PAY_MAIN', undefined, { update_id: 124 })).resolves.toEqual({
+      accepted: true,
+    })
+  })
 })

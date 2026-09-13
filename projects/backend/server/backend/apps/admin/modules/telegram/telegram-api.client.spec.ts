@@ -46,4 +46,23 @@ describe('TelegramApiClient', () => {
       }),
     ).rejects.toEqual(new ServiceUnavailableException('Telegram 消息发送失败'))
   })
+
+  it('decrypts encrypted bot token references before calling Telegram', async () => {
+    const post = jest.spyOn(axios, 'post').mockResolvedValue({ data: { ok: true } })
+    const cipher = { decrypt: jest.fn().mockReturnValue(token) }
+    const client = new TelegramApiClient(cipher as never)
+
+    await client.sendMessage({
+      tokenRef: 'enc://ciphertext',
+      chatId: '-1001',
+      text: '测试消息',
+    })
+
+    expect(cipher.decrypt).toHaveBeenCalledWith('ciphertext')
+    expect(post).toHaveBeenCalledWith(
+      `https://api.telegram.org/bot${token}/sendMessage`,
+      { chat_id: '-1001', text: '测试消息' },
+      { timeout: 10_000 },
+    )
+  })
 })

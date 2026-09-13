@@ -31,7 +31,7 @@ export class TelegramUpdateInboxService {
       })
       .getOne()
     if (!bot) throw new NotFoundException('机器人不存在或已停用')
-    if (!bot.webhookSecretRef || webhookSecret !== this.resolveSecret(bot.webhookSecretRef))
+    if (bot.webhookSecretRef && webhookSecret !== this.resolveSecret(bot.webhookSecretRef))
       throw new ForbiddenException('Webhook Secret 校验失败')
     const updateId = payload.update_id
     if (typeof updateId !== 'number' || !Number.isSafeInteger(updateId) || updateId < 0)

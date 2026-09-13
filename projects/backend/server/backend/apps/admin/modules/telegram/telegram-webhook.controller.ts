@@ -12,7 +12,7 @@ export class TelegramWebhookController {
   @Public()
   @ApiOperation({ summary: '接收 Telegram Update；相同机器人和 Update ID 只接收一次' })
   @ApiParam({ name: 'botCode', description: '机器人编码', type: String })
-  @ApiHeader({ name: 'x-telegram-bot-api-secret-token', required: true })
+  @ApiHeader({ name: 'x-telegram-bot-api-secret-token', required: false })
   receive(
     @Param('botCode') botCode: string,
     @Headers('x-telegram-bot-api-secret-token') secret: string | undefined,
