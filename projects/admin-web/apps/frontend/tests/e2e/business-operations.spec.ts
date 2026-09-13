@@ -1127,6 +1127,15 @@ test('manages parallel payment batch policy rules without horizontal overflow', 
   );
   await page.getByRole('button', { name: '手动提交' }).click();
   const submitConfirm = page.locator('.ant-modal-confirm:visible');
+  await expect(
+    submitConfirm.getByText('立即提交待支付订单？', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    submitConfirm.getByText(
+      '系统将把当前符合“总部批次策略”的待支付订单生成批次，并立即向支付宝发起付款。没有符合条件的订单时不会创建批次。',
+      { exact: true },
+    ),
+  ).toBeVisible();
   await submitConfirm.getByRole('button', { name: /确\s*定/ }).click();
   const submittedRequest = await submitRequest;
   expect(submittedRequest.postDataJSON()).toEqual({ tenantId });

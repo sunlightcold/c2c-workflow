@@ -349,10 +349,10 @@ function submitManually(policy: BusinessApi.PaymentBatchPolicy) {
       submitPaymentBatchPolicyApi(policy.id, {
         tenantId: selectedTenantId.value,
       }),
-    content: '将按支付账号、支付通道和币种分别组批并立即提交。',
+    content: `系统将把当前符合“${policy.name}”的待支付订单生成批次，并立即向支付宝发起付款。没有符合条件的订单时不会创建批次。`,
     onSuccess: () => gridApi.query(),
     successMessage: '符合条件的支付批次已提交',
-    title: `确认按“${policy.name}”手动提交？`,
+    title: '立即提交待支付订单？',
   });
 }
 
