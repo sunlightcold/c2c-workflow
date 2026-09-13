@@ -880,6 +880,18 @@ test('manages payment plans inside the merchant configuration drawer', async ({
     );
   });
   expect(createIsAboveDrawer).toBe(true);
+  const routeField = createDialog
+    .locator('.ant-form-item')
+    .filter({ hasText: '支付账号与通道' });
+  await routeField.locator('.ant-select-selector').click();
+  const routeName = '总部支付宝主账号 · 支付宝批量有密';
+  await page
+    .locator('.ant-select-dropdown:visible .ant-select-item-option')
+    .filter({ hasText: routeName })
+    .click({ timeout: 5000 });
+  await expect(routeField.locator('.ant-select-selection-item')).toHaveText(
+    routeName,
+  );
   await createDialog.getByRole('button', { name: /取\s*消/ }).click();
 
   await planTable.getByRole('button', { name: /编\s*辑/ }).click();
