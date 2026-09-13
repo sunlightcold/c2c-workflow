@@ -33,6 +33,7 @@ describe('business form layout', () => {
         overflowY: 'auto',
       },
       width: 760,
+      zIndex: 2000,
     });
   });
 });

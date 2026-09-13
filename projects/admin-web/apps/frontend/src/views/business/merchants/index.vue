@@ -504,7 +504,6 @@ function removeCredential(credential: BusinessApi.MerchantCredential) {
     },
     successMessage: '历史凭据已删除',
     title: `确认删除凭据版本 ${credential.version} 吗？`,
-    zIndex: 2100,
   });
 }
 
@@ -623,7 +622,6 @@ function removePaymentPlan(plan: BusinessApi.PaymentPlan) {
     onSuccess: reloadPaymentPlans,
     successMessage: '支付方案已删除',
     title: '确认删除支付方案吗？',
-    zIndex: 2100,
   });
 }
 

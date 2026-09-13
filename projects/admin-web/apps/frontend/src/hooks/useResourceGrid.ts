@@ -51,6 +51,9 @@ export interface ConfirmResourceActionOptions
   title: ModalFuncProps['title'];
 }
 
+/** Keep confirmation dialogs above drawers and form modals. */
+export const RESOURCE_CONFIRM_Z_INDEX = 2200;
+
 const defaultToolbarConfig: VxeTableGridOptions['toolbarConfig'] = {
   custom: true,
   export: true,
@@ -99,6 +102,7 @@ export function confirmResourceAction(options: ConfirmResourceActionOptions) {
   Modal.confirm({
     centered,
     ...modalOptions,
+    zIndex: modalOptions.zIndex ?? RESOURCE_CONFIRM_Z_INDEX,
     async onOk() {
       await runResourceAction({ action, onSuccess, successMessage });
     },

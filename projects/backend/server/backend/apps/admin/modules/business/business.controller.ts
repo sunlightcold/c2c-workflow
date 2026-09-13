@@ -12,7 +12,7 @@ import {
   Put,
   Query,
 } from '@nestjs/common'
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger'
 import { BusinessScopeService } from './business-scope.service'
 import {
   CreateMerchantDto,

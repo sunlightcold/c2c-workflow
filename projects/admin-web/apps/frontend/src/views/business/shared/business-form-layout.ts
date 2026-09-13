@@ -6,6 +6,7 @@ const halfWidthCol = { md: 12, xs: 24 } as const;
 const fullWidthCol = { span: 24 } as const;
 
 export const BUSINESS_NESTED_MODAL_Z_INDEX = 2100;
+export const BUSINESS_MODAL_Z_INDEX = 2000;
 
 export const businessFormOption: Options = {
   appendValue: false,
@@ -27,6 +28,7 @@ export function businessModalProps(
     centered: true,
     title,
     width,
+    zIndex: BUSINESS_MODAL_Z_INDEX,
   };
 }
 

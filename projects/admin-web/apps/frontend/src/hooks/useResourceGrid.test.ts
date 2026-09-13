@@ -140,6 +140,7 @@ describe('useResourceGrid', () => {
       expect.objectContaining({
         centered: true,
         title: '确认删除吗?',
+        zIndex: 2200,
       }),
     );
 
