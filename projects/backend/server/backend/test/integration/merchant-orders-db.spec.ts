@@ -135,6 +135,32 @@ describe('Merchant orders database integration', () => {
     })
   })
 
+  it('claims a due merchant with its tenant and merchant scope', async () => {
+    await queryRunner.query(
+      `INSERT INTO merchant_order_sync_checkpoint (
+        "tenantId", "merchantId", "nextSyncAt", "consecutiveFailures"
+      ) VALUES ($1, $2, $3, 0)
+      ON CONFLICT ("tenantId", "merchantId") DO UPDATE
+      SET "nextSyncAt" = EXCLUDED."nextSyncAt",
+          "leaseOwner" = NULL,
+          "leaseExpiresAt" = NULL`,
+      [C2C_FOUNDATION_IDS.headquartersTenant, merchantId, new Date('2026-09-13T00:00:00Z')],
+    )
+    const store = new TypeOrmC2cOrderSyncStore({
+      transaction: (work) => work(queryRunner.manager),
+      getRepository: dataSource.getRepository.bind(dataSource),
+    } as never)
+
+    await expect(
+      store.claimDue('integration-worker', new Date('2026-09-13T00:01:00Z'), 1, 120_000),
+    ).resolves.toEqual([
+      {
+        tenantId: C2C_FOUNDATION_IDS.headquartersTenant,
+        merchantId,
+      },
+    ])
+  })
+
   it('rejects sell orders until the sell workflow is explicitly migrated', async () => {
     await queryRunner.query('SAVEPOINT before_sell')
     await expect(

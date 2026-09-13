@@ -37,7 +37,7 @@ export class TypeOrmC2cOrderSyncStore implements C2cOrderSyncStore {
         `,
         [now],
       )
-      return manager.query(
+      const [scopes] = (await manager.query(
         `
           WITH due AS (
             SELECT checkpoint.id
@@ -64,7 +64,8 @@ export class TypeOrmC2cOrderSyncStore implements C2cOrderSyncStore {
           RETURNING checkpoint."tenantId", checkpoint."merchantId"
         `,
         [now, limit, owner, new Date(now.getTime() + leaseMs)],
-      )
+      )) as [Array<{ tenantId: string; merchantId: string }>, number]
+      return scopes
     })
   }
 
