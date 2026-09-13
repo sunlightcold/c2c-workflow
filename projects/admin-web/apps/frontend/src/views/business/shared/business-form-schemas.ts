@@ -457,34 +457,40 @@ export function createPaymentAccountModalOptions(
     props: businessModalProps('新增支付账号'),
     formProps: {
       option: businessFormOption,
-      rule: layoutBusinessFormRules([
-        {
-          field: 'name',
-          props: { maxlength: 100, placeholder: '请输入账号名称' },
-          title: '账号名称',
-          type: 'input',
-          validate: required('请输入账号名称'),
-          value: '',
-        },
-        {
-          field: 'platformId',
-          options: platforms,
-          props: { placeholder: '请选择支付平台' },
-          title: '支付平台',
-          type: 'select',
-          validate: required('请选择支付平台'),
-          value: '',
-        },
-        {
-          field: 'externalAccountId',
-          props: { maxlength: 128, placeholder: '请输入支付宝商户号' },
-          title: '支付宝商户号',
-          type: 'input',
-          validate: required('请输入支付宝商户号'),
-          value: '',
-        },
-        ...alipayCredentialRules('KEY', 'account-create'),
-      ]),
+      rule: layoutBusinessFormRules(
+        [
+          {
+            field: 'name',
+            props: { maxlength: 100, placeholder: '请输入账号名称' },
+            title: '账号名称',
+            type: 'input',
+            validate: required('请输入账号名称'),
+            value: '',
+          },
+          {
+            field: 'platformId',
+            options: platforms,
+            props: { placeholder: '请选择支付平台' },
+            title: '支付平台',
+            type: 'select',
+            validate: required('请选择支付平台'),
+            value: '',
+          },
+          {
+            field: 'externalAccountId',
+            props: {
+              maxlength: 128,
+              placeholder: '请输入支付宝商户号',
+            },
+            title: '支付宝商户号',
+            type: 'input',
+            validate: required('请输入支付宝商户号'),
+            value: '',
+          },
+          ...alipayCredentialRules('KEY', 'account-create'),
+        ],
+        ['gateway'],
+      ),
     },
   };
 }
@@ -496,25 +502,31 @@ export function editPaymentAccountModalOptions(
     props: businessModalProps('编辑支付账号'),
     formProps: {
       option: businessFormOption,
-      rule: layoutBusinessFormRules([
-        {
-          field: 'name',
-          props: { maxlength: 100, placeholder: '请输入账号名称' },
-          title: '账号名称',
-          type: 'input',
-          validate: required('请输入账号名称'),
-          value: '',
-        },
-        {
-          field: 'externalAccountId',
-          props: { maxlength: 128, placeholder: '请输入支付宝商户号' },
-          title: '支付宝商户号',
-          type: 'input',
-          validate: required('请输入支付宝商户号'),
-          value: '',
-        },
-        ...alipayCredentialRules(initialMode, 'account-edit'),
-      ]),
+      rule: layoutBusinessFormRules(
+        [
+          {
+            field: 'name',
+            props: { maxlength: 100, placeholder: '请输入账号名称' },
+            title: '账号名称',
+            type: 'input',
+            validate: required('请输入账号名称'),
+            value: '',
+          },
+          {
+            field: 'externalAccountId',
+            props: {
+              maxlength: 128,
+              placeholder: '请输入支付宝商户号',
+            },
+            title: '支付宝商户号',
+            type: 'input',
+            validate: required('请输入支付宝商户号'),
+            value: '',
+          },
+          ...alipayCredentialRules(initialMode, 'account-edit'),
+        ],
+        ['gateway'],
+      ),
     },
   };
 }
