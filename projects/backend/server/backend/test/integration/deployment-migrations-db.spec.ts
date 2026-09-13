@@ -115,6 +115,22 @@ describe('Deployment migrations database integration', () => {
       ),
     ).resolves.toHaveLength(13)
     await expect(
+      dataSource.query<{ table_name: string }[]>(
+        `SELECT table_name
+         FROM information_schema.tables
+         WHERE table_schema = current_schema()
+           AND table_name = ANY($1)
+         ORDER BY table_name`,
+        [[
+          'sys_ai_call_log',
+          'sys_ai_channel',
+          'sys_ai_feature_route',
+          'sys_ai_model',
+          'sys_client_error_event',
+        ]],
+      ),
+    ).resolves.toEqual([])
+    await expect(
       dataSource.query<{ constraint_name: string }[]>(
         `SELECT constraint_name
          FROM information_schema.table_constraints
