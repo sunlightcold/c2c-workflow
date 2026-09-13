@@ -282,7 +282,6 @@ describe('business api', () => {
     await setPaymentAccountStatusApi('account-1', 'disabled', 'tenant-1');
     await deletePaymentAccountApi('account-1', 'tenant-1');
     await updatePaymentAccountChannelApi('account-1', 'binding-1', {
-      concurrencyLimit: 3,
       maximumAmount: null,
       minimumAmount: null,
       tenantId: 'tenant-1',
@@ -322,7 +321,6 @@ describe('business api', () => {
       2,
       '/sys/payment-accounts/account-1/channels/binding-1',
       {
-        concurrencyLimit: 3,
         maximumAmount: null,
         minimumAmount: null,
         tenantId: 'tenant-1',

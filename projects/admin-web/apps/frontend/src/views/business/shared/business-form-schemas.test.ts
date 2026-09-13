@@ -221,12 +221,10 @@ describe('merchant order operation forms', () => {
   it('maps cleared channel limits to null', () => {
     expect(
       normalizePaymentChannelFormData({
-        concurrencyLimit: 3,
         maximumAmount: ' ',
         minimumAmount: '',
       }),
     ).toEqual({
-      concurrencyLimit: 3,
       maximumAmount: null,
       minimumAmount: null,
     });
@@ -236,17 +234,14 @@ describe('merchant order operation forms', () => {
     ['open', openPaymentChannelModalOptions('主账号', [])],
     ['edit', editPaymentChannelModalOptions('支付宝批量有密')],
   ])(
-    'captures amount range and concurrency when configuring a channel: %s',
+    'captures only the amount range when configuring a channel: %s',
     (_, options) => {
       const fields = options.formProps?.rule?.map(({ field }) => field);
 
       expect(fields).toEqual(
-        expect.arrayContaining([
-          'minimumAmount',
-          'maximumAmount',
-          'concurrencyLimit',
-        ]),
+        expect.arrayContaining(['minimumAmount', 'maximumAmount']),
       );
+      expect(fields).not.toContain('concurrencyLimit');
     },
   );
 

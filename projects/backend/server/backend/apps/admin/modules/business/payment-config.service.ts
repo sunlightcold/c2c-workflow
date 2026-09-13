@@ -52,7 +52,6 @@ export interface UpdatePaymentPlanInput {
 }
 
 interface PaymentAccountChannelInput {
-  concurrencyLimit?: number
   maximumAmount?: string | null
   minimumAmount?: string | null
 }
@@ -192,7 +191,6 @@ export class PaymentConfigService {
               adapterCode: channel?.adapterCode ?? null,
               minimumAmount: binding.minimumAmount,
               maximumAmount: binding.maximumAmount,
-              concurrencyLimit: binding.concurrencyLimit,
               status: binding.status,
             }
           }),
@@ -306,7 +304,6 @@ export class PaymentConfigService {
         channelId: channel.id,
         minimumAmount: input.minimumAmount ?? null,
         maximumAmount: input.maximumAmount ?? null,
-        concurrencyLimit: input.concurrencyLimit ?? 1,
         status: BusinessStatus.ACTIVE,
       }),
     )
@@ -331,7 +328,6 @@ export class PaymentConfigService {
     this.validateAmountRange(minimumAmount, maximumAmount)
     if (input.minimumAmount !== undefined) binding.minimumAmount = input.minimumAmount
     if (input.maximumAmount !== undefined) binding.maximumAmount = input.maximumAmount
-    if (input.concurrencyLimit !== undefined) binding.concurrencyLimit = input.concurrencyLimit
     return this.sanitizeChannel(await this.accountChannelRepository.save(binding))
   }
 
@@ -584,7 +580,7 @@ export class PaymentConfigService {
   }
 
   private sanitizeChannel(binding: PaymentAccountChannelEntity) {
-    const { configRef: _configRef, ...response } = binding
+    const { concurrencyLimit: _concurrencyLimit, configRef: _configRef, ...response } = binding
     return response
   }
 

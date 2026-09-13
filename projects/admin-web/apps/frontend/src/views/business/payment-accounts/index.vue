@@ -392,7 +392,6 @@ async function editChannel(channel: BusinessApi.PaymentChannelBinding) {
   );
   formApi?.setValue({
     channelName: channel.channelName ?? '未知支付通道',
-    concurrencyLimit: channel.concurrencyLimit,
     maximumAmount: channel.maximumAmount ?? '',
     minimumAmount: channel.minimumAmount ?? '',
   });
@@ -592,11 +591,6 @@ onMounted(async () => {
             {{ amountRangeText(record) }}
           </template>
         </ATableColumn>
-        <ATableColumn
-          data-index="concurrencyLimit"
-          title="并发上限"
-          :width="100"
-        />
         <ATableColumn key="status" title="状态" :width="90">
           <template #default="{ record }">
             <AsyncStatusSwitch
@@ -658,8 +652,6 @@ onMounted(async () => {
             <dd class="break-words tabular-nums">
               {{ amountRangeText(channel) }}
             </dd>
-            <dt class="text-muted-foreground">并发上限</dt>
-            <dd class="tabular-nums">{{ channel.concurrencyLimit }}</dd>
           </dl>
           <div class="mt-3 flex flex-wrap justify-end gap-2 border-t pt-3">
             <AButton

@@ -346,7 +346,7 @@ describe('Business configuration API contract (e2e)', () => {
     payments.setAccountStatus.mockResolvedValue({ id: accountId, status: 'disabled' })
     payments.removeAccount.mockResolvedValue(undefined)
     payments.openAccountChannel.mockResolvedValue({ id: bindingId })
-    payments.updateAccountChannel.mockResolvedValue({ id: bindingId, concurrencyLimit: 5 })
+    payments.updateAccountChannel.mockResolvedValue({ id: bindingId })
     payments.setAccountChannelStatus.mockResolvedValue({ id: bindingId, status: 'disabled' })
     payments.removeAccountChannel.mockResolvedValue(undefined)
 
@@ -375,7 +375,6 @@ describe('Business configuration API contract (e2e)', () => {
         channelId: '00000000-0000-4000-8000-000000000050',
         minimumAmount: '1.00',
         maximumAmount: '50000.00',
-        concurrencyLimit: 5,
       })
       .expect(201)
     await request(app.getHttpServer())
@@ -384,7 +383,6 @@ describe('Business configuration API contract (e2e)', () => {
         tenantId,
         minimumAmount: null,
         maximumAmount: null,
-        concurrencyLimit: 3,
       })
       .expect(200)
     await request(app.getHttpServer())
@@ -416,14 +414,13 @@ describe('Business configuration API contract (e2e)', () => {
     expect(payments.openAccountChannel).toHaveBeenCalledWith(
       'tenant-1',
       accountId,
-      expect.objectContaining({ concurrencyLimit: 5, minimumAmount: '1.00' }),
+      expect.objectContaining({ minimumAmount: '1.00', maximumAmount: '50000.00' }),
     )
     expect(payments.updateAccountChannel).toHaveBeenCalledWith(
       'tenant-1',
       accountId,
       bindingId,
       expect.objectContaining({
-        concurrencyLimit: 3,
         minimumAmount: null,
         maximumAmount: null,
       }),
@@ -439,9 +436,8 @@ describe('Business configuration API contract (e2e)', () => {
   })
 
   it.each([
-    { minimumAmount: '-1.00', maximumAmount: '10.00', concurrencyLimit: 1 },
-    { minimumAmount: '1.001', maximumAmount: '10.00', concurrencyLimit: 1 },
-    { minimumAmount: '1.00', maximumAmount: '10.00', concurrencyLimit: 0 },
+    { minimumAmount: '-1.00', maximumAmount: '10.00' },
+    { minimumAmount: '1.001', maximumAmount: '10.00' },
   ])('rejects invalid payment channel limits: %j', async (limits) => {
     const response = await request(app.getHttpServer())
       .post('/v1/sys/payment-accounts/00000000-0000-4000-8000-000000000030/channels')

@@ -524,7 +524,6 @@ test.beforeEach(async ({ page }) => {
                   channelCode: 'ALIPAY_BATCH',
                   channelId: '00000000-0000-4000-8000-000000000101',
                   channelName: '支付宝批量有密',
-                  concurrencyLimit: 5,
                   executionMode: 'BATCH',
                   id: '00000000-0000-4000-8000-000000000111',
                   maximumAmount: '50000.00',
@@ -938,7 +937,7 @@ test('loads all second-level business pages under one menu', async ({
   });
   await expectDialogAboveDrawerAndInsideViewport(page, editChannelDialog);
   await expect(editChannelDialog.getByText('单笔最小金额')).toBeVisible();
-  await expect(editChannelDialog.getByText('并发上限')).toBeVisible();
+  await expect(editChannelDialog.getByText('并发上限')).toHaveCount(0);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth > window.innerWidth,

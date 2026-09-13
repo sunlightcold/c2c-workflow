@@ -589,13 +589,6 @@ export class OpenPaymentAccountChannelDto extends TenantContextDto {
   @IsOptional()
   @Matches(/^(0|[1-9]\d{0,17})(\.\d{1,2})?$/)
   maximumAmount?: string
-
-  @ApiPropertyOptional({ default: 1, minimum: 1, maximum: 1000 })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(1000)
-  concurrencyLimit?: number
 }
 
 export class UpdatePaymentAccountChannelDto extends TenantContextDto {
@@ -608,13 +601,6 @@ export class UpdatePaymentAccountChannelDto extends TenantContextDto {
   @IsOptional()
   @Matches(/^(0|[1-9]\d{0,17})(\.\d{1,2})?$/)
   maximumAmount?: string | null
-
-  @ApiPropertyOptional({ minimum: 1, maximum: 1000 })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(1000)
-  concurrencyLimit?: number
 }
 
 export class PaymentPlanListDto extends TenantContextDto {

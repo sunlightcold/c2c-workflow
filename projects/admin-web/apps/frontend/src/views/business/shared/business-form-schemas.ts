@@ -738,14 +738,6 @@ function paymentChannelParameterRules() {
       ],
       value: '',
     },
-    {
-      field: 'concurrencyLimit',
-      props: { max: 1000, min: 1, precision: 0 },
-      title: '并发上限',
-      type: 'inputNumber',
-      validate: required('请输入并发上限'),
-      value: 1,
-    },
   ];
 }
 

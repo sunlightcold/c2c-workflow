@@ -42,8 +42,8 @@ Controller：`BusinessController`。基础路径：`/v1/sys`。所有接口均�
 | PUT | `/payment-accounts/{id}/credential` | `payment:account:update` | 唯一的完整支付宝凭据 | 脱敏后的支付账号 |
 | PATCH | `/payment-accounts/{id}/status` | `payment:account:update` | Query `{ tenantId? }`；Body `{ status }` | 脱敏后的 `PaymentAccountEntity` |
 | DELETE | `/payment-accounts/{id}` | `payment:account:delete` | Query `{ tenantId? }` | 无 |
-| POST | `/payment-accounts/{id}/channels` | `payment:account:bind` | `{ tenantId?, channelId, minimumAmount?, maximumAmount?, concurrencyLimit? }` | 支付账号通道 |
-| PUT | `/payment-accounts/{id}/channels/{bindingId}` | `payment:account:bind` | `{ tenantId?, minimumAmount?: string\|null, maximumAmount?: string\|null, concurrencyLimit? }` | 支付账号通道 |
+| POST | `/payment-accounts/{id}/channels` | `payment:account:bind` | `{ tenantId?, channelId, minimumAmount?, maximumAmount? }` | 支付账号通道 |
+| PUT | `/payment-accounts/{id}/channels/{bindingId}` | `payment:account:bind` | `{ tenantId?, minimumAmount?: string\|null, maximumAmount?: string\|null }` | 支付账号通道 |
 | PATCH | `/payment-accounts/{id}/channels/{bindingId}/status` | `payment:account:bind` | Query `{ tenantId? }`；Body `{ status }` | 脱敏后的 `PaymentAccountChannelEntity` |
 | DELETE | `/payment-accounts/{id}/channels/{bindingId}` | `payment:account:bind` | Query `{ tenantId? }` | 无 |
 | GET | `/payment-plans` | `payment:account:read` | Query `{ tenantId?, merchantId? }` | 当前所属单位的 `MerchantPaymentPlanEntity[]` |
@@ -57,7 +57,7 @@ Controller：`BusinessController`。基础路径：`/v1/sys`。所有接口均�
 
 支付宝凭据支持两种模式：`KEY` 提交应用 ID、应用私钥、支付宝公钥和 API 网关地址；`CERT` 提交应用 ID、应用私钥、应用公钥证书、支付宝公钥证书、支付宝根证书和 API 网关地址。前端读取用户选择的本地密钥或证书文件内容后提交；服务端使用凭据主密钥加密保存。任何创建、更新、查询、导出、日志和错误响应均不返回私钥、公钥、证书内容或内部密文。
 
-支付账号查询按经营单位隔离并返回 `{ items, total, page, pageSize }`。账号编码、支付平台和经营单位创建后不可修改；名称和支付宝商户号可编辑，唯一凭据可整套覆盖。支付通道只维护能力开通状态、金额范围和并发限制，共用所属支付账号的唯一凭据。通道金额使用最多两位小数的非负字符串，最小金额不得大于最大金额，并发上限为 1 至 1000；编辑时金额字段提交 `null` 表示清除该项限制，字段不提交表示保留原值。
+支付账号查询按经营单位隔离并返回 `{ items, total, page, pageSize }`。账号编码、支付平台和经营单位创建后不可修改；名称和支付宝商户号可编辑，唯一凭据可整套覆盖。支付通道只维护能力开通状态和单笔金额范围，共用所属支付账号的唯一凭据。通道金额使用最多两位小数的非负字符串，最小金额不得大于最大金额；编辑时金额字段提交 `null` 表示清除该项限制，字段不提交表示保留原值。
 
 支付账号查询返回账号基本信息、凭据模式、应用 ID、网关、凭据更新时间、`credentialConfigured` 和已开通通道；创建、编辑、查询均不返回账号内部凭据密文。支付账号或通道一旦被支付方案、支付订单或支付批次引用，不允许删除或移除，只能停用；停用不影响已锁定支付组合的历史回查。支付方案查询始终按当前所属单位隔离，可再按商家筛选。
 

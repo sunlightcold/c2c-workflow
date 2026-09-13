@@ -415,6 +415,7 @@ describe('PaymentConfigService', () => {
         paymentAccountId: accountId,
         channelId: 'channel-1',
         configRef: 'secret://must-not-leak',
+        concurrencyLimit: 12,
         status: 'active',
       },
     ])
@@ -445,6 +446,7 @@ describe('PaymentConfigService', () => {
     )
     expect(accounts.items[0]).not.toHaveProperty('credentialRef')
     expect(accounts.items[0].channels[0]).not.toHaveProperty('configRef')
+    expect(accounts.items[0].channels[0]).not.toHaveProperty('concurrencyLimit')
     expect(repositories.account.findAndCount).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId } }),
     )
@@ -552,7 +554,6 @@ describe('PaymentConfigService', () => {
         channelId: 'channel-1',
         minimumAmount: '50000.01',
         maximumAmount: '50000.00',
-        concurrencyLimit: 2,
       }),
     ).rejects.toThrow('最小支付金额不能大于最大支付金额')
     expect(repositories.accountChannel.save).not.toHaveBeenCalled()
@@ -562,9 +563,7 @@ describe('PaymentConfigService', () => {
     repositories.account.findOne.mockResolvedValue(null)
 
     await expect(
-      service.updateAccountChannel(tenantId, accountId, accountChannelId, {
-        concurrencyLimit: 2,
-      }),
+      service.updateAccountChannel(tenantId, accountId, accountChannelId, {}),
     ).rejects.toBeInstanceOf(NotFoundException)
     expect(repositories.accountChannel.save).not.toHaveBeenCalled()
   })

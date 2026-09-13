@@ -99,7 +99,6 @@ export namespace BusinessApi {
     channelCode: null | string;
     channelId: string;
     channelName: null | string;
-    concurrencyLimit: number;
     executionMode: null | PaymentExecutionMode;
     id: string;
     maximumAmount: null | string;
@@ -357,7 +356,6 @@ export namespace BusinessApi {
   }
 
   export interface PaymentAccountChannelInput extends TenantContext {
-    concurrencyLimit?: number;
     maximumAmount?: null | string;
     minimumAmount?: null | string;
   }
