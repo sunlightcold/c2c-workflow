@@ -27,12 +27,15 @@ export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore
         INNER JOIN merchant
           ON merchant.id = merchant_order."merchantId"
          AND merchant."tenantId" = merchant_order."tenantId"
+        INNER JOIN tenant
+          ON tenant.id = merchant_order."tenantId"
         LEFT JOIN payment_order
           ON payment_order."tenantId" = merchant_order."tenantId"
          AND payment_order."merchantId" = merchant_order."merchantId"
          AND payment_order."sourceType" = $1
          AND payment_order."sourceBusinessNo" = merchant_order."platformOrderId"
-        WHERE merchant.status = 'active'
+        WHERE tenant.status = 'active'
+          AND merchant.status = 'active'
           AND merchant."automaticPaymentEnabled" = true
           AND merchant_order.status = 'PENDING_PAYMENT'
           AND merchant_order.payable = true
@@ -41,10 +44,7 @@ export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore
           AND merchant_order."fiatCurrency" = 'CNY'
           AND merchant_order."payeeIdentity" IS NOT NULL
           AND merchant_order."payeeName" IS NOT NULL
-          AND (
-            merchant_order."paymentDeadline" IS NULL
-            OR merchant_order."paymentDeadline" > $2
-          )
+          AND merchant_order."paymentDeadline" > $2
           AND (
             payment_order.id IS NULL
             OR payment_order.status IN ('PENDING_CONFIG', 'READY')

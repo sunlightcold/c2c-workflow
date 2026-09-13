@@ -98,7 +98,11 @@ describe('Binance C2C mock', () => {
       request('/sapi/v1/c2c/orderMatch/getUserOrderDetail', { adOrderNo: 'ORDER_DETAIL' }),
     )
     expect(detail.body).toMatchObject({ code: '000000', success: true })
-    expect((detail.body as any).data).toMatchObject({ selectedPayId: '2', orderNumber: 'ORDER_DETAIL' })
+    expect((detail.body as any).data).toMatchObject({
+      selectedPayId: '2',
+      orderNumber: 'ORDER_DETAIL',
+      paymentDeadline: expect.any(String),
+    })
 
     const invalid = getBinanceC2cPlugin().handle({
       ...request('/sapi/v1/c2c/orderMatch/getUserOrderDetail', { adOrderNo: 'ORDER_DETAIL' }),

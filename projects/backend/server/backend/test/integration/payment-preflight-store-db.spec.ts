@@ -24,6 +24,7 @@ import { migrateC2cMerchantAccountOperations } from '@/apps/admin/database/migra
 import { migrateC2cPaymentOrders } from '@/apps/admin/database/migrations/c2c-payment-orders.migration'
 import { migrateC2cPaymentRouting } from '@/apps/admin/database/migrations/c2c-payment-routing.migration'
 import { migratePaymentAccountCredentials } from '@/apps/admin/database/migrations/payment-account-credentials.migration'
+import { migrateC2cAutomaticPayments } from '@/apps/admin/database/migrations/c2c-automatic-payments.migration'
 import { PaymentNotSubmittedError } from '@/apps/admin/modules/payment/payment-execution-coordinator'
 import { TypeOrmPaymentPreflightStore } from '@/apps/admin/modules/payment/typeorm-payment-preflight.store'
 import developmentConfig from '@/config/development'
@@ -91,6 +92,7 @@ describe('Payment preflight store database integration', () => {
       await migrateC2cMerchantAccountOperations(manager)
       await migrateC2cMerchantOrders(manager)
       await migrateC2cMerchantOrderAppeals(manager)
+      await migrateC2cAutomaticPayments(manager)
       await manager.query(
         `INSERT INTO merchant (id, "tenantId", code, name, platform, "apiBaseUrl")
          VALUES ($1, $2, 'preflight-merchant', 'Preflight Merchant', 'BINANCE',

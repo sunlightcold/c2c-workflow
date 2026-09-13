@@ -32,7 +32,9 @@ export class TypeOrmC2cOrderSyncStore implements C2cOrderSyncStore {
           )
           SELECT merchant."tenantId", merchant.id, $1, 0
           FROM merchant
-          WHERE merchant.status = 'active'
+          INNER JOIN tenant ON tenant.id = merchant."tenantId"
+          WHERE tenant.status = 'active'
+            AND merchant.status = 'active'
           ON CONFLICT ("tenantId", "merchantId") DO NOTHING
         `,
         [now],
@@ -45,7 +47,10 @@ export class TypeOrmC2cOrderSyncStore implements C2cOrderSyncStore {
             INNER JOIN merchant
               ON merchant.id = checkpoint."merchantId"
              AND merchant."tenantId" = checkpoint."tenantId"
-            WHERE merchant.status = 'active'
+            INNER JOIN tenant
+              ON tenant.id = checkpoint."tenantId"
+            WHERE tenant.status = 'active'
+              AND merchant.status = 'active'
               AND checkpoint."nextSyncAt" <= $1
               AND (
                 checkpoint."leaseExpiresAt" IS NULL

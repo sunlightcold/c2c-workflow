@@ -175,6 +175,23 @@ describe('C2cPlatformPaymentConfirmer', () => {
     ])
   })
 
+  it('finishes platform confirmation after the merchant is disabled', async () => {
+    store.load.mockResolvedValue({
+      ...context,
+      merchant: { ...context.merchant, status: BusinessStatus.DISABLED },
+    })
+
+    await expect(confirmer.confirmPaid(executable)).resolves.toBeUndefined()
+
+    expect(binance.markOrderAsPaid).toHaveBeenCalledTimes(1)
+    expect(store.transitionMerchantOrder).toHaveBeenLastCalledWith(
+      'tenant-1',
+      'merchant-order-1',
+      MerchantOrderStatus.PENDING_RELEASE,
+      C2cBuyOrderStatus.PAID,
+    )
+  })
+
   it('marks an OKX order paid with its receipt account id after anti-fraud clearance', async () => {
     const okxContext = {
       ...context,

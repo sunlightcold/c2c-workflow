@@ -71,6 +71,7 @@ describe('OKX C2C mock', () => {
       code: 0,
       data: {
         publicOrderId: '260905000000001',
+        paymentDeadline: expect.any(Number),
         receiptAccountId: '25990076',
         counterPartyName: '测试用户',
         orderDetailUserVo: { realName: '测试用户', kycVerified: true, sellerReceiptAccount: { id: '25990076' } },

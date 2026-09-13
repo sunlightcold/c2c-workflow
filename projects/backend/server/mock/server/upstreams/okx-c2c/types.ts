@@ -19,6 +19,7 @@ export interface OkxC2cMockOrder {
   price: string
   createdDate: number
   modifyDate: number
+  paymentDeadline: number
   orderPaidDate: number | null
   receiptAccountId: string
   sellerReceiptAccount: {

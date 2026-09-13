@@ -95,12 +95,7 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
     ) {
       throw new Error('支付订单未处于平台确认阶段')
     }
-    if (
-      context.merchant.status !== BusinessStatus.ACTIVE ||
-      context.credential.status !== BusinessStatus.ACTIVE
-    ) {
-      throw new Error('商家或平台凭据不可用')
-    }
+    if (context.credential.status !== BusinessStatus.ACTIVE) throw new Error('商家平台凭据不可用')
     if (
       context.merchant.platform !== context.merchantOrder.platform ||
       context.merchant.platform !== context.credential.platform

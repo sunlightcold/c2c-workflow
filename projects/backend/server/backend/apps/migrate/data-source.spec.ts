@@ -30,6 +30,7 @@ describe('migration data source', () => {
         'C2cTelegramInteractions1789010000000',
         'C2cTelegramBatchInteractions1789011000000',
         'PaymentAccountCredentials1789012000000',
+        'C2cAutomaticPayments1789013000000',
       ])
     } finally {
       if (originalNodeEnv === undefined) delete process.env.NODE_ENV

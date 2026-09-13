@@ -146,10 +146,11 @@ describe('Merchant orders database integration', () => {
           "leaseExpiresAt" = NULL`,
       [C2C_FOUNDATION_IDS.headquartersTenant, merchantId, new Date('2026-09-13T00:00:00Z')],
     )
-    const store = new TypeOrmC2cOrderSyncStore({
+    const storeDataSource: Pick<DataSource, 'transaction' | 'getRepository'> = {
       transaction: (work) => work(queryRunner.manager),
       getRepository: dataSource.getRepository.bind(dataSource),
-    } as never)
+    }
+    const store = new TypeOrmC2cOrderSyncStore(storeDataSource)
 
     await expect(
       store.claimDue('integration-worker', new Date('2026-09-13T00:01:00Z'), 1, 120_000),

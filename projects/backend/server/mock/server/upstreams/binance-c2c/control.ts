@@ -33,6 +33,7 @@ export function validateOrder(value: unknown): BinanceC2cMockOrder {
   const payments = paymentValues.map((value) => object(value))
   if (!payments.length) throw new Error('payMethods不能为空')
   const now = new Date().toISOString()
+  const paymentDeadline = new Date(Date.now() + 15 * 60_000).toISOString()
   const orderNumber = string(input.orderNumber, 'orderNumber')
   const selectedPayId = string(input.selectedPayId ?? payments[0].id ?? '1', 'selectedPayId')
   const payMethods = payments.map((payment) => ({
@@ -55,6 +56,7 @@ export function validateOrder(value: unknown): BinanceC2cMockOrder {
     tradeType: input.tradeType === 'SELL' ? 'SELL' : 'BUY',
     createTime: string(input.createTime ?? now, 'createTime'),
     updateTime: string(input.updateTime ?? now, 'updateTime'),
+    paymentDeadline: string(input.paymentDeadline ?? paymentDeadline, 'paymentDeadline'),
     selectedPayId,
     payMethods,
     complaintReasons: Array.isArray(input.complaintReasons)
