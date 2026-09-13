@@ -108,7 +108,7 @@ const formOptions: VbenFormProps = {
       component: 'Input',
       componentProps: { placeholder: '请输入数字用户 ID' },
       fieldName: 'telegramUserId',
-      label: 'Telegram 用户 ID',
+      label: 'TG用户ID',
     },
     {
       component: 'Select',
@@ -132,7 +132,7 @@ const formOptions: VbenFormProps = {
 const gridOptions: VxeTableGridOptions<BusinessApi.TelegramMember> = {
   columns: [
     { type: 'seq', width: 60 },
-    { field: 'telegramUserId', title: 'Telegram 用户 ID', width: 180 },
+    { field: 'telegramUserId', title: 'TG用户ID', width: 180 },
     { field: 'telegramUsername', minWidth: 140, title: 'Telegram 用户名' },
     { field: 'displayName', minWidth: 130, title: '显示名称' },
     {
@@ -235,7 +235,7 @@ function memberRules(editing = false) {
     {
       field: 'telegramUserId',
       props: { maxlength: 32 },
-      title: 'Telegram 用户 ID',
+      title: 'TG用户ID',
       type: 'input',
       validate: [
         {
