@@ -11,6 +11,7 @@ import {
   createMerchantApi,
   createPaymentPlanApi,
   deleteMerchantApi,
+  deleteMerchantCredentialApi,
   deletePaymentPlanApi,
   filterMerchantsApi,
   getMerchantCredentialsApi,
@@ -483,6 +484,30 @@ function rotateCredential() {
   });
 }
 
+function removeCredential(credential: BusinessApi.MerchantCredential) {
+  const merchant = selectedMerchant.value;
+  if (!merchant || credential.status === 'active') return;
+  confirmResourceAction({
+    action: () =>
+      deleteMerchantCredentialApi(
+        merchant.id,
+        credential.id,
+        selectedTenantId.value,
+      ),
+    content: '仅可删除已停用的历史凭据版本。',
+    okButtonProps: { danger: true },
+    okText: '删除',
+    onSuccess: async () => {
+      credentials.value = await getMerchantCredentialsApi(merchant.id, {
+        tenantId: selectedTenantId.value,
+      });
+    },
+    successMessage: '历史凭据已删除',
+    title: `确认删除凭据版本 ${credential.version} 吗？`,
+    zIndex: 2100,
+  });
+}
+
 function createPaymentPlan() {
   const merchant = selectedMerchant.value;
   if (!merchant) return;
@@ -780,6 +805,30 @@ onMounted(async () => {
                 title="超时（毫秒）"
                 :width="130"
               />
+              <ATableColumn key="action" title="操作" :width="160">
+                <template #default="{ record }">
+                  <ASpace :size="4">
+                    <AButton
+                      v-access:code="['merchant:account:credential']"
+                      size="small"
+                      type="link"
+                      @click="rotateCredential"
+                    >
+                      更新
+                    </AButton>
+                    <AButton
+                      v-access:code="['merchant:account:credential']"
+                      :disabled="record.status === 'active'"
+                      danger
+                      size="small"
+                      type="link"
+                      @click="removeCredential(record)"
+                    >
+                      删除
+                    </AButton>
+                  </ASpace>
+                </template>
+              </ATableColumn>
             </ATable>
           </ATabPane>
           <ATabPane key="payment-plans" tab="支付方案">

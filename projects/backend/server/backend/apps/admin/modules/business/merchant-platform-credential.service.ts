@@ -72,6 +72,18 @@ export class MerchantPlatformCredentialService {
     return credentials.map((credential) => this.toView(credential))
   }
 
+  async remove(tenantId: string, merchantId: string, credentialId: string): Promise<void> {
+    await this.requireMerchant(tenantId, merchantId)
+    const credential = await this.credentialRepository.findOne({
+      where: { id: credentialId, tenantId, merchantId },
+    })
+    if (!credential) throw new NotFoundException('平台凭据不存在')
+    if (credential.status === BusinessStatus.ACTIVE) {
+      throw new BadRequestException('当前生效凭据不能删除，请先更新凭据或停用商家账号')
+    }
+    await this.credentialRepository.remove(credential)
+  }
+
   rotate(
     tenantId: string,
     merchantId: string,

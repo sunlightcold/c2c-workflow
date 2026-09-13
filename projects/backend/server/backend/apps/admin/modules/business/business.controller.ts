@@ -168,7 +168,7 @@ export class BusinessController {
 
   @Post('merchants/:id/platform-credentials')
   @Permission(MerchantPermissions.CREDENTIAL)
-  @ApiOperation({ summary: '更新商家平台凭据' })
+  @ApiOperation({ summary: '新增或更新商家平台凭据版本' })
   rotateMerchantPlatformCredential(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: RotateMerchantPlatformCredentialDto,
@@ -176,6 +176,24 @@ export class BusinessController {
   ) {
     const { tenantId, ...input } = dto
     return this.platformCredentials.rotate(this.scope.resolveTenantId(actor, tenantId), id, input)
+  }
+
+  @Delete('merchants/:id/platform-credentials/:credentialId')
+  @Permission(MerchantPermissions.CREDENTIAL)
+  @ApiOperation({ summary: '删除已停用的商家平台凭据版本' })
+  @ApiParam({ name: 'id', description: '商家账号 ID', type: String })
+  @ApiParam({ name: 'credentialId', description: '平台凭据版本 ID', type: String })
+  removeMerchantPlatformCredential(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('credentialId', ParseUUIDPipe) credentialId: string,
+    @Query() dto: TenantContextDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.platformCredentials.remove(
+      this.scope.resolveTenantId(actor, dto.tenantId),
+      id,
+      credentialId,
+    )
   }
 
   @Post('payment-accounts')

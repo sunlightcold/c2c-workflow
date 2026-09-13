@@ -376,7 +376,10 @@ export function rotateMerchantCredentialModalOptions(
           },
         ];
   return {
-    props: businessModalProps('更新平台凭据', 680),
+    props: {
+      ...businessModalProps('更新平台凭据', 680),
+      zIndex: BUSINESS_NESTED_MODAL_Z_INDEX,
+    },
     formProps: {
       option: businessFormOption,
       rule: layoutBusinessFormRules(

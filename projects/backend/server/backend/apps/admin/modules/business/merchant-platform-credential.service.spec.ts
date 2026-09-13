@@ -15,7 +15,12 @@ describe('MerchantPlatformCredentialService', () => {
   const merchantId = '00000000-0000-4000-8000-000000000020'
   const merchant = { id: merchantId, tenantId, platform: MerchantPlatform.BINANCE }
   const merchantRepository = { findOne: jest.fn() }
-  const credentialRepository = { find: jest.fn(), createQueryBuilder: jest.fn() }
+  const credentialRepository = {
+    find: jest.fn(),
+    findOne: jest.fn(),
+    remove: jest.fn(),
+    createQueryBuilder: jest.fn(),
+  }
   const transaction = jest.fn()
   const cipher = { encrypt: jest.fn().mockReturnValue('encrypted-value'), decrypt: jest.fn() }
   const credentialFactory = { create: jest.fn() }
@@ -137,6 +142,36 @@ describe('MerchantPlatformCredentialService', () => {
     )
     expect(result).toEqual([expect.objectContaining({ credentialConfigured: true, version: 1 })])
     expect(result[0]).not.toHaveProperty('credentialRef')
+  })
+
+  it('deletes only inactive credential versions in the merchant tenant', async () => {
+    merchantRepository.findOne.mockResolvedValue(merchant)
+    credentialRepository.findOne.mockResolvedValue({
+      id: 'credential-1',
+      merchantId,
+      status: BusinessStatus.DISABLED,
+    })
+
+    const result = await service.remove(tenantId, merchantId, 'credential-1')
+
+    expect(result).toBeUndefined()
+    expect(credentialRepository.remove).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'credential-1' }),
+    )
+  })
+
+  it('keeps the active credential version undeletable', async () => {
+    merchantRepository.findOne.mockResolvedValue(merchant)
+    credentialRepository.findOne.mockResolvedValue({
+      id: 'credential-1',
+      merchantId,
+      status: BusinessStatus.ACTIVE,
+    })
+
+    await expect(service.remove(tenantId, merchantId, 'credential-1')).rejects.toThrow(
+      '当前生效凭据不能删除',
+    )
+    expect(credentialRepository.remove).not.toHaveBeenCalled()
   })
 
   it('tests the active Binance credential against its configured gateway', async () => {

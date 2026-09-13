@@ -548,6 +548,15 @@ export const rotateMerchantCredentialApi = (
     `/sys/merchants/${id}/platform-credentials`,
     data,
   );
+export const deleteMerchantCredentialApi = (
+  merchantId: string,
+  credentialId: string,
+  tenantId?: string,
+) =>
+  requestClient.delete(
+    `/sys/merchants/${merchantId}/platform-credentials/${credentialId}`,
+    { params: { tenantId } },
+  );
 
 export const getPaymentPlatformsApi = () =>
   requestClient.get<BusinessApi.PaymentPlatform[]>('/sys/payment-platforms');

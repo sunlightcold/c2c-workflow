@@ -149,8 +149,10 @@ describe('merchant account form schemas', () => {
   });
 
   it('uses direct Binance and OKX credential fields', () => {
-    const binance = fields(rotateMerchantCredentialModalOptions('BINANCE'));
-    const okx = fields(rotateMerchantCredentialModalOptions('OKX'));
+    const binanceOptions = rotateMerchantCredentialModalOptions('BINANCE');
+    const okxOptions = rotateMerchantCredentialModalOptions('OKX');
+    const binance = fields(binanceOptions);
+    const okx = fields(okxOptions);
     expect(binance).toEqual(expect.arrayContaining(['apiKey', 'secretKey']));
     expect(okx).toEqual(
       expect.arrayContaining([
@@ -161,6 +163,8 @@ describe('merchant account form schemas', () => {
       ]),
     );
     expect([...binance, ...okx]).not.toContain('credentialRef');
+    expect(binanceOptions.props.zIndex).toBeGreaterThan(1000);
+    expect(okxOptions.props.zIndex).toBe(binanceOptions.props.zIndex);
   });
 
   it('renders payment plan forms above the merchant configuration drawer', () => {
