@@ -934,6 +934,31 @@ test('manages payment plans inside the merchant configuration drawer', async ({
   await expect(planTable.getByText('总部支付宝主账号')).toHaveCount(0);
 });
 
+test('lists selectable channels when opening a payment channel', async ({
+  page,
+}) => {
+  await page.goto('/business/payment-accounts');
+  await selectHeadquartersTenant(page);
+  await page.getByRole('button', { name: '通道配置' }).click();
+
+  const channelDrawer = page.locator('.ant-drawer-content:visible');
+  await channelDrawer.getByRole('button', { name: '开通支付通道' }).click();
+  const dialog = page.getByRole('dialog', { name: '开通支付通道' });
+  const channelField = dialog
+    .locator('.ant-form-item')
+    .filter({ hasText: '支付通道' });
+  await channelField.locator('.ant-select-selector').click();
+
+  const channelName = '支付宝商家转账 · 商家转账';
+  await page
+    .locator('.ant-select-dropdown:visible .ant-select-item-option')
+    .filter({ hasText: channelName })
+    .click({ timeout: 5000 });
+  await expect(channelField.locator('.ant-select-selection-item')).toHaveText(
+    channelName,
+  );
+});
+
 test('selects a bound robot group and restores default merchant chat messages', async ({
   page,
 }, testInfo) => {

@@ -741,7 +741,11 @@ export function openPaymentChannelModalOptions(
           {
             field: 'channelId',
             options: channels,
-            props: { placeholder: '请选择该账号平台下的支付通道' },
+            props: {
+              getPopupContainer: (triggerNode: HTMLElement) =>
+                triggerNode.parentElement ?? document.body,
+              placeholder: '请选择该账号平台下的支付通道',
+            },
             title: '支付通道',
             type: 'select',
             validate: required('请选择支付通道'),
