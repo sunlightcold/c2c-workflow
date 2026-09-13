@@ -28,7 +28,7 @@ describe('merchant account form schemas', () => {
     });
     expect(
       rules?.find(({ field }) => field === 'c2cChatOrderCreatedMessage')?.col,
-    ).toEqual({ span: 24 });
+    ).toEqual({ md: 12, xs: 24 });
   });
 
   it('collects credentials and operational settings without unrelated fields', () => {

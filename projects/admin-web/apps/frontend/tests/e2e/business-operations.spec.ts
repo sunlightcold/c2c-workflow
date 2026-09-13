@@ -1385,6 +1385,26 @@ test('selects a bound robot group and restores default merchant chat messages', 
   await expect(dialog.getByRole('textbox', { name: /完成后消息/ })).toHaveValue(
     /您的每一次认可都是我们持续做好服务的动力/,
   );
+  if (!testInfo.project.name.includes('mobile')) {
+    for (const [switchLabel, messageLabel] of [
+      ['下单后发送聊天消息', '下单后消息'],
+      ['付款后发送聊天消息', '付款后消息'],
+      ['完成后发送聊天消息', '完成后消息'],
+    ]) {
+      const switchBox = await dialog
+        .locator('.ant-form-item')
+        .filter({ hasText: switchLabel })
+        .boundingBox();
+      const messageBox = await dialog
+        .locator('.ant-form-item')
+        .filter({ hasText: messageLabel })
+        .boundingBox();
+      if (!switchBox || !messageBox) {
+        throw new Error(`消息配置字段未渲染：${switchLabel} / ${messageLabel}`);
+      }
+      expect(Math.abs(switchBox.y - messageBox.y)).toBeLessThan(8);
+    }
+  }
 
   const groupCombobox = dialog.getByRole('combobox', { name: /机器人群组/ });
   await groupCombobox.press('ArrowDown');
