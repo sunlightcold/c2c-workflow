@@ -274,10 +274,15 @@ async function editMerchant(merchant: BusinessApi.Merchant) {
   editingId.value = merchant.id;
   try {
     const groupBindings = await loadMerchantGroupBindings(merchant);
-    const currentGroupId = groupBindings.find(
+    const matchedGroupId = groupBindings.find(
       ({ bot, group }) =>
         bot.code === merchant.botCode && group.chatId === merchant.chatId,
     )?.group.id;
+    // 机器人命令绑定后，群组记录是权威来源；历史商家数据可能尚未回写
+    // botCode/chatId。商家只有一个有效群组时直接回显，避免用户重复选择。
+    const currentGroupId =
+      matchedGroupId ??
+      (groupBindings.length === 1 ? groupBindings[0]?.group.id : undefined);
     const groupOptions = groupBindings.map(({ bot, group }) => ({
       label: `${group.name} · ${bot.name}`,
       value: group.id,

@@ -182,15 +182,16 @@ function settings(
             options: telegramGroupOptions,
             props: {
               allowClear: true,
-              disabled: telegramGroupOptions.length === 0,
+              // 群组绑定由机器人指令或“群组绑定”菜单完成，商家编辑页只负责展示。
+              disabled: true,
               optionFilterProp: 'label',
               placeholder:
                 telegramGroupOptions.length === 0
                   ? '暂无可绑定群组'
-                  : '请选择机器人群组',
+                  : '请在群组绑定中管理',
               showSearch: true,
             },
-            title: '机器人群组',
+            title: '机器人群组（只读）',
             type: 'select',
             value: '',
           } satisfies Rule,
