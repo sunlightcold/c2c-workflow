@@ -46,6 +46,13 @@ export class TelegramAuthorizationService {
     private readonly users: Repository<SysUserEntity>,
   ) {}
 
+  async isActiveSuperAdmin(tenantId: string, telegramUserId: string): Promise<boolean> {
+    const admin = await this.superAdmins.findOne({
+      where: { tenantId, telegramUserId, status: BusinessStatus.ACTIVE },
+    })
+    return Boolean(admin)
+  }
+
   async authorize(
     bot: RuntimeBot,
     chatId: string,

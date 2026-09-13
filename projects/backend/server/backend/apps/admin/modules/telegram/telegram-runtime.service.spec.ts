@@ -20,6 +20,7 @@ describe('TelegramRuntimeService', () => {
       allowed: true,
       capabilities: [TelegramCapability.ORDER_QUERY],
     }),
+    isActiveSuperAdmin: jest.fn().mockResolvedValue(false),
   }
   const telegram = { sendMessage: jest.fn().mockResolvedValue(undefined) }
   const manualPayments = { prepare: jest.fn(), confirm: jest.fn(), cancel: jest.fn() }
@@ -31,8 +32,12 @@ describe('TelegramRuntimeService', () => {
     todayStats: jest.fn(),
     status: jest.fn(),
   }
+  const groups = { bindByMerchant: jest.fn() }
 
-  beforeEach(() => jest.clearAllMocks())
+  beforeEach(() => {
+    jest.clearAllMocks()
+    authorization.isActiveSuperAdmin.mockResolvedValue(false)
+  })
 
   it('replies with the Telegram user ID without requiring a group binding', async () => {
     const runtime = new TelegramRuntimeService(
@@ -42,6 +47,7 @@ describe('TelegramRuntimeService', () => {
       manualPayments as never,
       batchPayments as never,
       queries as never,
+      groups as never,
     )
 
     await runtime.handle({
@@ -74,6 +80,7 @@ describe('TelegramRuntimeService', () => {
       manualPayments as never,
       batchPayments as never,
       queries as never,
+      groups as never,
     )
 
     await runtime.handle({
@@ -110,6 +117,7 @@ describe('TelegramRuntimeService', () => {
       manualPayments as never,
       batchPayments as never,
       queries as never,
+      groups as never,
     )
     const text = 'ORDER-1\n100.50\n张三\n13800138000'
 
@@ -130,7 +138,14 @@ describe('TelegramRuntimeService', () => {
       expect.objectContaining({
         bot,
         text,
-        message: { chatId: '-1001', messageId: 11, text, userId: '88' },
+        message: {
+          chatId: '-1001',
+          chatType: 'supergroup',
+          chatName: null,
+          messageId: 11,
+          text,
+          userId: '88',
+        },
       }),
     )
     expect(telegram.sendMessage).toHaveBeenCalledWith(
@@ -151,6 +166,7 @@ describe('TelegramRuntimeService', () => {
       manualPayments as never,
       batchPayments as never,
       queries as never,
+      groups as never,
     )
 
     await runtime.handle({
@@ -188,6 +204,7 @@ describe('TelegramRuntimeService', () => {
       manualPayments as never,
       batchPayments as never,
       queries as never,
+      groups as never,
     )
 
     await runtime.handle({
@@ -218,6 +235,7 @@ describe('TelegramRuntimeService', () => {
       manualPayments as never,
       batchPayments as never,
       queries as never,
+      groups as never,
     )
 
     await runtime.handle({
@@ -245,6 +263,7 @@ describe('TelegramRuntimeService', () => {
       manualPayments as never,
       batchPayments as never,
       queries as never,
+      groups as never,
     )
 
     await runtime.handle({
@@ -272,6 +291,7 @@ describe('TelegramRuntimeService', () => {
       manualPayments as never,
       batchPayments as never,
       queries as never,
+      groups as never,
     )
 
     await runtime.handle({
@@ -302,6 +322,7 @@ describe('TelegramRuntimeService', () => {
       manualPayments as never,
       batchPayments as never,
       queries as never,
+      groups as never,
     )
 
     await runtime.handle({
@@ -335,6 +356,7 @@ describe('TelegramRuntimeService', () => {
       manualPayments as never,
       batchPayments as never,
       queries as never,
+      groups as never,
     )
 
     await runtime.handle({
@@ -352,6 +374,73 @@ describe('TelegramRuntimeService', () => {
     expect(authorization.authorize).toHaveBeenCalledWith(bot, '-1001', '88')
     expect(batchPayments.confirm).toHaveBeenCalledWith(
       expect.objectContaining({ interactionId, bot }),
+    )
+  })
+
+  it('allows an active Telegram super admin to bind a pending merchant group', async () => {
+    authorization.isActiveSuperAdmin.mockResolvedValue(true)
+    groups.bindByMerchant.mockResolvedValue({ name: '商家群' })
+    const runtime = new TelegramRuntimeService(
+      bots as never,
+      authorization as never,
+      telegram as never,
+      manualPayments as never,
+      batchPayments as never,
+      queries as never,
+      groups as never,
+    )
+
+    await runtime.handle({
+      botId: 'bot-1',
+      tenantId: 'tenant-1',
+      payload: {
+        message: {
+          message_id: 20,
+          chat: { id: -1001, type: 'supergroup', title: '新商家群' },
+          from: { id: 88 },
+          text: '/bind MCH00123456',
+        },
+      },
+    })
+
+    expect(groups.bindByMerchant).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      botId: 'bot-1',
+      merchantCode: 'MCH00123456',
+      chatId: '-1001',
+      chatType: 'supergroup',
+      chatName: '新商家群',
+    })
+    expect(telegram.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ text: expect.stringContaining('商家群绑定成功') }),
+    )
+  })
+
+  it('rejects bind command from a non-super-admin', async () => {
+    const runtime = new TelegramRuntimeService(
+      bots as never,
+      authorization as never,
+      telegram as never,
+      manualPayments as never,
+      batchPayments as never,
+      queries as never,
+      groups as never,
+    )
+    await runtime.handle({
+      botId: 'bot-1',
+      tenantId: 'tenant-1',
+      payload: {
+        message: {
+          message_id: 21,
+          chat: { id: -1001, type: 'supergroup' },
+          from: { id: 88 },
+          text: '/bind MCH00123456',
+        },
+      },
+    })
+    expect(groups.bindByMerchant).not.toHaveBeenCalled()
+    expect(telegram.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '只有机器人超级管理员可以绑定商家群' }),
     )
   })
 })

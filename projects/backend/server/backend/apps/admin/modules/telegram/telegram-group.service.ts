@@ -2,6 +2,7 @@ import { randomInt, createHash } from 'node:crypto'
 import {
   BusinessStatus,
   MerchantEntity,
+  PaymentSourceType,
   TelegramBotEntity,
   TelegramGroupBindingState,
   TelegramGroupEntity,
@@ -108,6 +109,79 @@ export class TelegramGroupService {
     group.chatId = input.chatId
     group.chatType = input.chatType ?? 'supergroup'
     group.name = input.chatName ?? group.name
+    group.bindingState = TelegramGroupBindingState.ACTIVE
+    group.verifiedAt = new Date()
+    group.verificationCodeHash = null
+    group.verificationExpiresAt = null
+    return this.publicView(await this.groups.save(group))
+  }
+
+  async bindByMerchant(input: {
+    tenantId: string
+    botId: string
+    merchantCode: string
+    chatId: string
+    chatType: string
+    chatName?: string | null
+  }) {
+    if (input.chatType !== 'group' && input.chatType !== 'supergroup')
+      throw new BadRequestException('只能在群组中绑定商家')
+    const [merchant, bot] = await Promise.all([
+      this.merchants.findOne({
+        where: {
+          tenantId: input.tenantId,
+          code: input.merchantCode.trim().toUpperCase(),
+          status: BusinessStatus.ACTIVE,
+        },
+      }),
+      this.bots.findOne({
+        where: { id: input.botId, tenantId: input.tenantId, status: BusinessStatus.ACTIVE },
+      }),
+    ])
+    if (!merchant) throw new BadRequestException('商家不存在或已停用')
+    if (!bot) throw new BadRequestException('机器人不可用或不属于当前所属单位')
+
+    const existing = await this.groups.findOne({
+      where: {
+        tenantId: input.tenantId,
+        botId: input.botId,
+        chatId: input.chatId,
+        bindingState: TelegramGroupBindingState.ACTIVE,
+      },
+    })
+    if (existing) throw new ConflictException('当前群已经完成绑定')
+
+    const pending = await this.groups.findOne({
+      where: {
+        tenantId: input.tenantId,
+        botId: input.botId,
+        merchantId: merchant.id,
+        bindingState: TelegramGroupBindingState.PENDING,
+      },
+      order: { createdAt: 'DESC' },
+    })
+    const group =
+      pending ??
+      this.groups.create({
+        tenantId: input.tenantId,
+        botId: input.botId,
+        merchantId: merchant.id,
+        name: input.chatName?.trim().slice(0, 100) || merchant.name,
+        chatId: null,
+        chatType: null,
+        paymentScene: PaymentSourceType.C2C_BUY,
+        capabilities: bot.capabilities,
+        notificationEvents: Object.values(TelegramNotificationEvent),
+        notificationsEnabled: true,
+        bindingState: TelegramGroupBindingState.PENDING,
+        verificationCodeHash: null,
+        verificationExpiresAt: null,
+        verifiedAt: null,
+        description: null,
+      })
+    group.chatId = input.chatId
+    group.chatType = input.chatType
+    if (input.chatName?.trim()) group.name = input.chatName.trim().slice(0, 100)
     group.bindingState = TelegramGroupBindingState.ACTIVE
     group.verifiedAt = new Date()
     group.verificationCodeHash = null

@@ -1,5 +1,5 @@
 import { BusinessStatus, TelegramBotEntity } from '@admin/database'
-import { Injectable } from '@nestjs/common'
+import { Injectable, Optional } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { TelegramApiClient } from './telegram-api.client'
@@ -8,6 +8,7 @@ import { TelegramCapability } from './telegram-policy'
 import { TelegramManualPaymentService } from './telegram-manual-payment.service'
 import { TelegramBatchPaymentService } from './telegram-batch-payment.service'
 import { TelegramQueryService } from './telegram-query.service'
+import { TelegramGroupService } from './telegram-group.service'
 
 interface TelegramUpdateInput {
   botId: string
@@ -20,6 +21,8 @@ interface TelegramTextMessage {
   messageId: number
   text: string
   userId: string
+  chatType?: string
+  chatName?: string | null
 }
 
 interface TelegramCallbackMessage extends TelegramTextMessage {
@@ -46,6 +49,7 @@ export class TelegramRuntimeService {
     private readonly manualPayments: TelegramManualPaymentService,
     private readonly batchPayments: TelegramBatchPaymentService,
     private readonly queries: TelegramQueryService,
+    @Optional() private readonly groups?: TelegramGroupService,
   ) {}
 
   async handle(update: TelegramUpdateInput): Promise<void> {
@@ -73,6 +77,26 @@ export class TelegramRuntimeService {
       await this.reply(bot.tokenRef, message, `您的 Telegram 用户编号：${message.userId}`)
       return
     }
+    if (command === '/bind') {
+      await this.handleBindCommand(bot, message)
+      return
+    }
+    if (command === '/help') {
+      const isSuperAdmin =
+        typeof this.authorization.isActiveSuperAdmin === 'function' &&
+        (await this.authorization.isActiveSuperAdmin(bot.tenantId, message.userId))
+      if (isSuperAdmin && message.chatType && ['group', 'supergroup'].includes(message.chatType)) {
+        const existing = await this.authorization.authorize(bot, message.chatId, message.userId)
+        if (!existing.allowed) {
+          await this.reply(
+            bot.tokenRef,
+            message,
+            ['可用命令：', '/myid - 查看 Telegram 用户编号', '/bind 商家编号 - 绑定当前商家群'].join('\n'),
+          )
+          return
+        }
+      }
+    }
     const authorization = await this.authorization.authorize(bot, message.chatId, message.userId)
     if (!authorization.allowed) {
       await this.reply(bot.tokenRef, message, '您没有权限使用当前机器人')
@@ -94,11 +118,50 @@ export class TelegramRuntimeService {
     const lines = commandCapabilities
       .filter(([capability]) => authorization.capabilities.includes(capability))
       .map(([, name, description]) => `${name} - ${description}`)
+    if (
+      typeof this.authorization.isActiveSuperAdmin === 'function' &&
+      (await this.authorization.isActiveSuperAdmin(bot.tenantId, message.userId))
+    ) {
+      lines.unshift('/bind 商家编号 - 绑定当前商家群')
+    }
     await this.reply(
       bot.tokenRef,
       message,
       ['可用命令：', '/myid - 查看 Telegram 用户编号', ...lines].join('\n'),
     )
+  }
+
+  private async handleBindCommand(bot: TelegramBotEntity, message: TelegramTextMessage) {
+    if (!message.chatType || !['group', 'supergroup'].includes(message.chatType)) {
+      await this.reply(bot.tokenRef, message, '只能在群组中绑定商家')
+      return
+    }
+    if (
+      typeof this.authorization.isActiveSuperAdmin !== 'function' ||
+      !(await this.authorization.isActiveSuperAdmin(bot.tenantId, message.userId))
+    ) {
+      await this.reply(bot.tokenRef, message, '只有机器人超级管理员可以绑定商家群')
+      return
+    }
+    const args = message.text.split(/\s+/).slice(1).filter(Boolean)
+    if (args.length !== 1) {
+      await this.reply(bot.tokenRef, message, '用法：/bind 商家编号')
+      return
+    }
+    try {
+      if (!this.groups) throw new Error('群组绑定服务不可用')
+      const binding = await this.groups.bindByMerchant({
+        tenantId: bot.tenantId,
+        botId: bot.id,
+        merchantCode: args[0],
+        chatId: message.chatId,
+        chatType: message.chatType,
+        chatName: message.chatName,
+      })
+      await this.reply(bot.tokenRef, message, `商家群绑定成功\n商家：${binding.name}\n发送 /help 查看可用命令`)
+    } catch (error) {
+      await this.reply(bot.tokenRef, message, error instanceof Error ? error.message : '商家群绑定失败')
+    }
   }
 
   private async handleAuthorizedCommand(
@@ -254,6 +317,8 @@ export class TelegramRuntimeService {
       messageId: message.message_id,
       text: record.data,
       userId: String(from.id),
+      chatType: typeof chat.type === 'string' ? chat.type : undefined,
+      chatName: typeof chat.title === 'string' ? chat.title : null,
     }
   }
 
@@ -276,6 +341,8 @@ export class TelegramRuntimeService {
       messageId: record.message_id,
       text: record.text.trim(),
       userId: String(from.id),
+      chatType: typeof chat.type === 'string' ? chat.type : undefined,
+      chatName: typeof chat.title === 'string' ? chat.title : null,
     }
   }
 }
