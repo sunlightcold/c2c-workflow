@@ -6,6 +6,7 @@ import { expect, test } from '@playwright/test';
 
 const tenantId = '00000000-0000-4000-8000-000000000001';
 const pageErrors = new WeakMap<Page, string[]>();
+const botListRequestCounts = new WeakMap<Page, number>();
 const testCertificateDerBase64 = 'MA4wAwIBATADBgEqAwIA/w==';
 const testCertificatePem = `-----BEGIN CERTIFICATE-----
 ${testCertificateDerBase64}
@@ -223,6 +224,7 @@ test.beforeEach(async ({ page }) => {
     return '机器人已停止';
   };
   pageErrors.set(page, errors);
+  botListRequestCounts.set(page, 0);
   page.on('pageerror', (error) => {
     errors.push(error.stack ?? error.message);
   });
@@ -518,6 +520,10 @@ test.beforeEach(async ({ page }) => {
         break;
       }
       case '/sys/tg/bots': {
+        botListRequestCounts.set(
+          page,
+          (botListRequestCounts.get(page) ?? 0) + 1,
+        );
         data = {
           items: [
             {
@@ -693,7 +699,7 @@ test('loads all second-level business pages under one menu', async ({
       await expect(tenantSelect).toBeVisible();
       await expect(
         tenantSelect.locator('.ant-select-selection-item'),
-      ).toHaveCount(0);
+      ).toHaveText('总部自营（总部自营）');
     }
   }
 
@@ -1097,6 +1103,10 @@ test('provides complete Telegram administration actions', async ({ page }) => {
   await page.getByRole('button', { name: /启\s*动/ }).click();
   await startRequest;
   await expect(page.getByRole('button', { name: /重\s*启/ })).toBeVisible();
+
+  const listRequestCount = botListRequestCounts.get(page);
+  await page.waitForTimeout(5500);
+  expect(botListRequestCounts.get(page)).toBe(listRequestCount);
 });
 
 test('creates a Telegram bot with a Bot Token instead of an internal reference', async ({

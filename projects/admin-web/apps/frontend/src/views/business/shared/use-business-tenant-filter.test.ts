@@ -46,9 +46,9 @@ describe('business tenant filter', () => {
     ]);
   });
 
-  it('does not preselect a unit for platform users', async () => {
+  it('preselects the headquarters self-operated unit for platform users', async () => {
     getTenantsApi.mockResolvedValueOnce(tenants);
     const { loadTenantOptions } = useBusinessTenantFilter();
-    await expect(loadTenantOptions()).resolves.toBe('');
+    await expect(loadTenantOptions()).resolves.toBe('hq-1');
   });
 });

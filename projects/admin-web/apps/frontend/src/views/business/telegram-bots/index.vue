@@ -3,7 +3,7 @@ import type { VbenFormProps } from '#/adapter/form';
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { BusinessApi } from '#/api';
 
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onMounted, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
 
@@ -349,21 +349,12 @@ function runRuntimeAction(row: BusinessApi.TelegramBot) {
   });
 }
 
-let refreshTimer: ReturnType<typeof setInterval> | undefined;
-
 onMounted(async () => {
   selectedTenantId.value = await loadTenantOptions();
   if (selectedTenantId.value) {
     await gridApi.formApi.setFieldValue('tenantId', selectedTenantId.value);
     await gridApi.query();
   }
-  refreshTimer = setInterval(() => {
-    if (selectedTenantId.value) void gridApi.query();
-  }, 5000);
-});
-
-onUnmounted(() => {
-  if (refreshTimer) clearInterval(refreshTimer);
 });
 </script>
 

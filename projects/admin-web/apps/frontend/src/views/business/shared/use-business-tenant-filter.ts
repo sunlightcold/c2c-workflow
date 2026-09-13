@@ -54,7 +54,9 @@ export function useBusinessTenantFilter() {
       tenantOptions.length,
       ...toTenantFilterOptions(tenants),
     );
-    return '';
+    return (
+      tenants.find((tenant) => tenant.type === 'HEADQUARTERS_SELF')?.id ?? ''
+    );
   }
 
   return { fixedTenantId, loadTenantOptions, tenantOptions };
