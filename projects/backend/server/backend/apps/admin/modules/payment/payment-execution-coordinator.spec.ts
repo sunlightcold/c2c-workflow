@@ -12,6 +12,7 @@ describe('PaymentExecutionCoordinator', () => {
   const store = { get: jest.fn(), claim: jest.fn(), transition: jest.fn() }
   const executor = { submit: jest.fn(), query: jest.fn() }
   const confirmer = { confirmPaid: jest.fn() }
+  const eventEmitter = { emit: jest.fn() }
   let coordinator: PaymentExecutionCoordinator
 
   beforeEach(() => {
@@ -19,7 +20,7 @@ describe('PaymentExecutionCoordinator', () => {
     store.claim.mockResolvedValue({ ...order, status: PaymentOrderState.SUBMITTING })
     store.get.mockResolvedValue({ ...order, status: PaymentOrderState.UNKNOWN })
     store.transition.mockImplementation(async (_order, status) => ({ ...order, status }))
-    coordinator = new PaymentExecutionCoordinator(store, executor, confirmer)
+    coordinator = new PaymentExecutionCoordinator(store, executor, confirmer, eventEmitter as never)
   })
 
   it('claims an order before sending money and completes platform confirmation separately', async () => {

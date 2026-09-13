@@ -1,1 +1,0 @@
-export const CLIENT_ERROR_RETENTION_DAYS = 30

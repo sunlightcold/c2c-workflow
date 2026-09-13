@@ -96,6 +96,7 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
     return {
       id: batch.id,
       tenantId: batch.tenantId,
+      merchantId: batch.merchantId,
       batchNo: batch.batchNo,
       status: batch.status,
       credentialRef: account.credentialRef,

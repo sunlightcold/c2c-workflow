@@ -1,5 +1,5 @@
 import { PaymentExecutionMode, PaymentOrderStatus, PaymentSourceType } from '@admin/database'
-import { Inject, Injectable, Logger } from '@nestjs/common'
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { C2cMerchantPaymentService } from './c2c-merchant-payment.service'
 import type {
   AutomaticPaymentCandidate,
@@ -9,6 +9,7 @@ import { PaymentBatchExecutionCoordinator } from './payment-batch-execution-coor
 import { PaymentBatchService } from './payment-batch.service'
 import { PaymentExecutionCoordinator } from './payment-execution-coordinator'
 import { PaymentOrderService } from './payment-order.service'
+import { EVENT_KEYS, EventEmitterService } from '../event-emitter'
 
 export const C2C_AUTOMATIC_PAYMENT_STORE = Symbol('C2C_AUTOMATIC_PAYMENT_STORE')
 const AUTOMATION_LIMIT = 100
@@ -24,6 +25,7 @@ export class C2cAutomaticPaymentService {
     private readonly payments: PaymentExecutionCoordinator,
     private readonly batches: PaymentBatchService,
     private readonly batchExecution: PaymentBatchExecutionCoordinator,
+    @Optional() private readonly eventEmitter?: EventEmitterService,
   ) {}
 
   async createAndSubmit(now = new Date()) {
@@ -108,6 +110,22 @@ export class C2cAutomaticPaymentService {
       } catch (error) {
         failed += 1
         this.logger.error(`自动支付任务处理失败: ${this.errorMessage(error)}`)
+        const scoped = item as Partial<{
+          tenantId: string
+          merchantId: string
+          id: string
+          merchantOrderId: string
+          batchNo: string
+        }>
+        if (scoped.tenantId) {
+          this.eventEmitter?.emit(EVENT_KEYS.TELEGRAM_EXCEPTION, {
+            tenantId: scoped.tenantId,
+            merchantId: scoped.merchantId,
+            code: 'AUTOMATIC_PAYMENT_FAILED',
+            message: this.errorMessage(error),
+            referenceId: scoped.merchantOrderId ?? scoped.batchNo ?? scoped.id,
+          })
+        }
       }
     }
     return { found: items.length, succeeded, failed }

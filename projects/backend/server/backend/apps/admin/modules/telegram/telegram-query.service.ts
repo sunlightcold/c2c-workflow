@@ -82,6 +82,31 @@ export class TelegramQueryService {
     ].join('\n')
   }
 
+  async receipt(tenantId: string, merchantId: string, businessNo: string): Promise<string> {
+    const query = businessNo.trim()
+    if (!query) return '请输入支付单号或商户订单号，例如：/receipt PAY001'
+    const order = await this.orders.findOne({
+      where: [
+        { id: query, tenantId, merchantId },
+        { tenantId, merchantId, paymentNo: query },
+        { tenantId, merchantId, sourceBusinessNo: query },
+      ],
+    })
+    if (!order) return '未查询到支付订单，无法获取回单'
+    if (
+      !order.upstreamId ||
+      ![PaymentOrderStatus.SUCCESS, PaymentOrderStatus.COMPLETED].includes(order.status)
+    )
+      return `支付订单 ${order.paymentNo} 尚未完成，暂无回单`
+    return [
+      `支付回单：${order.paymentNo}`,
+      `商户订单号：${order.sourceBusinessNo}`,
+      `支付金额：${order.amount} ${order.currency}`,
+      `平台流水号：${order.upstreamId}`,
+      '回单状态：已生成（请在支付平台下载凭证）',
+    ].join('\n')
+  }
+
   async todayStats(tenantId: string, merchantId: string): Promise<string> {
     const [row] = (await this.dataSource.query(
       `SELECT COUNT(*)::text AS "totalCount",

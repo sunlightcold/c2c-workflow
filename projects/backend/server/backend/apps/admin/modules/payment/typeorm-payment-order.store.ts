@@ -189,6 +189,9 @@ export class TypeOrmPaymentOrderStore implements PaymentOrderStore {
       tenantId: order.tenantId,
       status: order.status,
       upstreamId: order.upstreamId,
+      merchantId: order.merchantId,
+      paymentNo: order.paymentNo,
+      sourceBusinessNo: order.sourceBusinessNo,
     }
   }
 }

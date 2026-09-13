@@ -78,55 +78,7 @@ export class TelegramRuntimeService {
       await this.reply(bot.tokenRef, message, '您没有权限使用当前机器人')
       return
     }
-    if (command === '/query') {
-      await this.reply(
-        bot.tokenRef,
-        message,
-        authorization.capabilities.includes(TelegramCapability.ORDER_QUERY)
-          ? await this.queries.query(
-              bot.tenantId,
-              authorization.group.merchantId,
-              this.commandArgument(message.text),
-            )
-          : '您没有查询支付订单的权限',
-      )
-      return
-    }
-    if (command === '/balance') {
-      await this.reply(
-        bot.tokenRef,
-        message,
-        authorization.capabilities.includes(TelegramCapability.BALANCE_QUERY)
-          ? await this.queries.balance(bot.tenantId, authorization.group.merchantId)
-          : '您没有查询支付账号余额的权限',
-      )
-      return
-    }
-    if (command === '/stats') {
-      await this.reply(
-        bot.tokenRef,
-        message,
-        authorization.capabilities.includes(TelegramCapability.PAYMENT_STATISTICS)
-          ? await this.queries.todayStats(bot.tenantId, authorization.group.merchantId)
-          : '您没有查看支付统计的权限',
-      )
-      return
-    }
-    if (command === '/status') {
-      await this.reply(
-        bot.tokenRef,
-        message,
-        authorization.capabilities.includes(TelegramCapability.BOT_STATUS_MANAGE)
-          ? this.queries.status(bot.code, authorization.group.name)
-          : '您没有查看机器人状态的权限',
-      )
-      return
-    }
-    if (command === '/submitbatch') {
-      const result = await this.batchPayments.prepare({ bot, authorization, message })
-      await this.reply(bot.tokenRef, message, result.text, result.replyMarkup)
-      return
-    }
+    if (await this.handleAuthorizedCommand(bot, message, authorization, command)) return
     if (command !== '/help') {
       if (message.text.includes('\n')) {
         const result = await this.manualPayments.prepare({
@@ -149,7 +101,64 @@ export class TelegramRuntimeService {
     )
   }
 
+  private async handleAuthorizedCommand(
+    bot: TelegramBotEntity,
+    message: TelegramTextMessage,
+    authorization: Extract<
+      Awaited<ReturnType<TelegramAuthorizationService['authorize']>>,
+      { allowed: true }
+    >,
+    command: string,
+  ): Promise<boolean> {
+    const merchantId = authorization.group?.merchantId ?? ''
+    const responses: Record<string, () => Promise<string> | string> = {
+      '/query': () =>
+        authorization.capabilities.includes(TelegramCapability.ORDER_QUERY)
+          ? this.queries.query(bot.tenantId, merchantId, this.commandArgument(message.text))
+          : '您没有查询支付订单的权限',
+      '/balance': () =>
+        authorization.capabilities.includes(TelegramCapability.BALANCE_QUERY)
+          ? this.queries.balance(bot.tenantId, merchantId)
+          : '您没有查询支付账号余额的权限',
+      '/receipt': () =>
+        authorization.capabilities.includes(TelegramCapability.RECEIPT_QUERY)
+          ? this.queries.receipt(bot.tenantId, merchantId, this.commandArgument(message.text))
+          : '您没有获取支付回单的权限',
+      '/stats': () =>
+        authorization.capabilities.includes(TelegramCapability.PAYMENT_STATISTICS)
+          ? this.queries.todayStats(bot.tenantId, merchantId)
+          : '您没有查看支付统计的权限',
+      '/status': () =>
+        authorization.capabilities.includes(TelegramCapability.BOT_STATUS_MANAGE)
+          ? this.queries.status(bot.code, authorization.group?.name ?? '')
+          : '您没有查看机器人状态的权限',
+    }
+    if (command in responses) {
+      await this.reply(bot.tokenRef, message, await responses[command]())
+      return true
+    }
+    if (command === '/submitbatch') {
+      const result = await this.batchPayments.prepare({ bot, authorization, message })
+      await this.reply(bot.tokenRef, message, result.text, result.replyMarkup)
+      return true
+    }
+    return false
+  }
+
   private async handleCallback(bot: TelegramBotEntity, message: TelegramCallbackMessage) {
+    const receiptMatch = /^receipt:([0-9a-f-]{36})$/.exec(message.data)
+    if (receiptMatch) {
+      const authorization = await this.authorization.authorize(bot, message.chatId, message.userId)
+      if (!authorization.allowed) {
+        await this.reply(bot.tokenRef, message, '您没有权限执行该操作')
+        return
+      }
+      const text = authorization.capabilities.includes(TelegramCapability.RECEIPT_QUERY)
+        ? await this.queries.receipt(bot.tenantId, authorization.group.merchantId, receiptMatch[1])
+        : '您没有获取支付回单的权限'
+      await this.reply(bot.tokenRef, message, text)
+      return
+    }
     const match = /^(payment|batch):(confirm|cancel):([0-9a-f-]{36})$/.exec(message.data)
     if (!match) return
     const authorization = await this.authorization.authorize(bot, message.chatId, message.userId)

@@ -1,10 +1,11 @@
 import { PaymentBatchStatus, PaymentSourceType } from '@admin/database'
-import { ConflictException, Inject, Injectable } from '@nestjs/common'
+import { ConflictException, Inject, Injectable, Optional } from '@nestjs/common'
 import type { AlipayBatchResponse } from './alipay-batch.adapter'
 import { PaymentExecutionStatus, type PaymentExecutionResult } from './payment-adapter.types'
 import type { ExecutablePaymentOrder } from './payment-execution-coordinator'
 import { PaymentExecutionCoordinator } from './payment-execution-coordinator'
 import { PaymentNotSubmittedError } from './payment-execution.errors'
+import { EVENT_KEYS, EventEmitterService } from '../event-emitter'
 
 export interface ExecutablePaymentBatchItem {
   id: string
@@ -19,6 +20,7 @@ export interface ExecutablePaymentBatchItem {
 export interface ExecutablePaymentBatch {
   id: string
   tenantId: string
+  merchantId?: string
   batchNo: string
   status: PaymentBatchStatus
   credentialRef: string
@@ -71,6 +73,7 @@ export class PaymentBatchExecutionCoordinator {
     @Inject(PAYMENT_BATCH_PREFLIGHT) private readonly preflight: PaymentBatchPreflightVerifier,
     @Inject(PaymentExecutionCoordinator)
     private readonly payments: Pick<PaymentExecutionCoordinator, 'confirmPlatform'>,
+    @Optional() private readonly eventEmitter?: EventEmitterService,
   ) {}
 
   async submit(tenantId: string, batchId: string): Promise<ExecutablePaymentBatch> {
@@ -83,23 +86,34 @@ export class PaymentBatchExecutionCoordinator {
       }
     }
     const claimed = await this.store.claim(prepared)
+    this.emitStatus(claimed)
     let result: PaymentExecutionResult<AlipayBatchResponse>
     try {
       result = await this.executor.submit(claimed)
     } catch (error) {
-      return error instanceof PaymentNotSubmittedError
-        ? this.store.fail(claimed, this.errorMessage(error))
-        : this.store.markUnknown(claimed, this.errorMessage(error))
+      const outcome =
+        error instanceof PaymentNotSubmittedError
+          ? await this.store.fail(claimed, this.errorMessage(error))
+          : await this.store.markUnknown(claimed, this.errorMessage(error))
+      this.emitStatus(outcome, this.errorMessage(error))
+      return outcome
     }
-    if (result.status === PaymentExecutionStatus.FAILED)
-      return this.store.fail(claimed, result.errorMessage)
-    if (result.status === PaymentExecutionStatus.UNKNOWN)
-      return this.store.markUnknown(claimed, result.errorMessage)
+    if (result.status === PaymentExecutionStatus.FAILED) {
+      const outcome = await this.store.fail(claimed, result.errorMessage)
+      this.emitStatus(outcome, result.errorMessage)
+      return outcome
+    }
+    if (result.status === PaymentExecutionStatus.UNKNOWN) {
+      const outcome = await this.store.markUnknown(claimed, result.errorMessage)
+      this.emitStatus(outcome, result.errorMessage)
+      return outcome
+    }
     const submitted = await this.store.markSubmitted(
       claimed,
       PaymentBatchStatus.PROCESSING,
       result.upstreamId,
     )
+    this.emitStatus(submitted)
     return this.queryAndApply(submitted)
   }
 
@@ -121,20 +135,40 @@ export class PaymentBatchExecutionCoordinator {
     try {
       result = await this.executor.query(batch)
     } catch (error) {
-      return this.store.markUnknown(batch, this.errorMessage(error))
+      const outcome = await this.store.markUnknown(batch, this.errorMessage(error))
+      this.emitStatus(outcome, this.errorMessage(error))
+      return outcome
     }
-    if (result.status === PaymentExecutionStatus.UNKNOWN)
-      return this.store.markUnknown(batch, result.errorMessage)
+    if (result.status === PaymentExecutionStatus.UNKNOWN) {
+      const outcome = await this.store.markUnknown(batch, result.errorMessage)
+      this.emitStatus(outcome, result.errorMessage)
+      return outcome
+    }
     let outcome: PaymentBatchApplyOutcome
     try {
       outcome = await this.store.applyQuery(batch, result)
     } catch (error) {
-      return this.store.markUnknown(batch, this.errorMessage(error))
+      const outcome = await this.store.markUnknown(batch, this.errorMessage(error))
+      this.emitStatus(outcome, this.errorMessage(error))
+      return outcome
     }
     for (const payment of outcome.paymentsToConfirm) {
       await this.payments.confirmPlatform(payment)
     }
+    this.emitStatus(outcome.batch)
     return outcome.batch
+  }
+
+  private emitStatus(batch: ExecutablePaymentBatch, errorMessage?: string): void {
+    if (!batch.merchantId) return
+    this.eventEmitter?.emit(EVENT_KEYS.TELEGRAM_BATCH_STATUS, {
+      tenantId: batch.tenantId,
+      merchantId: batch.merchantId,
+      batchId: batch.id,
+      batchNo: batch.batchNo,
+      status: batch.status,
+      errorMessage: errorMessage ?? null,
+    })
   }
 
   private errorMessage(error: unknown): string {

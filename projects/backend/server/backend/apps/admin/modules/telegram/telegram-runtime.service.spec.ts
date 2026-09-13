@@ -24,7 +24,13 @@ describe('TelegramRuntimeService', () => {
   const telegram = { sendMessage: jest.fn().mockResolvedValue(undefined) }
   const manualPayments = { prepare: jest.fn(), confirm: jest.fn(), cancel: jest.fn() }
   const batchPayments = { prepare: jest.fn(), confirm: jest.fn(), cancel: jest.fn() }
-  const queries = { query: jest.fn(), balance: jest.fn(), todayStats: jest.fn(), status: jest.fn() }
+  const queries = {
+    query: jest.fn(),
+    receipt: jest.fn(),
+    balance: jest.fn(),
+    todayStats: jest.fn(),
+    status: jest.fn(),
+  }
 
   beforeEach(() => jest.clearAllMocks())
 

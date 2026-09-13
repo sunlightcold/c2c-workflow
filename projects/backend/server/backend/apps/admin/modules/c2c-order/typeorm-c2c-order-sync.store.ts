@@ -93,13 +93,31 @@ export class TypeOrmC2cOrderSyncStore implements C2cOrderSyncStore {
       await this.lockMerchant(manager, scope.tenantId, scope.merchantId)
       let created = 0
       let updated = 0
+      const createdOrderIds: string[] = []
+      const changedOrderIds: string[] = []
       for (const incoming of orders) {
-        const wasCreated = await this.saveOrder(manager, scope, incoming, completedAt)
+        const result = await this.saveOrder(manager, scope, incoming, completedAt)
+        const wasCreated = result.created
         created += Number(wasCreated)
         updated += Number(!wasCreated)
+        if (wasCreated) createdOrderIds.push(result.id)
+        if (result.changed) changedOrderIds.push(result.id)
       }
       await this.completeCheckpoint(manager, scope.tenantId, scope.merchantId, completedAt)
-      return { created, updated }
+      const result: {
+        created: number
+        updated: number
+        createdOrderIds?: string[]
+        changedOrderIds?: string[]
+      } = {
+        created,
+        updated,
+      }
+      Object.defineProperties(result, {
+        createdOrderIds: { value: createdOrderIds, enumerable: false },
+        changedOrderIds: { value: changedOrderIds, enumerable: false },
+      })
+      return result
     })
   }
 
@@ -136,7 +154,7 @@ export class TypeOrmC2cOrderSyncStore implements C2cOrderSyncStore {
     scope: { tenantId: string; merchantId: string; platform: MerchantPlatform },
     incoming: C2cBuyOrderDetail,
     syncedAt: Date,
-  ): Promise<boolean> {
+  ): Promise<{ created: boolean; changed: boolean; id: string }> {
     const repository = manager.getRepository(MerchantOrderEntity)
     const historyRepository = manager.getRepository(MerchantOrderStatusHistoryEntity)
     const existing = await repository.findOne({
@@ -181,7 +199,8 @@ export class TypeOrmC2cOrderSyncStore implements C2cOrderSyncStore {
         lastError: incoming.status === C2cBuyOrderStatus.UNKNOWN ? '平台返回未知订单状态' : null,
       }),
     )
-    if (!existing || existing.status !== status) {
+    const changed = !existing || existing.status !== status
+    if (changed) {
       await historyRepository.save(
         historyRepository.create({
           tenantId: scope.tenantId,
@@ -195,7 +214,7 @@ export class TypeOrmC2cOrderSyncStore implements C2cOrderSyncStore {
         }),
       )
     }
-    return !existing
+    return { created: !existing, changed, id: order.id }
   }
 
   private async completeCheckpoint(

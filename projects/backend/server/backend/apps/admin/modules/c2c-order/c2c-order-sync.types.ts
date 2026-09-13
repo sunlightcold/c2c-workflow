@@ -13,7 +13,12 @@ export interface C2cOrderSyncStore {
     scope: { tenantId: string; merchantId: string; platform: MerchantPlatform },
     orders: C2cBuyOrderDetail[],
     completedAt: Date,
-  ) => Promise<{ created: number; updated: number }>
+  ) => Promise<{
+    created: number
+    updated: number
+    createdOrderIds?: string[]
+    changedOrderIds?: string[]
+  }>
   recordFailure: (
     tenantId: string,
     merchantId: string,

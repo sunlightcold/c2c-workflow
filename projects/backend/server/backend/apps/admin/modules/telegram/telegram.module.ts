@@ -1,5 +1,6 @@
 import {
   MerchantEntity,
+  MerchantOrderEntity,
   PaymentBatchEntity,
   PaymentOrderEntity,
   SysUserEntity,
@@ -31,6 +32,7 @@ import { TelegramInteractionService } from './telegram-interaction.service'
 import { TelegramManualPaymentService } from './telegram-manual-payment.service'
 import { TelegramBatchPaymentService } from './telegram-batch-payment.service'
 import { TelegramQueryService } from './telegram-query.service'
+import { TelegramNotificationService } from './telegram-notification.service'
 
 @Module({
   imports: [
@@ -39,6 +41,7 @@ import { TelegramQueryService } from './telegram-query.service'
     CredentialModule,
     TypeOrmModule.forFeature([
       MerchantEntity,
+      MerchantOrderEntity,
       PaymentBatchEntity,
       PaymentOrderEntity,
       SysUserEntity,
@@ -66,12 +69,14 @@ import { TelegramQueryService } from './telegram-query.service'
     TelegramManualPaymentService,
     TelegramBatchPaymentService,
     TelegramQueryService,
+    TelegramNotificationService,
   ],
   exports: [
     TelegramBotService,
     TelegramGroupService,
     TelegramMemberService,
     TelegramSuperAdminService,
+    TelegramNotificationService,
   ],
 })
 export class TelegramModule {}

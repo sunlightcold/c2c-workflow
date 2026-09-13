@@ -1,7 +1,8 @@
-import { ConflictException, Inject, Injectable } from '@nestjs/common'
+import { ConflictException, Inject, Injectable, Optional } from '@nestjs/common'
 import { PaymentExecutionStatus, type PaymentExecutionResult } from './payment-adapter.types'
 import { PaymentOrderState } from './payment-order-state-machine'
 import { PaymentNotSubmittedError, PlatformFundsExceptionError } from './payment-execution.errors'
+import { EVENT_KEYS, EventEmitterService } from '../event-emitter'
 
 export { PaymentNotSubmittedError, PlatformFundsExceptionError } from './payment-execution.errors'
 
@@ -10,6 +11,9 @@ export interface ExecutablePaymentOrder {
   tenantId: string
   status: PaymentOrderState
   upstreamId?: string | null
+  merchantId?: string
+  paymentNo?: string
+  sourceBusinessNo?: string
 }
 
 export interface PaymentOrderStore {
@@ -44,6 +48,7 @@ export class PaymentExecutionCoordinator {
     private readonly executor: PaymentExecutor,
     @Inject(PLATFORM_PAYMENT_CONFIRMER)
     private readonly confirmer: PlatformPaymentConfirmer,
+    @Optional() private readonly eventEmitter?: EventEmitterService,
   ) {}
 
   async submit(tenantId: string, orderId: string): Promise<ExecutablePaymentOrder> {
@@ -56,11 +61,14 @@ export class PaymentExecutionCoordinator {
         error instanceof PaymentNotSubmittedError
           ? PaymentOrderState.FAILED
           : PaymentOrderState.UNKNOWN
-      return this.store.transition(claimed, status, {
+      const failed = await this.store.transition(claimed, status, {
         errorMessage: this.errorMessage(error),
       })
+      this.emitStatus(failed, this.errorMessage(error))
+      return failed
     }
     const paid = await this.applyPaymentResult(claimed, result)
+    this.emitStatus(paid)
     if (paid.status !== PaymentOrderState.SUCCESS) return paid
     return this.confirmPlatform(paid)
   }
@@ -80,11 +88,14 @@ export class PaymentExecutionCoordinator {
     try {
       result = await this.executor.query(order)
     } catch (error) {
-      return this.store.transition(order, PaymentOrderState.UNKNOWN, {
+      const unknown = await this.store.transition(order, PaymentOrderState.UNKNOWN, {
         errorMessage: this.errorMessage(error),
       })
+      this.emitStatus(unknown, this.errorMessage(error))
+      return unknown
     }
     const paid = await this.applyPaymentResult(order, result)
+    this.emitStatus(paid)
     if (paid.status !== PaymentOrderState.SUCCESS) return paid
     return this.confirmPlatform(paid)
   }
@@ -96,28 +107,48 @@ export class PaymentExecutionCoordinator {
         : await this.store.transition(order, PaymentOrderState.PLATFORM_CONFIRM_PENDING)
     try {
       await this.confirmer.confirmPaid(pending)
-      return this.store.transition(pending, PaymentOrderState.COMPLETED)
+      const completed = await this.store.transition(pending, PaymentOrderState.COMPLETED)
+      this.emitStatus(completed)
+      return completed
     } catch (error) {
       const status =
         error instanceof PlatformFundsExceptionError
           ? PaymentOrderState.FUND_EXCEPTION
           : PaymentOrderState.PLATFORM_CONFIRM_PENDING
-      return this.store.transition(pending, status, {
+      const failed = await this.store.transition(pending, status, {
         errorMessage: this.errorMessage(error),
       })
+      this.emitStatus(failed, this.errorMessage(error))
+      return failed
     }
   }
 
-  private applyPaymentResult(order: ExecutablePaymentOrder, result: PaymentExecutionResult) {
+  private async applyPaymentResult(order: ExecutablePaymentOrder, result: PaymentExecutionResult) {
     const statuses: Record<PaymentExecutionStatus, PaymentOrderState> = {
       [PaymentExecutionStatus.PROCESSING]: PaymentOrderState.PROCESSING,
       [PaymentExecutionStatus.SUCCESS]: PaymentOrderState.SUCCESS,
       [PaymentExecutionStatus.FAILED]: PaymentOrderState.FAILED,
       [PaymentExecutionStatus.UNKNOWN]: PaymentOrderState.UNKNOWN,
     }
-    return this.store.transition(order, statuses[result.status], {
+    const transitioned = await this.store.transition(order, statuses[result.status], {
       upstreamId: result.upstreamId,
       errorMessage: result.errorMessage,
+    })
+    this.emitStatus(transitioned, result.errorMessage)
+    return transitioned
+  }
+
+  private emitStatus(order: ExecutablePaymentOrder, errorMessage?: string): void {
+    if (!order.merchantId) return
+    this.eventEmitter?.emit(EVENT_KEYS.TELEGRAM_PAYMENT_STATUS, {
+      tenantId: order.tenantId,
+      merchantId: order.merchantId,
+      paymentOrderId: order.id,
+      paymentNo: order.paymentNo,
+      sourceBusinessNo: order.sourceBusinessNo,
+      status: order.status,
+      upstreamId: order.upstreamId,
+      errorMessage: errorMessage ?? null,
     })
   }
 

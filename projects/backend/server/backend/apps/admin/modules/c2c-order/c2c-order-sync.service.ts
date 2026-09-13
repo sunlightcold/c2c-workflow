@@ -1,5 +1,11 @@
 import { BusinessStatus, MerchantEntity, MerchantPlatform } from '@admin/database'
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { MerchantPlatformCredentialService } from '../business/merchant-platform-credential.service'
@@ -14,6 +20,7 @@ import {
 } from '../c2c-platform'
 import { C2C_SECRET_RESOLVER, type C2cSecretResolver } from './c2c-secret-resolver'
 import type { C2cOrderSyncStore } from './c2c-order-sync.types'
+import { EVENT_KEYS, EventEmitterService } from '../event-emitter'
 
 export const C2C_ORDER_SYNC_STORE = Symbol('C2C_ORDER_SYNC_STORE')
 const INITIAL_LOOKBACK_MS = 24 * 60 * 60 * 1000
@@ -29,6 +36,7 @@ export class C2cOrderSyncService {
     private readonly binance: BinanceC2cClient,
     private readonly okx: OkxWebPrivateClient,
     @Inject(C2C_ORDER_SYNC_STORE) private readonly store: C2cOrderSyncStore,
+    @Optional() private readonly eventEmitter?: EventEmitterService,
   ) {}
 
   async sync(tenantId: string, merchantId: string, now = new Date()) {
@@ -55,9 +63,25 @@ export class C2cOrderSyncService {
         orders,
         now,
       )
-      return { scanned: orders.length, ...result }
+      const orderIds = [
+        ...new Set([...(result.createdOrderIds ?? []), ...(result.changedOrderIds ?? [])]),
+      ]
+      if (orderIds.length) {
+        this.eventEmitter?.emit(EVENT_KEYS.TELEGRAM_ORDER_DISCOVERED, {
+          tenantId,
+          merchantId,
+          orderIds,
+        })
+      }
+      return { scanned: orders.length, created: result.created, updated: result.updated }
     } catch (error) {
       await this.store.recordFailure(tenantId, merchantId, now, this.errorMessage(error))
+      this.eventEmitter?.emit(EVENT_KEYS.TELEGRAM_EXCEPTION, {
+        tenantId,
+        merchantId,
+        code: 'C2C_ORDER_SYNC_FAILED',
+        message: this.errorMessage(error),
+      })
       throw error
     }
   }

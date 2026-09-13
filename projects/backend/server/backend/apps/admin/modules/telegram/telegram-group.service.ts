@@ -23,6 +23,7 @@ import type {
   UpdateTelegramGroupDto,
 } from './telegram.dto'
 import { assertGroupCapabilities, type TelegramCapability } from './telegram-policy'
+import { TelegramNotificationEvent } from './telegram-notification.service'
 
 @Injectable()
 export class TelegramGroupService {
@@ -61,7 +62,7 @@ export class TelegramGroupService {
         tenantId,
         chatId: null,
         chatType: null,
-        notificationEvents: input.notificationEvents ?? [],
+        notificationEvents: input.notificationEvents ?? Object.values(TelegramNotificationEvent),
         notificationsEnabled: input.notificationsEnabled ?? true,
         bindingState: TelegramGroupBindingState.PENDING,
         verificationCodeHash: createHash('sha256').update(verificationCode).digest('hex'),

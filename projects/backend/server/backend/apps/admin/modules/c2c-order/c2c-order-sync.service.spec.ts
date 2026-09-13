@@ -43,6 +43,7 @@ describe('C2cOrderSyncService', () => {
   }
   const binance = { listOrders: jest.fn(), getOrderDetail: jest.fn() }
   const okx = { listOrders: jest.fn(), getOrderDetail: jest.fn() }
+  const eventEmitter = { emit: jest.fn() }
 
   beforeEach(() => jest.clearAllMocks())
 
@@ -105,6 +106,7 @@ describe('C2cOrderSyncService', () => {
       binance as never,
       okx as never,
       store,
+      eventEmitter as never,
     )
 
     await expect(service.sync(tenantId, merchantId, now)).resolves.toEqual({
@@ -134,6 +136,7 @@ describe('C2cOrderSyncService', () => {
       binance as never,
       okx as never,
       store,
+      eventEmitter as never,
     )
 
     await expect(service.sync(tenantId, merchantId, now)).rejects.toThrow('upstream unavailable')

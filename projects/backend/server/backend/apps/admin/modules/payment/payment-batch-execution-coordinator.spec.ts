@@ -37,6 +37,7 @@ describe('PaymentBatchExecutionCoordinator', () => {
   const executor = { submit: jest.fn(), query: jest.fn() }
   const preflight = { verifyBatch: jest.fn() }
   const payments = { confirmPlatform: jest.fn() }
+  const eventEmitter = { emit: jest.fn() }
   let coordinator: PaymentBatchExecutionCoordinator
 
   beforeEach(() => {
@@ -51,7 +52,13 @@ describe('PaymentBatchExecutionCoordinator', () => {
       paymentsToConfirm: [{ id: 'order-1', tenantId: 'tenant-1', status: 'SUCCESS' }],
     })
     payments.confirmPlatform.mockResolvedValue({ status: 'COMPLETED' })
-    coordinator = new PaymentBatchExecutionCoordinator(store, executor, preflight, payments)
+    coordinator = new PaymentBatchExecutionCoordinator(
+      store,
+      executor,
+      preflight,
+      payments,
+      eventEmitter as never,
+    )
   })
 
   it('preflights C2C items, submits once, queries the original batch, and confirms successful payments', async () => {
