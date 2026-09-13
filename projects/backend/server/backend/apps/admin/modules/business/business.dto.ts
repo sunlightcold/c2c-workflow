@@ -115,6 +115,14 @@ export class CreateMerchantDto extends TenantContextDto {
   @MaxLength(20000)
   signaturePrivateKey?: string
 
+  @ApiPropertyOptional({
+    default: true,
+    description: '是否跳过欧易付款凭证上传；关闭后自动付款必须提供回单图片',
+  })
+  @IsOptional()
+  @IsBoolean()
+  skipPaymentProofUpload?: boolean
+
   @ApiPropertyOptional({ default: 'WEB' })
   @Transform(trim)
   @IsOptional()
@@ -486,6 +494,14 @@ export class RotateMerchantPlatformCredentialDto extends TenantContextDto {
   @IsString()
   @MaxLength(20000)
   signaturePrivateKey?: string
+
+  @ApiPropertyOptional({
+    default: true,
+    description: '是否跳过欧易付款凭证上传；关闭后自动付款必须提供回单图片',
+  })
+  @IsOptional()
+  @IsBoolean()
+  skipPaymentProofUpload?: boolean
 
   @ApiPropertyOptional({ description: '币安客户端类型' })
   @Transform(trim)

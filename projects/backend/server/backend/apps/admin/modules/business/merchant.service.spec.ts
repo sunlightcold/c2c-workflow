@@ -114,6 +114,21 @@ describe('MerchantService', () => {
     expect(dataSource.transaction).not.toHaveBeenCalled()
   })
 
+  it('rejects an invalid OKX signing key before persisting credentials', () => {
+    expect(() =>
+      service.create(tenantId, {
+        name: 'Merchant One',
+        platform: MerchantPlatform.OKX,
+        externalMerchantId: 'okx-merchant-1',
+        authMode: 'WEB_COOKIE',
+        sessionCookie: 'cookie',
+        authorization: 'authorization',
+        signaturePrivateKey: 'not-a-key',
+      }),
+    ).toThrow('PKCS#8 EC')
+    expect(dataSource.transaction).not.toHaveBeenCalled()
+  })
+
   it('does not expose platform as an editable field', async () => {
     const maliciousInput = {
       name: 'Renamed',

@@ -22,6 +22,7 @@ export interface RotateMerchantPlatformCredentialInput {
   sessionCookie?: string
   authorization?: string
   signaturePrivateKey?: string
+  skipPaymentProofUpload?: boolean
   clientType?: string
   xUserId?: string
   requestTimeoutMs: number
@@ -183,7 +184,7 @@ export class MerchantPlatformCredentialService {
         !input.authorization?.trim() ||
         !input.signaturePrivateKey?.trim())
     ) {
-      throw new BadRequestException('欧易商家账号必须配置 Cookie 和 Authorization')
+      throw new BadRequestException('欧易商家账号必须配置 Cookie、Authorization 和签名私钥')
     }
   }
 
@@ -198,6 +199,7 @@ export class MerchantPlatformCredentialService {
             cookie: input.sessionCookie!.trim(),
             authorization: input.authorization!.trim(),
             signaturePrivateKey: input.signaturePrivateKey!.trim(),
+            skipPaymentProofUpload: input.skipPaymentProofUpload ?? true,
           }
     return `enc://${this.cipher.encrypt(JSON.stringify(secret))}`
   }

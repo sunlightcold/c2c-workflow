@@ -17,6 +17,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common'
+import { createPrivateKey } from 'node:crypto'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, EntityManager, ILike, Repository } from 'typeorm'
 import { CredentialCipherService } from '../system/credential/credential-cipher.service'
@@ -38,6 +39,7 @@ export interface CreateMerchantInput {
   sessionCookie?: string
   authorization?: string
   signaturePrivateKey?: string
+  skipPaymentProofUpload?: boolean
   clientType?: string
   xUserId?: string
   pageSize?: number
@@ -134,6 +136,7 @@ export class MerchantService {
     const requestTimeoutMs = input.requestTimeoutMs ?? 15000
     const apiBaseUrl = this.normalizeBaseUrl(
       input.apiBaseUrl ?? this.defaultBaseUrl(input.platform),
+      input.platform,
     )
     this.validatePaidInterval(
       input.paidConfirmIntervalMinMs ?? 0,
@@ -237,7 +240,7 @@ export class MerchantService {
         await this.applyTelegramGroup(manager, merchant, input.telegramGroupId)
       }
       if (input.apiBaseUrl !== undefined)
-        merchant.apiBaseUrl = this.normalizeBaseUrl(input.apiBaseUrl)
+        merchant.apiBaseUrl = this.normalizeBaseUrl(input.apiBaseUrl, merchant.platform)
       if (input.requestTimeoutMs !== undefined) merchant.requestTimeoutMs = input.requestTimeoutMs
       this.validatePaidInterval(
         merchant.paidConfirmIntervalMinMs,
@@ -311,6 +314,16 @@ export class MerchantService {
     ) {
       throw new BadRequestException('欧易商家账号必须配置 Cookie、Authorization 和签名私钥')
     }
+    try {
+      const key = createPrivateKey({
+        key: Buffer.from(input.signaturePrivateKey.trim(), 'base64'),
+        format: 'der',
+        type: 'pkcs8',
+      })
+      if (key.asymmetricKeyType !== 'ec') throw new Error('not EC')
+    } catch {
+      throw new BadRequestException('欧易签名私钥格式无效，应填写 PKCS#8 EC 私钥的 Base64 编码')
+    }
   }
 
   private encryptedReference(platform: MerchantPlatform, input: CreateMerchantInput): string {
@@ -321,6 +334,7 @@ export class MerchantService {
             cookie: input.sessionCookie!.trim(),
             authorization: input.authorization!.trim(),
             signaturePrivateKey: input.signaturePrivateKey!.trim(),
+            skipPaymentProofUpload: input.skipPaymentProofUpload ?? true,
           }
     return `enc://${this.cipher.encrypt(JSON.stringify(secret))}`
   }
@@ -333,8 +347,21 @@ export class MerchantService {
     return platform === MerchantPlatform.BINANCE ? 'API_KEY' : 'WEB_COOKIE'
   }
 
-  private normalizeBaseUrl(value: string): string {
-    return value.trim().replace(/\/$/, '')
+  private normalizeBaseUrl(value: string, platform: MerchantPlatform): string {
+    const normalized = value.trim().replace(/\/$/, '')
+    let url: URL
+    try {
+      url = new URL(normalized)
+    } catch {
+      throw new BadRequestException('平台 API 地址格式无效')
+    }
+    const localHost = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+    const allowedHost = platform === MerchantPlatform.BINANCE ? 'api.binance.com' : 'www.okx.com'
+    if (url.protocol !== 'https:' && !localHost)
+      throw new BadRequestException('平台 API 地址必须使用 HTTPS')
+    if (!localHost && url.hostname !== allowedHost)
+      throw new BadRequestException('平台 API 地址不在允许的 Origin 白名单中')
+    return normalized
   }
 
   private validatePaidInterval(minimum: number, maximum: number): void {

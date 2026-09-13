@@ -127,7 +127,9 @@ describe('OKX C2C mock', () => {
       signaturePublicKey: publicKey.export({ format: 'der', type: 'spki' }).toString('base64'),
     })
     const upload = getOkxC2cPlugin().handle(
-      request('POST', '/v3/c2c/files/', { type: 'paymentProof' }),
+      request('POST', '/v3/c2c/files/', { type: 'paymentProof' }, {
+        file: { filename: 'receipt.jpg', type: 'image/jpeg', size: 128 },
+      }),
     )
     expect(upload.body).toMatchObject({
       code: 0,
@@ -160,6 +162,21 @@ describe('OKX C2C mock', () => {
       headers: signedHeaders,
     })
     expect(valid.body).toMatchObject({ code: 0 })
+  })
+
+  it('rejects an empty or unsupported payment proof upload', () => {
+    const empty = getOkxC2cPlugin().handle(
+      request('POST', '/v3/c2c/files/', { type: 'paymentProof' }, {
+        file: { filename: 'receipt.jpg', type: 'image/jpeg', size: 0 },
+      }),
+    )
+    expect(empty.body).toMatchObject({ code: '400012' })
+    const unsupported = getOkxC2cPlugin().handle(
+      request('POST', '/v3/c2c/files/', { type: 'paymentProof' }, {
+        file: { filename: 'receipt.txt', type: 'text/plain', size: 10 },
+      }),
+    )
+    expect(unsupported.body).toMatchObject({ code: '400013' })
   })
 
   it('rejects an incorrect account and supports deterministic failures', () => {

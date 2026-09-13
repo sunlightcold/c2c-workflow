@@ -143,6 +143,7 @@ describe('merchant account form schemas', () => {
         'sessionCookie',
         'authorization',
         'signaturePrivateKey',
+        'skipPaymentProofUpload',
       ]),
     );
   });
@@ -156,6 +157,7 @@ describe('merchant account form schemas', () => {
         'authorization',
         'sessionCookie',
         'signaturePrivateKey',
+        'skipPaymentProofUpload',
       ]),
     );
     expect([...binance, ...okx]).not.toContain('credentialRef');

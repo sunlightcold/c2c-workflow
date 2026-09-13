@@ -40,4 +40,14 @@ describe('C2cPlatformCredentialFactory', () => {
       timeoutMs: 6000,
     })
   })
+
+  it('rejects OKX credentials without a signing key', () => {
+    expect(() =>
+      factory.create(
+        MerchantPlatform.OKX,
+        { clientType: null, xUserId: null, requestTimeoutMs: 6000 },
+        { cookie: 'cookie', authorization: 'authorization' },
+      ),
+    ).toThrow('signaturePrivateKey')
+  })
 })

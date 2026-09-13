@@ -38,7 +38,12 @@ const required = (message: string) => [
   { message, required: true, trigger: 'blur' },
 ];
 const binanceFields = ['apiKey', 'secretKey', 'clientType', 'xUserId'];
-const okxFields = ['authorization', 'sessionCookie', 'signaturePrivateKey'];
+const okxFields = [
+  'authorization',
+  'sessionCookie',
+  'signaturePrivateKey',
+  'skipPaymentProofUpload',
+];
 const automationFields = [
   'automaticPaymentEnabled',
   'automaticPaymentExecutionMode',
@@ -300,6 +305,13 @@ export function createMerchantAccountModalOptions(
             ...secretRule('signaturePrivateKey', '签名私钥（PKCS#8 Base64）'),
             hidden: !okx,
           },
+          {
+            field: 'skipPaymentProofUpload',
+            hidden: !okx,
+            title: '跳过付款凭证上传',
+            type: 'switch',
+            value: true,
+          },
           ...settings(platform),
         ],
         [
@@ -314,6 +326,7 @@ export function createMerchantAccountModalOptions(
           'secretKey',
           'sessionCookie',
           'signaturePrivateKey',
+          'skipPaymentProofUpload',
         ],
       ),
     },
@@ -355,6 +368,12 @@ export function rotateMerchantCredentialModalOptions(
           secretRule('authorization', 'Authorization'),
           secretRule('sessionCookie', 'Cookie'),
           secretRule('signaturePrivateKey', '签名私钥（PKCS#8 Base64）'),
+          {
+            field: 'skipPaymentProofUpload',
+            title: '跳过付款凭证上传',
+            type: 'switch',
+            value: true,
+          },
         ];
   return {
     props: businessModalProps('更新平台凭据', 680),
@@ -378,6 +397,7 @@ export function rotateMerchantCredentialModalOptions(
           'secretKey',
           'sessionCookie',
           'signaturePrivateKey',
+          'skipPaymentProofUpload',
         ],
       ),
     },

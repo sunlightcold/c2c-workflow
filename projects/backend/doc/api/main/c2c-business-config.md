@@ -24,9 +24,9 @@ Controller：`BusinessController`。基础路径：`/v1/sys`。所有接口均�
 | DELETE | `/merchants/{id}` | `merchant:account:delete` | Query `{ tenantId? }` | 无 |
 | POST | `/merchants/{id}/test` | `merchant:account:test` | Query `{ tenantId? }` | 连接测试结果 |
 | GET | `/merchants/{id}/platform-credentials` | `merchant:account:read` | Query `{ tenantId? }` | 凭据版本元数据数组 |
-| POST | `/merchants/{id}/platform-credentials` | `merchant:account:credential` | 币安 `{ apiKey, secretKey, clientType?, xUserId? }`；欧易 `{ sessionCookie, authorization }` | 新凭据版本元数据 |
+| POST | `/merchants/{id}/platform-credentials` | `merchant:account:credential` | 币安 `{ apiKey, secretKey, clientType?, xUserId? }`；欧易 `{ sessionCookie, authorization, signaturePrivateKey, skipPaymentProofUpload? }` | 新凭据版本元数据 |
 
-`platform` 只能是 `BINANCE` 或 `OKX`，创建后不可修改。创建币安账号时必须提交 API Key 和 Secret Key；创建欧易账号时必须提交 Cookie 和 Authorization。代理商用户的 `tenantId` 从 JWT
+`platform` 只能是 `BINANCE` 或 `OKX`，创建后不可修改。创建币安账号时必须提交 API Key 和 Secret Key；创建欧易账号时必须提交 Cookie、Authorization 和 PKCS#8 DER Base64 编码的 EC 签名私钥。`skipPaymentProofUpload` 默认为 `true`；设置为 `false` 时，自动付款必须提供欧易付款凭证图片。代理商用户的 `tenantId` 从 JWT
 取得，即使提交其他值也会被拒绝；平台用户必须显式提交当前经营的 `tenantId`。
 
 账号支持同步页大小、重叠秒数、同步状态范围、请求超时、付款确认间隔、机器人群组、三类聊天通知、自动申诉与备注。机器人群组只能从当前经营单位、当前商家账号已完成绑定且处于启用状态的 C2C 支付群组中选择；服务端根据 `telegramGroupId` 写入对应机器人编码和 Telegram Chat ID，客户端不得直接提交这两个内部字段，提交 `null` 表示解除绑定。新建商家账号时三类聊天消息使用系统默认文案，旧数据消息为空时查询也返回同一套默认文案。平台凭据在数据库中加密保存；更新凭据会停用旧版本并创建递增版本，同一商家账号仅一个版本生效。列表、详情、日志和接口响应均不返回凭据密文或明文。已有商家订单的账号不能删除，只能停用。

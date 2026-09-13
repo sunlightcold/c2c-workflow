@@ -276,7 +276,7 @@ resourceContext = { tenantId, merchantId?, tgGroupId?, ownerUserId? }
 - `MER-006` 支持凭据轮换；新凭据验证成功后原子切换，旧版本只在受控回滚窗口可恢复。
 - `MER-007` 商家通过支付方案使用本所属单位的多个支付账号；每条方案固定一个账号及该账号下的一个通道，并配置场景、收款方式、即时/批量、币种、金额、顺序、比例和额度。
 - `MER-008` 商家可绑定机器人和群组，分别配置通知事件与允许命令。
-- `MER-009` 认证模式至少包括 `API_KEY` 与 `WEB_COOKIE`；`WEB_COOKIE` 首期只允许 OKX，必须同时保存 Cookie 与 Authorization 的 Secret 引用和会话健康状态。
+- `MER-009` 认证模式至少包括 `API_KEY` 与 `WEB_COOKIE`；`WEB_COOKIE` 首期只允许 OKX，必须同时保存 Cookie、Authorization、用于已付款确认的 PKCS#8 DER Base64 EC 签名私钥的 Secret 引用和会话健康状态。可配置是否跳过付款凭证上传，默认跳过；关闭跳过时自动付款必须上传回单。
 - `MER-010` 商家基础资料、凭据版本、同步策略/检查点、通知绑定/模板及高风险动作策略分别管理，禁止聚合到单条商家记录。
 - `MER-011` 订单同步可独立启用；至少存在一条合格的 C2C 自动付款方案后才能启用自动付款。无方案时新订单保持 `PENDING_PAYMENT`；人员手工发起支付后仍无方案时支付订单进入 `PENDING_CONFIG`，补充方案后显式重新匹配。
 

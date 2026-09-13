@@ -117,6 +117,13 @@ export class OkxC2cMockPlugin {
 
   private uploadPaymentProof(request: OkxRequest) {
     if (request.query.type !== 'paymentProof') return errorResponse('400006', '上传类型不匹配')
+    const file = request.body.file as
+      | { filename?: string; type?: string; size?: number }
+      | undefined
+    if (!file || !file.filename || !file.size || file.size <= 0)
+      return errorResponse('400012', '付款凭证文件不能为空')
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type ?? ''))
+      return errorResponse('400013', '付款凭证文件格式不支持')
     return { status: 200, body: { code: 0, data: { imgPath: '/mock/payment-proof/receipt.jpg' } } }
   }
 

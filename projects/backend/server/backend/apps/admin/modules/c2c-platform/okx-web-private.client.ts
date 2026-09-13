@@ -186,20 +186,30 @@ export class OkxWebPrivateClient {
     body?: unknown,
     extraHeaders?: Record<string, string>,
   ) {
-    const response = await this.http.request<OkxEnvelope<T>>({
-      method,
-      url: `${(credentials.baseUrl ?? 'https://www.okx.com').replace(/\/$/, '')}${path}`,
-      params,
-      body,
-      timeoutMs: credentials.timeoutMs,
-      headers: {
-        Accept: 'application/json',
-        ...(!(body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
-        Cookie: credentials.cookie,
-        Authorization: credentials.authorization,
-        ...extraHeaders,
-      },
-    })
+    let response: OkxEnvelope<T>
+    try {
+      response = await this.http.request<OkxEnvelope<T>>({
+        method,
+        url: `${(credentials.baseUrl ?? 'https://www.okx.com').replace(/\/$/, '')}${path}`,
+        params,
+        body,
+        timeoutMs: credentials.timeoutMs,
+        headers: {
+          Accept: 'application/json',
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
+          'App-Type': 'web',
+          ...(!(body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
+          Cookie: credentials.cookie,
+          Authorization: credentials.authorization,
+          ...extraHeaders,
+        },
+      })
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response?.status
+      if (status === 401 || status === 403) throw new Error(`欧易 Web 凭据失效 [${status}]`)
+      throw error
+    }
     const code = String(response.code ?? response.error_code ?? '')
     if (['401', '403', '800', '805'].includes(code)) throw new Error(`欧易 Web 凭据失效 [${code}]`)
     if (code !== '0') throw new Error(response.msg ?? response.error_message ?? '欧易 C2C 请求失败')

@@ -350,6 +350,7 @@ export namespace BusinessApi {
     secretKey?: string;
     sessionCookie?: string;
     signaturePrivateKey?: string;
+    skipPaymentProofUpload?: boolean;
     xUserId?: string;
   }
 
@@ -541,6 +542,7 @@ export const rotateMerchantCredentialApi = (
     secretKey?: string;
     sessionCookie?: string;
     signaturePrivateKey?: string;
+    skipPaymentProofUpload?: boolean;
     xUserId?: string;
   },
 ) =>

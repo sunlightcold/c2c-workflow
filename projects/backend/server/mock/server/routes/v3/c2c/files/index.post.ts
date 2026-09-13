@@ -7,12 +7,21 @@ export default defineEventHandler(async (event) => {
       Array.isArray(value) ? String(value[0] ?? '') : String(value ?? ''),
     ]),
   )
-  await readMultipartFormData(event)
+  const parts = await readMultipartFormData(event)
+  const file = parts?.find((part) => part.name === 'file')
   const response = getOkxC2cPlugin().handle({
     method: 'POST',
     path: '/v3/c2c/files/',
     query,
-    body: {},
+    body: {
+      file: file
+        ? {
+            filename: file.filename,
+            type: file.type,
+            size: file.data?.byteLength ?? 0,
+          }
+        : undefined,
+    },
     headers: event.headers,
   })
   setResponseStatus(event, response.status ?? 200)

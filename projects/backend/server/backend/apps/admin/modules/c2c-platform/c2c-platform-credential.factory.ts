@@ -33,13 +33,13 @@ export class C2cPlatformCredentialFactory {
     }
     const cookie = this.text(secret.cookie)
     const authorization = this.text(secret.authorization)
-    if (!cookie || !authorization) throw new Error('欧易 Secret 缺少 cookie 或 authorization')
+    const signaturePrivateKey = this.text(secret.signaturePrivateKey)
+    if (!cookie || !authorization || !signaturePrivateKey)
+      throw new Error('欧易 Secret 缺少 cookie、authorization 或 signaturePrivateKey')
     return {
       cookie,
       authorization,
-      ...(this.text(secret.signaturePrivateKey)
-        ? { signaturePrivateKey: this.text(secret.signaturePrivateKey) }
-        : {}),
+      signaturePrivateKey,
       ...(typeof secret.skipPaymentProofUpload === 'boolean'
         ? { skipPaymentProofUpload: secret.skipPaymentProofUpload }
         : {}),
