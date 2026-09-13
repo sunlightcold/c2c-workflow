@@ -8,6 +8,7 @@ import {
 } from '@/apps/admin/database/migrations/c2c-business-foundation.migration'
 import { migrateTelegramAdministration } from '@/apps/admin/database/migrations/c2c-telegram-administration.migration'
 import { migrateC2cPaymentOrders } from '@/apps/admin/database/migrations/c2c-payment-orders.migration'
+import { migrateTelegramBotRuntime } from '@/apps/admin/database/migrations/c2c-telegram-bot-runtime.migration'
 import { DataSource, type QueryRunner } from 'typeorm'
 
 describe('Telegram administration database integration', () => {
@@ -45,6 +46,8 @@ describe('Telegram administration database integration', () => {
     await migrateC2cPaymentOrders(queryRunner.manager)
     await migrateTelegramAdministration(queryRunner.manager)
     await migrateTelegramAdministration(queryRunner.manager)
+    await migrateTelegramBotRuntime(queryRunner.manager)
+    await migrateTelegramBotRuntime(queryRunner.manager)
 
     await queryRunner.query(`
       INSERT INTO merchant (id, "tenantId", code, name, platform, status)
@@ -79,14 +82,16 @@ describe('Telegram administration database integration', () => {
     `)
 
     const rows = (await queryRunner.query(`
-      SELECT "merchantId", "paymentScene", "bindingState"
-      FROM telegram_group
+      SELECT groups."merchantId", groups."paymentScene", groups."bindingState", bot."runtimeEnabled"
+      FROM telegram_group groups
+      JOIN telegram_bot bot ON bot.id = groups."botId"
     `)) as Array<Record<string, unknown>>
     expect(rows).toEqual([
       {
         merchantId: '00000000-0000-4000-8000-000000000020',
         paymentScene: 'BOT_MANUAL',
         bindingState: 'ACTIVE',
+        runtimeEnabled: true,
       },
     ])
   })

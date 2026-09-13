@@ -213,6 +213,15 @@ test.beforeEach(async ({ page }) => {
       weight: 100,
     },
   ];
+  let botRuntimeRunning = true;
+  let botRuntimeState = 'ONLINE';
+  const botRuntimeMessage = () => {
+    if (botRuntimeState === 'ONLINE') {
+      return 'Telegram 连接正常，机器人正在运行';
+    }
+    if (botRuntimeState === 'CONNECTING') return '正在连接 Telegram';
+    return '机器人已停止';
+  };
   pageErrors.set(page, errors);
   page.on('pageerror', (error) => {
     errors.push(error.stack ?? error.message);
@@ -236,7 +245,33 @@ test.beforeEach(async ({ page }) => {
     const paymentPlanMatch = path.match(
       /^\/sys\/payment-plans\/([^/]+)(\/status)?$/,
     );
+    const botRuntimeMatch = path.match(
+      /^\/sys\/tg\/bots\/([^/]+)\/runtime\/(check|restart|start|stop)$/,
+    );
     let data: unknown = null;
+
+    if (botRuntimeMatch) {
+      const action = botRuntimeMatch[2];
+      if (action === 'stop') {
+        botRuntimeRunning = false;
+        botRuntimeState = 'NOT_STARTED';
+      } else if (action === 'start' || action === 'restart') {
+        botRuntimeRunning = true;
+        botRuntimeState = 'CONNECTING';
+      }
+      data = {
+        checkedAt: '2026-09-10T08:00:00.000Z',
+        message: botRuntimeMessage(),
+        runtimeRunning: botRuntimeRunning,
+        state: botRuntimeState,
+      };
+      await route.fulfill({
+        body: JSON.stringify(ok(data)),
+        contentType: 'application/json',
+        status: 200,
+      });
+      return;
+    }
 
     if (paymentPlanMatch) {
       const planId = paymentPlanMatch[1];
@@ -496,6 +531,13 @@ test.beforeEach(async ({ page }) => {
               language: 'zh-CN',
               name: '总部支付机器人',
               paymentOrderRequireConfirmation: true,
+              runtime: {
+                checkedAt: '2026-09-10T08:00:00.000Z',
+                message: botRuntimeMessage(),
+                runtimeRunning: botRuntimeRunning,
+                state: botRuntimeState,
+                telegramUsername: 'payment_bot',
+              },
               status: 'active',
               tenantId,
               tokenConfigured: true,
@@ -1010,6 +1052,49 @@ test('provides complete Telegram administration actions', async ({ page }) => {
   await selectHeadquartersTenant(page);
   await expect(page.getByRole('button', { name: /停\s*用/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /移\s*除/ })).toBeVisible();
+
+  await page.goto('/business/telegram-bots');
+  await selectHeadquartersTenant(page);
+  await expect(page.getByText('已连接', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('Telegram 连接正常，机器人正在运行'),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: /检\s*测/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: '停止运行' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /重\s*启/ })).toBeVisible();
+
+  const checkRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' && request.url().includes('/runtime/check'),
+  );
+  await page.getByRole('button', { name: /检\s*测/ }).click();
+  const checkedRequest = await checkRequest;
+  expect(new URL(checkedRequest.url()).searchParams.get('tenantId')).toBe(
+    tenantId,
+  );
+
+  const stopRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' && request.url().includes('/runtime/stop'),
+  );
+  await page.getByRole('button', { name: '停止运行' }).click();
+  await stopRequest;
+  await expect(page.getByRole('button', { name: '启动运行' })).toBeVisible();
+
+  const startRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' && request.url().includes('/runtime/start'),
+  );
+  await page.getByRole('button', { name: '启动运行' }).click();
+  await startRequest;
+  await expect(page.getByRole('button', { name: '停止运行' })).toBeVisible();
+
+  const restartRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' && request.url().includes('/runtime/restart'),
+  );
+  await page.getByRole('button', { name: /重\s*启/ }).click();
+  await restartRequest;
 });
 
 test('creates a Telegram bot with a Bot Token instead of an internal reference', async ({
@@ -1024,8 +1109,6 @@ test('creates a Telegram bot with a Bot Token instead of an internal reference',
   await dialog
     .getByRole('textbox', { name: /机器人名称/ })
     .fill('新增测试机器人');
-  await dialog.getByRole('combobox').click();
-  await page.getByTitle('支付机器人', { exact: true }).click();
   await dialog
     .getByRole('textbox', { name: /Bot Token/ })
     .fill('1234567890:AAabcdefghijklmnopQRST_uvwx');

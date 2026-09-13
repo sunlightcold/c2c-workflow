@@ -1,10 +1,13 @@
 import { definePermission, Permission, User } from '@/common/decorators'
+import { BusinessStatus } from '@admin/database'
 import type { AuthUser } from '@/common/interfaces'
 import {
   Body,
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -22,6 +25,7 @@ import {
   CreateTelegramMemberDto,
   CreateTelegramSuperAdminDto,
   SetTelegramStatusDto,
+  TelegramBotRuntimeStatusDto,
   TelegramBotListDto,
   TelegramEligibleUserDto,
   TelegramGroupListDto,
@@ -38,6 +42,7 @@ import { TelegramMemberService } from './telegram-member.service'
 import { getTelegramCapabilityPolicy } from './telegram-policy'
 import { TelegramSuperAdminService } from './telegram-super-admin.service'
 import { TelegramUserDirectoryService } from './telegram-user-directory.service'
+import { TelegramBotRuntimeService } from './telegram-bot-runtime.service'
 
 const BotPermissions = definePermission('telegram:bot', [
   'read',
@@ -76,6 +81,7 @@ export class TelegramController {
     private readonly members: TelegramMemberService,
     private readonly superAdmins: TelegramSuperAdminService,
     private readonly userDirectory: TelegramUserDirectoryService,
+    private readonly runtime: TelegramBotRuntimeService,
   ) {}
 
   @Get('capabilities')
@@ -89,7 +95,19 @@ export class TelegramController {
   @Permission(BotPermissions.READ)
   @ApiOperation({ summary: '分页查询机器人实例' })
   listBots(@Query() dto: TelegramBotListDto, @User() actor: AuthUser) {
-    return this.bots.list(this.scope.resolveTenantId(actor, dto.tenantId), dto)
+    return this.bots.list(this.scope.resolveTenantId(actor, dto.tenantId), dto).then((result) => ({
+      ...result,
+      items: result.items.map((item) => {
+        const runtime = this.runtime.getStatus(item.code)
+        return {
+          ...item,
+          runtime:
+            item.status === BusinessStatus.DISABLED && runtime.state === 'NOT_STARTED'
+              ? { ...runtime, state: 'DISABLED', message: '机器人配置已停用' }
+              : runtime,
+        }
+      }),
+    }))
   }
 
   @Post('bots')
@@ -97,7 +115,11 @@ export class TelegramController {
   @ApiOperation({ summary: '创建支付机器人实例' })
   createBot(@Body() dto: CreateTelegramBotDto, @User() actor: AuthUser) {
     const { tenantId, ...input } = dto
-    return this.bots.create(this.scope.resolveTenantId(actor, tenantId), input)
+    const resolvedTenantId = this.scope.resolveTenantId(actor, tenantId)
+    return this.bots.create(resolvedTenantId, input).then(async (result) => {
+      await this.runtime.start(resolvedTenantId, result.id)
+      return result
+    })
   }
 
   @Put('bots/:id')
@@ -110,7 +132,11 @@ export class TelegramController {
     @User() actor: AuthUser,
   ) {
     const { tenantId, ...input } = dto
-    return this.bots.update(this.scope.resolveTenantId(actor, tenantId), id, input)
+    const resolvedTenantId = this.scope.resolveTenantId(actor, tenantId)
+    return this.bots.update(resolvedTenantId, id, input).then(async (result) => {
+      await this.runtime.reloadIfRunning(resolvedTenantId, id)
+      return result
+    })
   }
 
   @Patch('bots/:id/status')
@@ -123,23 +149,81 @@ export class TelegramController {
     @Body() statusDto: SetTelegramStatusDto,
     @User() actor: AuthUser,
   ) {
-    return this.bots.setStatus(
-      this.scope.resolveTenantId(actor, dto.tenantId),
-      id,
-      statusDto.status,
-    )
+    const resolvedTenantId = this.scope.resolveTenantId(actor, dto.tenantId)
+    return this.bots.setStatus(resolvedTenantId, id, statusDto.status).then(async (result) => {
+      if (statusDto.status === BusinessStatus.ACTIVE) await this.runtime.start(resolvedTenantId, id)
+      else await this.runtime.stop(resolvedTenantId, id)
+      return result
+    })
   }
 
   @Delete('bots/:id')
   @Permission(BotPermissions.DELETE)
   @ApiOperation({ summary: '删除尚未产生群组记录的机器人实例' })
   @ApiParam({ name: 'id', description: '机器人实例 ID', type: String })
-  removeBot(
+  async removeBot(
     @Param('id', ParseUUIDPipe) id: string,
     @Query() dto: TelegramTenantContextDto,
     @User() actor: AuthUser,
   ) {
-    return this.bots.remove(this.scope.resolveTenantId(actor, dto.tenantId), id)
+    const botCode = await this.bots.remove(this.scope.resolveTenantId(actor, dto.tenantId), id)
+    await this.runtime.stopByCode(botCode)
+  }
+
+  @Post('bots/:id/runtime/start')
+  @HttpCode(HttpStatus.OK)
+  @Permission(BotPermissions.UPDATE)
+  @ApiOperation({ summary: '启动支付机器人运行时' })
+  @ApiOkResponse({ type: TelegramBotRuntimeStatusDto })
+  @ApiParam({ name: 'id', description: '机器人实例 ID', type: String })
+  startBotRuntime(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() dto: TelegramTenantContextDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.runtime.start(this.scope.resolveTenantId(actor, dto.tenantId), id)
+  }
+
+  @Post('bots/:id/runtime/stop')
+  @HttpCode(HttpStatus.OK)
+  @Permission(BotPermissions.UPDATE)
+  @ApiOperation({ summary: '停止支付机器人运行时' })
+  @ApiOkResponse({ type: TelegramBotRuntimeStatusDto })
+  @ApiParam({ name: 'id', description: '机器人实例 ID', type: String })
+  stopBotRuntime(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() dto: TelegramTenantContextDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.runtime.stop(this.scope.resolveTenantId(actor, dto.tenantId), id)
+  }
+
+  @Post('bots/:id/runtime/restart')
+  @HttpCode(HttpStatus.OK)
+  @Permission(BotPermissions.UPDATE)
+  @ApiOperation({ summary: '重启支付机器人运行时' })
+  @ApiOkResponse({ type: TelegramBotRuntimeStatusDto })
+  @ApiParam({ name: 'id', description: '机器人实例 ID', type: String })
+  restartBotRuntime(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() dto: TelegramTenantContextDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.runtime.restart(this.scope.resolveTenantId(actor, dto.tenantId), id)
+  }
+
+  @Post('bots/:id/runtime/check')
+  @HttpCode(HttpStatus.OK)
+  @Permission(BotPermissions.READ)
+  @ApiOperation({ summary: '检测支付机器人 Telegram 连通性' })
+  @ApiOkResponse({ type: TelegramBotRuntimeStatusDto })
+  @ApiParam({ name: 'id', description: '机器人实例 ID', type: String })
+  checkBotRuntime(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() dto: TelegramTenantContextDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.runtime.check(this.scope.resolveTenantId(actor, dto.tenantId), id)
   }
 
   @Get('groups')

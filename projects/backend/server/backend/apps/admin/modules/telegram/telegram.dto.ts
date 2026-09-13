@@ -46,6 +46,29 @@ export class TelegramEligibleUserDto {
   nickname: string
 }
 
+export class TelegramBotRuntimeStatusDto {
+  @ApiProperty({ enum: ['ONLINE', 'CONNECTING', 'NOT_STARTED', 'DISABLED', 'ERROR'] })
+  state: 'ONLINE' | 'CONNECTING' | 'NOT_STARTED' | 'DISABLED' | 'ERROR'
+
+  @ApiProperty()
+  runtimeRunning: boolean
+
+  @ApiProperty({ format: 'date-time' })
+  checkedAt: string
+
+  @ApiProperty()
+  message: string
+
+  @ApiPropertyOptional()
+  telegramId?: number
+
+  @ApiPropertyOptional()
+  telegramUsername?: string
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  lastUpdateAt?: string
+}
+
 export class TelegramPageDto extends TelegramTenantContextDto {
   @ApiPropertyOptional({ default: 1 })
   @Type(() => Number)

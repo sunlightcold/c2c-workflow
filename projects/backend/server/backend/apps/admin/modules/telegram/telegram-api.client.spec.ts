@@ -65,4 +65,75 @@ describe('TelegramApiClient', () => {
       { timeout: 10_000 },
     )
   })
+
+  it('supports Telegram connectivity checks and long polling through fixed endpoints', async () => {
+    const post = jest
+      .spyOn(axios, 'post')
+      .mockResolvedValueOnce({ data: { ok: true, result: { id: 1001, username: 'payment_bot' } } })
+      .mockResolvedValueOnce({ data: { ok: true, result: true } })
+      .mockResolvedValueOnce({ data: { ok: true, result: [{ update_id: 42 }] } })
+    const client = new TelegramApiClient()
+
+    await expect(client.getMe('env://TG_TEST_TOKEN')).resolves.toEqual({
+      id: 1001,
+      username: 'payment_bot',
+    })
+    await client.deleteWebhook('env://TG_TEST_TOKEN')
+    await expect(client.getUpdates('env://TG_TEST_TOKEN', 42)).resolves.toEqual([{ update_id: 42 }])
+
+    expect(post).toHaveBeenNthCalledWith(
+      1,
+      `https://api.telegram.org/bot${token}/getMe`,
+      undefined,
+      { timeout: 10_000 },
+    )
+    expect(post).toHaveBeenNthCalledWith(
+      3,
+      `https://api.telegram.org/bot${token}/getUpdates`,
+      expect.objectContaining({ offset: 42, timeout: 25 }),
+      { timeout: 35_000 },
+    )
+  })
+
+  it('passes an abort signal to Telegram long polling', async () => {
+    const post = jest.spyOn(axios, 'post').mockResolvedValue({ data: { ok: true, result: [] } })
+    const client = new TelegramApiClient()
+    const controller = new AbortController()
+
+    await client.getUpdates('env://TG_TEST_TOKEN', 9, controller.signal)
+
+    expect(post).toHaveBeenCalledWith(
+      `https://api.telegram.org/bot${token}/getUpdates`,
+      expect.objectContaining({ offset: 9 }),
+      { signal: controller.signal, timeout: 35_000 },
+    )
+  })
+
+  it.each([
+    [401, 'Telegram Token 无效或已失效'],
+    [409, 'Telegram 长轮询被其他实例占用'],
+  ])('preserves actionable Telegram API errors for status reporting', async (status, message) => {
+    jest.spyOn(axios, 'post').mockRejectedValue({
+      isAxiosError: true,
+      response: { status },
+    })
+    const client = new TelegramApiClient()
+
+    await expect(client.getMe('env://TG_TEST_TOKEN')).rejects.toEqual(
+      new ServiceUnavailableException(message),
+    )
+  })
+
+  it('reports network failures without exposing request details', async () => {
+    jest.spyOn(axios, 'post').mockRejectedValue({
+      code: 'ECONNABORTED',
+      isAxiosError: true,
+      message: `request to bot${token} timed out`,
+    })
+    const client = new TelegramApiClient()
+
+    await expect(client.getMe('env://TG_TEST_TOKEN')).rejects.toEqual(
+      new ServiceUnavailableException('Telegram 网络连接失败'),
+    )
+  })
 })

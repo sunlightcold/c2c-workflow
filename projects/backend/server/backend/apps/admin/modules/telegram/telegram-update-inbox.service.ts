@@ -33,6 +33,10 @@ export class TelegramUpdateInboxService {
     if (!bot) throw new NotFoundException('机器人不存在或已停用')
     if (bot.webhookSecretRef && webhookSecret !== this.resolveSecret(bot.webhookSecretRef))
       throw new ForbiddenException('Webhook Secret 校验失败')
+    return this.enqueue(bot, payload)
+  }
+
+  async enqueue(bot: Pick<TelegramBotEntity, 'id' | 'tenantId'>, payload: Record<string, unknown>) {
     const updateId = payload.update_id
     if (typeof updateId !== 'number' || !Number.isSafeInteger(updateId) || updateId < 0)
       throw new ForbiddenException('Telegram Update ID 无效')

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   approveTelegramGroupApi,
   cancelMerchantOrderApi,
+  checkTelegramBotRuntimeApi,
   confirmMerchantOrderPaidApi,
   createManualPaymentOrderApi,
   createMerchantOrderPaymentApi,
@@ -23,6 +24,7 @@ import {
   getPaymentOrdersApi,
   getTelegramMemberEligibleUsersApi,
   getTelegramSuperAdminEligibleUsersApi,
+  restartTelegramBotRuntimeApi,
   rotateMerchantCredentialApi,
   setMerchantStatusApi,
   setPaymentAccountChannelStatusApi,
@@ -30,6 +32,8 @@ import {
   setTelegramBotStatusApi,
   setTelegramMemberStatusApi,
   setTelegramSuperAdminStatusApi,
+  startTelegramBotRuntimeApi,
+  stopTelegramBotRuntimeApi,
   submitMerchantOrderAppealApi,
   syncMerchantOrdersApi,
   testMerchantConnectionApi,
@@ -479,6 +483,32 @@ describe('business api', () => {
     expect(requestMocks.delete).toHaveBeenCalledWith('/sys/tg/groups/group-1', {
       params: { tenantId: 'tenant-1' },
     });
+  });
+
+  it('uses tenant-scoped Telegram runtime lifecycle endpoints', async () => {
+    requestMocks.post.mockResolvedValue({
+      state: 'ONLINE',
+      runtimeRunning: true,
+    });
+
+    await checkTelegramBotRuntimeApi('bot-1', 'tenant-1');
+    await startTelegramBotRuntimeApi('bot-1', 'tenant-1');
+    await stopTelegramBotRuntimeApi('bot-1', 'tenant-1');
+    await restartTelegramBotRuntimeApi('bot-1', 'tenant-1');
+
+    for (const [index, action] of [
+      'check',
+      'start',
+      'stop',
+      'restart',
+    ].entries()) {
+      expect(requestMocks.post).toHaveBeenNthCalledWith(
+        index + 1,
+        `/sys/tg/bots/bot-1/runtime/${action}`,
+        null,
+        { params: { tenantId: 'tenant-1' } },
+      );
+    }
   });
 
   it('uses the Telegram member and super administrator endpoints', async () => {

@@ -59,6 +59,9 @@ export class TelegramBotEntity extends CommonUuidEntity {
   @Column({ type: 'enum', enum: BusinessStatus, enumName: 'business_status_enum' })
   status: BusinessStatus
 
+  @Column({ type: 'boolean', default: true })
+  runtimeEnabled: boolean
+
   @Column({ type: 'varchar', length: 500, nullable: true })
   description: string | null
 }

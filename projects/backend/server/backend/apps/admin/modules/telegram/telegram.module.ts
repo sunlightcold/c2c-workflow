@@ -33,6 +33,7 @@ import { TelegramManualPaymentService } from './telegram-manual-payment.service'
 import { TelegramBatchPaymentService } from './telegram-batch-payment.service'
 import { TelegramQueryService } from './telegram-query.service'
 import { TelegramNotificationService } from './telegram-notification.service'
+import { TelegramBotRuntimeService } from './telegram-bot-runtime.service'
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { TelegramNotificationService } from './telegram-notification.service'
     TelegramBatchPaymentService,
     TelegramQueryService,
     TelegramNotificationService,
+    TelegramBotRuntimeService,
   ],
   exports: [
     TelegramBotService,
@@ -77,6 +79,7 @@ import { TelegramNotificationService } from './telegram-notification.service'
     TelegramMemberService,
     TelegramSuperAdminService,
     TelegramNotificationService,
+    TelegramBotRuntimeService,
   ],
 })
 export class TelegramModule {}

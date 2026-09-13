@@ -3,15 +3,19 @@ import type { VbenFormProps } from '#/adapter/form';
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { BusinessApi } from '#/api';
 
-import { onMounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
 
 import {
+  checkTelegramBotRuntimeApi,
   createTelegramBotApi,
   deleteTelegramBotApi,
   getTelegramBotsApi,
+  restartTelegramBotRuntimeApi,
   setTelegramBotStatusApi,
+  startTelegramBotRuntimeApi,
+  stopTelegramBotRuntimeApi,
   updateTelegramBotApi,
 } from '#/api';
 import {
@@ -113,11 +117,23 @@ const gridOptions: VxeTableGridOptions<BusinessApi.TelegramBot> = {
     },
     { field: 'status', slots: { default: 'status' }, title: '状态', width: 90 },
     {
+      field: 'runtime',
+      slots: { default: 'runtime' },
+      title: '连接状态',
+      width: 150,
+    },
+    {
+      field: 'runtimeRunning',
+      slots: { default: 'runtimeRunning' },
+      title: '运行状态',
+      width: 100,
+    },
+    {
       field: 'actions',
       fixed: 'right',
       slots: { default: 'actions' },
       title: '操作',
-      width: 230,
+      width: 330,
     },
   ],
 };
@@ -298,11 +314,74 @@ function remove(row: BusinessApi.TelegramBot) {
   });
 }
 
+const runtimeStateText: Record<
+  BusinessApi.TelegramBotRuntime['state'],
+  string
+> = {
+  CONNECTING: '连接中',
+  DISABLED: '已停用',
+  ERROR: '连接异常',
+  NOT_STARTED: '未启动',
+  ONLINE: '已连接',
+};
+const runtimeStateColor: Record<
+  BusinessApi.TelegramBotRuntime['state'],
+  string
+> = {
+  CONNECTING: 'processing',
+  DISABLED: 'default',
+  ERROR: 'error',
+  NOT_STARTED: 'warning',
+  ONLINE: 'success',
+};
+
+function getRuntimeState(row: BusinessApi.TelegramBot) {
+  return row.runtime?.state ?? 'NOT_STARTED';
+}
+
+function checkRuntime(row: BusinessApi.TelegramBot) {
+  return runResourceAction({
+    action: () => checkTelegramBotRuntimeApi(row.id, selectedTenantId.value),
+    onSuccess: async () => gridApi.query(),
+    successMessage: '连接检测完成',
+  });
+}
+
+function toggleRuntime(row: BusinessApi.TelegramBot) {
+  const running = row.runtime?.runtimeRunning;
+  return runResourceAction({
+    action: () =>
+      running
+        ? stopTelegramBotRuntimeApi(row.id, selectedTenantId.value)
+        : startTelegramBotRuntimeApi(row.id, selectedTenantId.value),
+    onSuccess: async () => gridApi.query(),
+    successMessage: running ? '机器人已停止' : '机器人启动请求已提交',
+  });
+}
+
+function restartRuntime(row: BusinessApi.TelegramBot) {
+  return runResourceAction({
+    action: () => restartTelegramBotRuntimeApi(row.id, selectedTenantId.value),
+    onSuccess: async () => gridApi.query(),
+    successMessage: '机器人重启请求已提交',
+  });
+}
+
+let refreshTimer: ReturnType<typeof setInterval> | undefined;
+
 onMounted(async () => {
   selectedTenantId.value = await loadTenantOptions();
-  if (!selectedTenantId.value) return;
-  await gridApi.formApi.setFieldValue('tenantId', selectedTenantId.value);
-  await gridApi.query();
+  if (selectedTenantId.value) {
+    await gridApi.formApi.setFieldValue('tenantId', selectedTenantId.value);
+    await gridApi.query();
+  }
+  refreshTimer = setInterval(() => {
+    if (selectedTenantId.value) void gridApi.query();
+  }, 5000);
+});
+
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer);
 });
 </script>
 
@@ -330,6 +409,21 @@ onMounted(async () => {
           {{ businessStatusText(row.status) }}
         </ATag>
       </template>
+      <template #runtime="{ row }">
+        <ASpace :size="4">
+          <ATag :color="runtimeStateColor[getRuntimeState(row)]">
+            {{ runtimeStateText[getRuntimeState(row)] }}
+          </ATag>
+          <span class="text-xs text-gray-500">{{
+            row.runtime?.message ?? '尚未检测'
+          }}</span>
+        </ASpace>
+      </template>
+      <template #runtimeRunning="{ row }">
+        <ATag :color="row.runtime?.runtimeRunning ? 'success' : 'default'">
+          {{ row.runtime?.runtimeRunning ? '运行中' : '已停止' }}
+        </ATag>
+      </template>
       <template #actions="{ row }">
         <ASpace :size="4">
           <AButton
@@ -338,6 +432,27 @@ onMounted(async () => {
             @click="openEdit(row)"
           >
             编辑
+          </AButton>
+          <AButton
+            v-access:code="['telegram:bot:read']"
+            size="small"
+            @click="checkRuntime(row)"
+          >
+            检测
+          </AButton>
+          <AButton
+            v-access:code="['telegram:bot:update']"
+            size="small"
+            @click="toggleRuntime(row)"
+          >
+            {{ row.runtime?.runtimeRunning ? '停止运行' : '启动运行' }}
+          </AButton>
+          <AButton
+            v-access:code="['telegram:bot:update']"
+            size="small"
+            @click="restartRuntime(row)"
+          >
+            重启
           </AButton>
           <AButton
             v-access:code="['telegram:bot:update']"

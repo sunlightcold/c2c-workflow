@@ -392,9 +392,18 @@ export namespace BusinessApi {
     sourceBusinessNo: string;
   }
 
+  export interface TelegramBotRuntime {
+    checkedAt: string;
+    lastUpdateAt?: string;
+    message: string;
+    runtimeRunning: boolean;
+    state: 'CONNECTING' | 'DISABLED' | 'ERROR' | 'NOT_STARTED' | 'ONLINE';
+    telegramId?: number;
+    telegramUsername?: string;
+  }
   export interface TelegramBot {
-    botType: TelegramBotType;
     batchSubmitRequireConfirmation: boolean;
+    botType: TelegramBotType;
     capabilities: TelegramCapability[];
     code: string;
     createdAt: string;
@@ -403,6 +412,7 @@ export namespace BusinessApi {
     language: string;
     name: string;
     paymentOrderRequireConfirmation: boolean;
+    runtime: TelegramBotRuntime;
     status: BusinessStatus;
     tenantId: string;
     tokenConfigured: boolean;
@@ -877,6 +887,24 @@ export const setTelegramBotStatusApi = (
   });
 export const deleteTelegramBotApi = (id: string, tenantId?: string) =>
   requestClient.delete(`/sys/tg/bots/${id}`, { params: { tenantId } });
+export const startTelegramBotRuntimeApi = (id: string, tenantId?: string) =>
+  requestClient.post(`/sys/tg/bots/${id}/runtime/start`, null, {
+    params: { tenantId },
+  });
+export const stopTelegramBotRuntimeApi = (id: string, tenantId?: string) =>
+  requestClient.post(`/sys/tg/bots/${id}/runtime/stop`, null, {
+    params: { tenantId },
+  });
+export const restartTelegramBotRuntimeApi = (id: string, tenantId?: string) =>
+  requestClient.post(`/sys/tg/bots/${id}/runtime/restart`, null, {
+    params: { tenantId },
+  });
+export const checkTelegramBotRuntimeApi = (id: string, tenantId?: string) =>
+  requestClient.post<BusinessApi.TelegramBotRuntime>(
+    `/sys/tg/bots/${id}/runtime/check`,
+    null,
+    { params: { tenantId } },
+  );
 export async function getTelegramGroupsApi(
   params: TelegramPageQuery & {
     bindingState?: BusinessApi.TelegramGroupBindingState;

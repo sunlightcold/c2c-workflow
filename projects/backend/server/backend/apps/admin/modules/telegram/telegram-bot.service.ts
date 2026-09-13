@@ -81,6 +81,7 @@ export class TelegramBotService {
         paymentOrderRequireConfirmation: input.paymentOrderRequireConfirmation ?? true,
         batchSubmitRequireConfirmation: input.batchSubmitRequireConfirmation ?? true,
         status: BusinessStatus.ACTIVE,
+        runtimeEnabled: true,
       }),
     )
     return this.publicView(bot)
@@ -152,6 +153,7 @@ export class TelegramBotService {
     if (await this.groups.existsBy({ tenantId, botId: id }))
       throw new ConflictException('机器人已有群组记录，只能停用')
     await this.bots.remove(bot)
+    return bot.code
   }
 
   private publicView(bot: TelegramBotEntity) {

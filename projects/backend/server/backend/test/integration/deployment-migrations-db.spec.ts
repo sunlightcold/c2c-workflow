@@ -31,6 +31,7 @@ describe('Deployment migrations database integration', () => {
     'C2cAutomaticPayments1789013000000',
     'RemoveAiAndClientError1789014000000',
     'C2cTelegramPaymentBotType1789015000000',
+    'C2cTelegramBotRuntime1789016000000',
   ]
   const { postgres } = developmentConfig.admin
   const schema = `deployment_migrations_test_${process.pid}_${Date.now()}`
@@ -122,13 +123,15 @@ describe('Deployment migrations database integration', () => {
          WHERE table_schema = current_schema()
            AND table_name = ANY($1)
          ORDER BY table_name`,
-        [[
-          'sys_ai_call_log',
-          'sys_ai_channel',
-          'sys_ai_feature_route',
-          'sys_ai_model',
-          'sys_client_error_event',
-        ]],
+        [
+          [
+            'sys_ai_call_log',
+            'sys_ai_channel',
+            'sys_ai_feature_route',
+            'sys_ai_model',
+            'sys_client_error_event',
+          ],
+        ],
       ),
     ).resolves.toEqual([])
     await expect(

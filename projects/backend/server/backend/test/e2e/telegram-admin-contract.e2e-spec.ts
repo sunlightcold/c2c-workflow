@@ -7,10 +7,8 @@ import { TelegramGroupService } from '@/apps/admin/modules/telegram/telegram-gro
 import { TelegramMemberService } from '@/apps/admin/modules/telegram/telegram-member.service'
 import { TelegramSuperAdminService } from '@/apps/admin/modules/telegram/telegram-super-admin.service'
 import { TelegramUserDirectoryService } from '@/apps/admin/modules/telegram/telegram-user-directory.service'
-import {
-  createAdminContractTestApp,
-  expectWrappedSuccess,
-} from './helpers/admin-contract-test-app'
+import { TelegramBotRuntimeService } from '@/apps/admin/modules/telegram/telegram-bot-runtime.service'
+import { createAdminContractTestApp, expectWrappedSuccess } from './helpers/admin-contract-test-app'
 
 jest.mock('@/common/decorators', () => ({
   Permission: () => () => undefined,
@@ -53,6 +51,20 @@ describe('Telegram administration API contract (e2e)', () => {
   const userDirectory = {
     listEligible: jest.fn(),
   }
+  const runtime = {
+    check: jest.fn(),
+    getStatus: jest.fn().mockReturnValue({
+      state: 'ONLINE',
+      runtimeRunning: true,
+      checkedAt: '2026-09-13T00:00:00.000Z',
+      message: 'Telegram 连接正常，机器人正在运行',
+    }),
+    reloadIfRunning: jest.fn(),
+    restart: jest.fn(),
+    start: jest.fn(),
+    stop: jest.fn(),
+    stopByCode: jest.fn(),
+  }
 
   beforeAll(async () => {
     app = await createAdminContractTestApp({
@@ -65,6 +77,7 @@ describe('Telegram administration API contract (e2e)', () => {
         { provide: TelegramMemberService, useValue: members },
         { provide: TelegramSuperAdminService, useValue: superAdmins },
         { provide: TelegramUserDirectoryService, useValue: userDirectory },
+        { provide: TelegramBotRuntimeService, useValue: runtime },
       ],
     })
   })
@@ -94,6 +107,65 @@ describe('Telegram administration API contract (e2e)', () => {
       expect.objectContaining({ token: '1234567890:AAabcdefghijklmnopQRST_uvwx' }),
     )
     expect(bots.create.mock.calls[0][1]).not.toHaveProperty('code')
+    expect(runtime.start).toHaveBeenCalledWith('tenant-1', 'bot-1')
+  })
+
+  it('exposes runtime status and controls the robot lifecycle', async () => {
+    bots.list.mockResolvedValue({
+      items: [{ id: 'bot-1', code: 'PAY_MAIN' }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    })
+    runtime.check.mockResolvedValue({ state: 'ONLINE', runtimeRunning: false })
+    runtime.start.mockResolvedValue({ state: 'CONNECTING', runtimeRunning: true })
+    runtime.stop.mockResolvedValue({ state: 'NOT_STARTED', runtimeRunning: false })
+    runtime.restart.mockResolvedValue({ state: 'CONNECTING', runtimeRunning: true })
+    const tenantId = '00000000-0000-4000-8000-000000000010'
+    const id = '00000000-0000-4000-8000-000000000020'
+
+    const list = await request(app.getHttpServer())
+      .get('/v1/sys/tg/bots')
+      .query({ tenantId, page: 1, pageSize: 20 })
+      .expect(200)
+    expect(list.body.data.items[0].runtime).toMatchObject({ state: 'ONLINE', runtimeRunning: true })
+
+    await request(app.getHttpServer())
+      .post(`/v1/sys/tg/bots/${id}/runtime/check`)
+      .query({ tenantId })
+      .expect(200)
+    await request(app.getHttpServer())
+      .post(`/v1/sys/tg/bots/${id}/runtime/start`)
+      .query({ tenantId })
+      .expect(200)
+    await request(app.getHttpServer())
+      .post(`/v1/sys/tg/bots/${id}/runtime/stop`)
+      .query({ tenantId })
+      .expect(200)
+
+    const restarted = await request(app.getHttpServer())
+      .post(`/v1/sys/tg/bots/${id}/runtime/restart`)
+      .query({ tenantId })
+      .expect(200)
+    expect(restarted.body.data).toMatchObject({ state: 'CONNECTING', runtimeRunning: true })
+    expect(runtime.check).toHaveBeenCalledWith('tenant-1', id)
+    expect(runtime.start).toHaveBeenCalledWith('tenant-1', id)
+    expect(runtime.stop).toHaveBeenCalledWith('tenant-1', id)
+    expect(runtime.restart).toHaveBeenCalledWith('tenant-1', id)
+  })
+
+  it('stops a deleted robot only after deletion succeeds', async () => {
+    bots.remove.mockResolvedValue('BOT202609130001')
+    const tenantId = '00000000-0000-4000-8000-000000000010'
+    const id = '00000000-0000-4000-8000-000000000020'
+
+    await request(app.getHttpServer())
+      .delete(`/v1/sys/tg/bots/${id}`)
+      .query({ tenantId })
+      .expect(200)
+
+    expect(bots.remove).toHaveBeenCalledWith('tenant-1', id)
+    expect(runtime.stopByCode).toHaveBeenCalledWith('BOT202609130001')
   })
 
   it('creates a pending group challenge and approves the captured Telegram group', async () => {
@@ -183,9 +255,7 @@ describe('Telegram administration API contract (e2e)', () => {
 
     expectWrappedSuccess(memberResponse.body)
     expectWrappedSuccess(superAdminResponse.body)
-    expect(memberResponse.body.data).toEqual([
-      { id: 8, nickname: '值班员', username: 'operator' },
-    ])
+    expect(memberResponse.body.data).toEqual([{ id: 8, nickname: '值班员', username: 'operator' }])
     expect(userDirectory.listEligible).toHaveBeenNthCalledWith(1, 'tenant-1')
     expect(userDirectory.listEligible).toHaveBeenNthCalledWith(2, 'tenant-1')
   })
