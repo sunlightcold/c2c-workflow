@@ -21,9 +21,7 @@ export const telegramCapabilityOptions: Array<{
 
 export const telegramBotTypeOptions = [
   { label: '支付机器人', value: 'PAYMENT' },
-  { label: '商家机器人', value: 'MERCHANT' },
-  { label: '总部机器人', value: 'HQ' },
-];
+] as const;
 
 export const telegramGroupRoleOptions = [
   { label: '群管理员', value: 'ADMIN' },

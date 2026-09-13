@@ -21,7 +21,7 @@ export namespace BusinessApi {
     | 'PAYMENT_RESULT_NOTIFICATION'
     | 'PAYMENT_STATISTICS'
     | 'RECEIPT_QUERY';
-  export type TelegramBotType = 'HQ' | 'MERCHANT' | 'PAYMENT';
+  export type TelegramBotType = 'PAYMENT';
   export type TelegramGroupRole = 'ADMIN' | 'OPERATOR' | 'VIEWER';
   export type TelegramGroupBindingState =
     | 'ACTIVE'

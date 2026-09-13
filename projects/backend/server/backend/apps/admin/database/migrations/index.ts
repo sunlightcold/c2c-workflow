@@ -23,6 +23,7 @@ import { C2cTelegramBatchInteractions1789011000000 } from './c2c-telegram-batch-
 import { PaymentAccountCredentials1789012000000 } from './payment-account-credentials.migration'
 import { C2cAutomaticPayments1789013000000 } from './c2c-automatic-payments.migration'
 import { RemoveAiAndClientError1789014000000 } from './remove-ai-client-error.migration'
+import { C2cTelegramPaymentBotType1789015000000 } from './c2c-telegram-payment-bot-type.migration'
 
 export type AdminMigrationConstructor = new () => MigrationInterface
 
@@ -51,4 +52,5 @@ export const adminMigrations: AdminMigrationConstructor[] = [
   PaymentAccountCredentials1789012000000,
   C2cAutomaticPayments1789013000000,
   RemoveAiAndClientError1789014000000,
+  C2cTelegramPaymentBotType1789015000000,
 ]

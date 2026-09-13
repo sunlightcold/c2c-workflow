@@ -4,9 +4,16 @@ import {
   TelegramGroupRole,
   assertGroupCapabilities,
   assertMemberCapabilities,
+  getTelegramCapabilityPolicy,
 } from './telegram-policy'
 
 describe('TelegramPolicy', () => {
+  it('exposes only the payment bot type', () => {
+    expect(getTelegramCapabilityPolicy().botTypes).toEqual([
+      expect.objectContaining({ botType: 'PAYMENT' }),
+    ])
+  })
+
   it('accepts group capabilities that are enabled by the bot', () => {
     expect(() =>
       assertGroupCapabilities(

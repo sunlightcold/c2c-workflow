@@ -33,7 +33,6 @@ import {
   businessStatusText,
 } from '../shared/business-ui';
 import {
-  telegramBotTypeOptions,
   telegramBotTypeText,
   telegramCapabilityOptions,
 } from '../shared/telegram-ui';
@@ -157,15 +156,6 @@ function botFormRules(editing = false) {
       ],
     },
     {
-      field: 'botType',
-      props: { options: telegramBotTypeOptions },
-      title: '机器人类型',
-      type: 'select',
-      validate: [
-        { message: '请选择机器人类型', required: true, trigger: 'change' },
-      ],
-    },
-    {
       field: 'token',
       props: {
         autocomplete: 'new-password',
@@ -241,6 +231,7 @@ function openCreate() {
         action: () =>
           createTelegramBotApi({
             ...(data as Parameters<typeof createTelegramBotApi>[0]),
+            botType: 'PAYMENT',
             tenantId: selectedTenantId.value,
           }),
         onSuccess: async () => {
@@ -277,7 +268,6 @@ async function openEdit(row: BusinessApi.TelegramBot) {
   );
   formApi?.setValue({
     batchSubmitRequireConfirmation: row.batchSubmitRequireConfirmation,
-    botType: row.botType,
     capabilities: row.capabilities,
     description: row.description ?? '',
     name: row.name,

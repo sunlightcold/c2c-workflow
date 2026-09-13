@@ -14,7 +14,7 @@ export async function migrateTelegramAdministration(manager: EntityManager): Pro
       CREATE TYPE telegram_group_binding_state_enum AS ENUM ('PENDING', 'ACTIVE', 'PAUSED', 'UNBOUND');
     EXCEPTION WHEN duplicate_object THEN NULL; END $$;
     DO $$ BEGIN
-      CREATE TYPE telegram_bot_type_enum AS ENUM ('HQ', 'MERCHANT', 'PAYMENT');
+      CREATE TYPE telegram_bot_type_enum AS ENUM ('PAYMENT');
     EXCEPTION WHEN duplicate_object THEN NULL; END $$;
     DO $$ BEGIN
       CREATE TYPE telegram_super_admin_scope_type_enum AS ENUM ('ALL_GROUPS', 'SPECIFIED_GROUPS');

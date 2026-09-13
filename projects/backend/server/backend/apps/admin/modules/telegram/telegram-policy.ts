@@ -23,8 +23,6 @@ export enum TelegramGroupRole {
 }
 
 export enum TelegramBotType {
-  HQ = 'HQ',
-  MERCHANT = 'MERCHANT',
   PAYMENT = 'PAYMENT',
 }
 
@@ -68,21 +66,6 @@ const MEMBER_CAPABILITIES: Record<TelegramGroupRole, readonly TelegramCapability
 }
 
 const BOT_CAPABILITIES: Record<TelegramBotType, readonly TelegramCapability[]> = {
-  [TelegramBotType.HQ]: [
-    TelegramCapability.BALANCE_QUERY,
-    TelegramCapability.ORDER_QUERY,
-    TelegramCapability.RECEIPT_QUERY,
-    TelegramCapability.PAYMENT_STATISTICS,
-    TelegramCapability.GROUP_MEMBER_MANAGE,
-    TelegramCapability.BOT_STATUS_MANAGE,
-  ],
-  [TelegramBotType.MERCHANT]: [
-    TelegramCapability.BALANCE_QUERY,
-    TelegramCapability.ORDER_QUERY,
-    TelegramCapability.RECEIPT_QUERY,
-    TelegramCapability.PAYMENT_STATISTICS,
-    TelegramCapability.GROUP_MEMBER_MANAGE,
-  ],
   [TelegramBotType.PAYMENT]: Object.values(TelegramCapability),
 }
 

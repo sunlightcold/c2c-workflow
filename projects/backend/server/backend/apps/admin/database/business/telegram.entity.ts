@@ -11,8 +11,6 @@ export enum TelegramGroupBindingState {
 }
 
 export enum TelegramBotType {
-  HQ = 'HQ',
-  MERCHANT = 'MERCHANT',
   PAYMENT = 'PAYMENT',
 }
 
