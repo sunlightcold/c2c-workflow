@@ -91,7 +91,7 @@ export class TelegramRuntimeService {
           await this.reply(
             bot.tokenRef,
             message,
-            ['可用命令：', '/myid - 查看 Telegram 用户编号', '/bind 商家编号 - 绑定当前商家群'].join('\n'),
+            ['可用命令：', '/myid - 查看 Telegram 用户编号', '/bind 平台商家编号 - 绑定当前商家群'].join('\n'),
           )
           return
         }
@@ -122,7 +122,7 @@ export class TelegramRuntimeService {
       typeof this.authorization.isActiveSuperAdmin === 'function' &&
       (await this.authorization.isActiveSuperAdmin(bot.tenantId, message.userId))
     ) {
-      lines.unshift('/bind 商家编号 - 绑定当前商家群')
+      lines.unshift('/bind 平台商家编号 - 绑定当前商家群')
     }
     await this.reply(
       bot.tokenRef,
@@ -145,7 +145,7 @@ export class TelegramRuntimeService {
     }
     const args = message.text.split(/\s+/).slice(1).filter(Boolean)
     if (args.length !== 1) {
-      await this.reply(bot.tokenRef, message, '用法：/bind 商家编号')
+      await this.reply(bot.tokenRef, message, '用法：/bind 平台商家编号')
       return
     }
     try {

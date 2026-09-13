@@ -126,13 +126,21 @@ export class TelegramGroupService {
   }) {
     if (input.chatType !== 'group' && input.chatType !== 'supergroup')
       throw new BadRequestException('只能在群组中绑定商家')
+    const merchantIdentifier = input.merchantCode.trim()
     const [merchant, bot] = await Promise.all([
       this.merchants.findOne({
-        where: {
-          tenantId: input.tenantId,
-          code: input.merchantCode.trim().toUpperCase(),
-          status: BusinessStatus.ACTIVE,
-        },
+        where: [
+          {
+            tenantId: input.tenantId,
+            externalMerchantId: merchantIdentifier,
+            status: BusinessStatus.ACTIVE,
+          },
+          {
+            tenantId: input.tenantId,
+            code: merchantIdentifier.toUpperCase(),
+            status: BusinessStatus.ACTIVE,
+          },
+        ],
       }),
       this.bots.findOne({
         where: { id: input.botId, tenantId: input.tenantId, status: BusinessStatus.ACTIVE },
