@@ -1177,6 +1177,7 @@ test('manages parallel payment batch policy rules without horizontal overflow', 
   await page
     .locator('.ant-select-dropdown:visible .ant-select-item-option')
     .filter({ hasText: '按订单数' })
+    .last()
     .click();
   await createDialog
     .getByRole('spinbutton', { name: '规则 2 订单数' })
@@ -1682,16 +1683,23 @@ test('keeps internal business codes out of filters and tables', async ({
   );
 });
 
-test('replaces the payment account credential from pasted text and local files', async ({
+test('edits the payment account and its credential in one form and request', async ({
   page,
 }, testInfo) => {
   await page.goto('/business/payment-accounts');
   await selectHeadquartersTenant(page);
   await expect(page.getByText('公钥模式', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '凭据配置' }).click();
+  await expect(page.getByRole('button', { name: '凭据配置' })).toHaveCount(0);
+  await page.getByRole('button', { name: '编辑', exact: true }).click();
 
-  const dialog = page.getByRole('dialog', { name: '配置支付账号凭据' });
+  const dialog = page.getByRole('dialog', { name: '编辑支付账号' });
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('textbox', { name: /账号名称/ })).toHaveValue(
+    '总部支付宝主账号',
+  );
+  await expect(
+    dialog.getByRole('textbox', { name: /支付宝商户号/ }),
+  ).toHaveValue('2088123456789000');
   await expect(
     dialog.getByRole('textbox', { name: /支付宝应用 ID/ }),
   ).toHaveValue('2026000000000001');
@@ -1712,23 +1720,28 @@ test('replaces the payment account credential from pasted text and local files',
   const appCertInput = dialog.getByRole('textbox', { name: '应用公钥证书' });
   await expect(privateKeyInput).toHaveAttribute(
     'placeholder',
-    '可直接粘贴内容，或读取本地文件',
+    '留空保留现有内容，也可粘贴或读取新文件',
   );
   await privateKeyInput.fill('pasted-application-private-key');
 
   const privateKeyBox = await privateKeyInput.boundingBox();
   const appCertBox = await appCertInput.boundingBox();
+  const alipayPublicCertBox = await dialog
+    .getByRole('textbox', { name: '支付宝公钥证书' })
+    .boundingBox();
   expect(privateKeyBox).not.toBeNull();
   expect(appCertBox).not.toBeNull();
-  if (!privateKeyBox || !appCertBox) {
+  expect(alipayPublicCertBox).not.toBeNull();
+  if (!privateKeyBox || !appCertBox || !alipayPublicCertBox) {
     throw new Error('Credential inputs are not rendered');
   }
   if (testInfo.project.name === 'mobile-chromium') {
     expect(Math.abs(privateKeyBox.x - appCertBox.x)).toBeLessThan(8);
     expect(appCertBox.y).toBeGreaterThan(privateKeyBox.y);
   } else {
-    expect(Math.abs(privateKeyBox.y - appCertBox.y)).toBeLessThan(8);
-    expect(appCertBox.x).toBeGreaterThan(privateKeyBox.x);
+    expect(appCertBox.y).toBeGreaterThan(privateKeyBox.y);
+    expect(Math.abs(appCertBox.y - alipayPublicCertBox.y)).toBeLessThan(8);
+    expect(alipayPublicCertBox.x).toBeGreaterThan(appCertBox.x);
   }
 
   const certificateFileInputs = [
@@ -1766,25 +1779,32 @@ test('replaces the payment account credential from pasted text and local files',
     path: `node_modules/.e2e/screenshots/payment-credential-input-${testInfo.project.name}.png`,
   });
 
-  const credentialRequest = page.waitForRequest(
+  const updateRequest = page.waitForRequest(
     (request) =>
       request.method() === 'PUT' &&
-      request.url().includes('/v1/sys/payment-accounts/') &&
-      request.url().endsWith('/credential'),
+      request
+        .url()
+        .endsWith(
+          '/v1/sys/payment-accounts/00000000-0000-4000-8000-000000000110',
+        ),
     { timeout: 8000 },
   );
   await dialog.getByRole('button', { name: /确\s*定/ }).click();
   await expect(dialog.locator('.ant-form-item-explain-error')).toHaveCount(0);
-  const request = await credentialRequest;
+  const request = await updateRequest;
   const payload = request.postDataJSON();
   expect(payload).toMatchObject({
-    appCertContent: testCertificatePem,
-    authMode: 'CERT',
-    alipayPublicCertContent: testCertificatePem,
-    alipayRootCertContent: `${testCertificatePem}\n${testCertificatePem}`,
-    gateway: customGateway,
-    privateKey: 'pasted-application-private-key',
+    credential: {
+      appCertContent: testCertificatePem,
+      authMode: 'CERT',
+      alipayPublicCertContent: testCertificatePem,
+      alipayRootCertContent: `${testCertificatePem}\n${testCertificatePem}`,
+      gateway: customGateway,
+      privateKey: 'pasted-application-private-key',
+    },
+    externalAccountId: '2088123456789000',
+    name: '总部支付宝主账号',
     tenantId,
   });
-  expect(payload).not.toHaveProperty('alipayPublicKey');
+  expect(payload.credential).not.toHaveProperty('alipayPublicKey');
 });

@@ -57,11 +57,6 @@ interface PaymentAccountChannelInput {
   minimumAmount?: string | null
 }
 
-interface UpdatePaymentAccountInput {
-  externalAccountId?: string
-  name?: string
-}
-
 export interface PaymentAccountCredentialInput {
   alipayPublicKey?: string
   alipayPublicCertContent?: string
@@ -71,6 +66,27 @@ export interface PaymentAccountCredentialInput {
   authMode: 'CERT' | 'KEY'
   gateway: string
   privateKey: string
+}
+
+type PaymentAccountCredentialPatchInput = Pick<
+  PaymentAccountCredentialInput,
+  'appId' | 'authMode' | 'gateway'
+> &
+  Partial<
+    Pick<
+      PaymentAccountCredentialInput,
+      | 'alipayPublicCertContent'
+      | 'alipayPublicKey'
+      | 'alipayRootCertContent'
+      | 'appCertContent'
+      | 'privateKey'
+    >
+  >
+
+interface UpdatePaymentAccountInput {
+  credential?: PaymentAccountCredentialPatchInput
+  externalAccountId?: string
+  name?: string
 }
 
 @Injectable()
@@ -232,22 +248,14 @@ export class PaymentConfigService {
     if (!account) throw new NotFoundException('支付账号不存在')
     if (input.name !== undefined) account.name = input.name
     if (input.externalAccountId !== undefined) account.externalAccountId = input.externalAccountId
-    return this.sanitizeAccount(await this.accountRepository.save(account))
-  }
-
-  async updateAccountCredential(
-    tenantId: string,
-    id: string,
-    input: PaymentAccountCredentialInput,
-  ) {
-    const account = await this.accountRepository.findOne({ where: { id, tenantId } })
-    if (!account) throw new NotFoundException('支付账号不存在')
-    const credential = this.normalizeCredential(input)
-    account.credentialRef = this.encryptCredential(credential)
-    account.credentialAuthMode = credential.authMode
-    account.credentialAppId = credential.appId
-    account.credentialGateway = credential.gateway
-    account.credentialUpdatedAt = new Date()
+    if (input.credential) {
+      const credential = this.mergeCredential(account.credentialRef, input.credential)
+      account.credentialRef = this.encryptCredential(credential)
+      account.credentialAuthMode = credential.authMode
+      account.credentialAppId = credential.appId
+      account.credentialGateway = credential.gateway
+      account.credentialUpdatedAt = new Date()
+    }
     return this.sanitizeAccount(await this.accountRepository.save(account))
   }
 
@@ -504,6 +512,45 @@ export class PaymentConfigService {
 
   private encryptCredential(credential: PaymentAccountCredentialInput): string {
     return `enc://${this.cipher.encrypt(JSON.stringify(credential))}`
+  }
+
+  private mergeCredential(
+    credentialRef: string,
+    patch: PaymentAccountCredentialPatchInput,
+  ): PaymentAccountCredentialInput {
+    const suppliedSecrets = Object.fromEntries(
+      Object.entries(patch).filter(
+        ([key, value]) =>
+          !['appId', 'authMode', 'gateway'].includes(key) &&
+          typeof value === 'string' &&
+          value.trim() !== '',
+      ),
+    )
+    let current: Partial<PaymentAccountCredentialInput> = {}
+    if (credentialRef.startsWith('enc://')) {
+      try {
+        current = JSON.parse(this.cipher.decrypt(credentialRef.slice(6)))
+      } catch {
+        throw new BadRequestException('现有支付宝凭据无法读取，请重新填写完整凭据')
+      }
+    }
+    const merged = {
+      ...current,
+      authMode: patch.authMode,
+      appId: patch.appId,
+      gateway: patch.gateway,
+      ...suppliedSecrets,
+    }
+    return this.normalizeCredential({
+      authMode: patch.authMode,
+      appId: patch.appId,
+      gateway: patch.gateway,
+      privateKey: merged.privateKey ?? '',
+      alipayPublicKey: merged.alipayPublicKey,
+      appCertContent: merged.appCertContent,
+      alipayPublicCertContent: merged.alipayPublicCertContent,
+      alipayRootCertContent: merged.alipayRootCertContent,
+    })
   }
 
   private normalizeCredential(input: PaymentAccountCredentialInput): PaymentAccountCredentialInput {

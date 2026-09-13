@@ -44,7 +44,6 @@ import {
   updateMerchantApi,
   updatePaymentAccountApi,
   updatePaymentAccountChannelApi,
-  updatePaymentAccountCredentialApi,
   updateTelegramBotApi,
   updateTelegramGroupApi,
   updateTelegramMemberApi,
@@ -265,31 +264,18 @@ describe('business api', () => {
     });
   });
 
-  it('sends the one write-only credential through its dedicated endpoint', async () => {
-    requestMocks.put.mockResolvedValue({ id: 'account-1' });
-    const credential = {
-      alipayPublicKey: 'alipay-public-key',
-      appId: '2026000000000001',
-      authMode: 'KEY' as const,
-      gateway: 'https://openapi.alipay.com/gateway.do',
-      privateKey: 'application-private-key',
-      tenantId: 'tenant-1',
-    };
-
-    await updatePaymentAccountCredentialApi('account-1', credential);
-
-    expect(requestMocks.put).toHaveBeenCalledWith(
-      '/sys/payment-accounts/account-1/credential',
-      credential,
-    );
-  });
-
   it('uses payment account and channel management endpoints', async () => {
     requestMocks.put.mockResolvedValue({ id: 'account-1' });
     requestMocks.request.mockResolvedValue({ id: 'account-1' });
     requestMocks.delete.mockResolvedValue(undefined);
 
     await updatePaymentAccountApi('account-1', {
+      credential: {
+        appId: '2026000000000001',
+        authMode: 'KEY',
+        gateway: 'https://openapi.alipay.com/gateway.do',
+      },
+      externalAccountId: '2088123456789000',
       name: '主支付账号',
       tenantId: 'tenant-1',
     });
@@ -312,7 +298,16 @@ describe('business api', () => {
     expect(requestMocks.put).toHaveBeenNthCalledWith(
       1,
       '/sys/payment-accounts/account-1',
-      { name: '主支付账号', tenantId: 'tenant-1' },
+      {
+        credential: {
+          appId: '2026000000000001',
+          authMode: 'KEY',
+          gateway: 'https://openapi.alipay.com/gateway.do',
+        },
+        externalAccountId: '2088123456789000',
+        name: '主支付账号',
+        tenantId: 'tenant-1',
+      },
     );
     expect(requestMocks.request).toHaveBeenNthCalledWith(
       1,

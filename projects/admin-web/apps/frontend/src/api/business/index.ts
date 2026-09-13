@@ -320,11 +320,6 @@ export namespace BusinessApi {
     status?: BusinessStatus;
   }
 
-  export interface UpdatePaymentAccountInput extends TenantContext {
-    externalAccountId?: string;
-    name?: string;
-  }
-
   export interface AlipayPaymentAccountCredential {
     alipayPublicCertContent?: string;
     alipayPublicKey?: string;
@@ -334,6 +329,24 @@ export namespace BusinessApi {
     authMode: 'CERT' | 'KEY';
     gateway: string;
     privateKey: string;
+  }
+
+  export type AlipayPaymentAccountCredentialPatch = Partial<
+    Pick<
+      AlipayPaymentAccountCredential,
+      | 'alipayPublicCertContent'
+      | 'alipayPublicKey'
+      | 'alipayRootCertContent'
+      | 'appCertContent'
+      | 'privateKey'
+    >
+  > &
+    Pick<AlipayPaymentAccountCredential, 'appId' | 'authMode' | 'gateway'>;
+
+  export interface UpdatePaymentAccountInput extends TenantContext {
+    credential?: AlipayPaymentAccountCredentialPatch;
+    externalAccountId?: string;
+    name?: string;
   }
 
   export interface CreatePaymentAccountInput extends TenantContext {
@@ -631,14 +644,6 @@ export const updatePaymentAccountApi = (
 ) =>
   requestClient.put<BusinessApi.PaymentAccount>(
     `/sys/payment-accounts/${id}`,
-    data,
-  );
-export const updatePaymentAccountCredentialApi = (
-  id: string,
-  data: BusinessApi.AlipayPaymentAccountCredential & BusinessApi.TenantContext,
-) =>
-  requestClient.put<BusinessApi.PaymentAccount>(
-    `/sys/payment-accounts/${id}/credential`,
     data,
   );
 export const setPaymentAccountStatusApi = (

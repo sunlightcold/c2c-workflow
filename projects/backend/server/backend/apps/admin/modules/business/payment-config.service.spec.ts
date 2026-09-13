@@ -67,7 +67,10 @@ describe('PaymentConfigService', () => {
       }),
     ),
   }
-  const cipher = { encrypt: jest.fn(() => 'encrypted-payment-credential') }
+  const cipher = {
+    decrypt: jest.fn(),
+    encrypt: jest.fn(() => 'encrypted-payment-credential'),
+  }
   let service: PaymentConfigService
 
   beforeEach(async () => {
@@ -351,32 +354,6 @@ describe('PaymentConfigService', () => {
     expect(repositories.account.save).not.toHaveBeenCalled()
   })
 
-  it('replaces the one credential configured on the payment account', async () => {
-    repositories.account.findOne.mockResolvedValue({
-      id: accountId,
-      tenantId,
-      credentialRef: 'enc://old',
-    })
-
-    const result = await service.updateAccountCredential(tenantId, accountId, {
-      authMode: 'KEY',
-      appId: '2026000000000002',
-      gateway: 'https://openapi.alipay.com/gateway.do',
-      privateKey: 'new-private-key',
-      alipayPublicKey: 'new-alipay-public-key',
-    })
-
-    expect(repositories.account.save).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: accountId,
-        credentialAuthMode: 'KEY',
-        credentialAppId: '2026000000000002',
-        credentialRef: 'enc://encrypted-payment-credential',
-      }),
-    )
-    expect(result).not.toHaveProperty('credentialRef')
-  })
-
   it('rejects a channel that is not opened under the selected account', async () => {
     repositories.accountChannel.findOne.mockResolvedValue({
       id: accountChannelId,
@@ -506,6 +483,55 @@ describe('PaymentConfigService', () => {
       expect.objectContaining({ name: '主支付账号', credentialRef: 'env://OLD_SECRET' }),
     )
     expect(result).not.toHaveProperty('credentialRef')
+  })
+
+  it('updates account identity and credential in one save while preserving omitted secrets', async () => {
+    repositories.account.findOne.mockResolvedValue({
+      id: accountId,
+      tenantId,
+      name: '旧名称',
+      externalAccountId: '2088',
+      credentialRef: 'enc://old-encrypted-value',
+    })
+    cipher.decrypt.mockReturnValue(
+      JSON.stringify({
+        authMode: 'KEY',
+        appId: '2026000000000001',
+        gateway: 'https://old.example/alipay',
+        privateKey: 'existing-private-key',
+        alipayPublicKey: 'existing-alipay-public-key',
+      }),
+    )
+
+    await service.updateAccount(tenantId, accountId, {
+      name: '主支付账号',
+      externalAccountId: '2088123456789000',
+      credential: {
+        authMode: 'KEY',
+        appId: '2026000000000002',
+        gateway: 'https://gateway.example/alipay',
+      },
+    })
+
+    expect(cipher.decrypt).toHaveBeenCalledWith('old-encrypted-value')
+    expect(cipher.encrypt).toHaveBeenCalledWith(
+      JSON.stringify({
+        authMode: 'KEY',
+        appId: '2026000000000002',
+        gateway: 'https://gateway.example/alipay',
+        privateKey: 'existing-private-key',
+        alipayPublicKey: 'existing-alipay-public-key',
+      }),
+    )
+    expect(repositories.account.save).toHaveBeenCalledTimes(1)
+    expect(repositories.account.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: '主支付账号',
+        externalAccountId: '2088123456789000',
+        credentialAppId: '2026000000000002',
+        credentialGateway: 'https://gateway.example/alipay',
+      }),
+    )
   })
 
   it('rejects a payment channel amount range whose minimum exceeds its maximum', async () => {

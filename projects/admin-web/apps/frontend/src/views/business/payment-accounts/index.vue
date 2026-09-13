@@ -19,7 +19,6 @@ import {
   setPaymentAccountStatusApi,
   updatePaymentAccountApi,
   updatePaymentAccountChannelApi,
-  updatePaymentAccountCredentialApi,
 } from '#/api';
 import { AsyncStatusSwitch } from '#/components';
 import {
@@ -34,9 +33,9 @@ import {
   editPaymentAccountModalOptions,
   editPaymentChannelModalOptions,
   normalizeAlipayCredential,
+  normalizeAlipayCredentialPatch,
   normalizePaymentChannelFormData,
   openPaymentChannelModalOptions,
-  paymentAccountCredentialModalOptions,
 } from '../shared/business-form-schemas';
 import { createEmptyBusinessPage } from '../shared/business-grid';
 import {
@@ -182,7 +181,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.PaymentAccount> = {
       fixed: 'right',
       slots: { default: 'action' },
       title: '操作',
-      width: 310,
+      width: 220,
     },
   ],
 };
@@ -268,16 +267,21 @@ function openCreate() {
 }
 
 async function editAccount(account: BusinessApi.PaymentAccount) {
-  const [formApi] = await formModalShow(editPaymentAccountModalOptions(), {
+  const mode = account.credentialAuthMode ?? 'KEY';
+  const [formApi] = await formModalShow(editPaymentAccountModalOptions(mode), {
     onOk: async (api) => {
       await api.validate();
-      const data = cleanOptionalStrings(
-        api.formData() as BusinessApi.UpdatePaymentAccountInput,
-      );
+      const data =
+        api.formData() as BusinessApi.AlipayPaymentAccountCredential & {
+          externalAccountId: string;
+          name: string;
+        };
       await runResourceAction({
         action: () =>
           updatePaymentAccountApi(account.id, {
-            ...data,
+            credential: normalizeAlipayCredentialPatch(data),
+            externalAccountId: data.externalAccountId,
+            name: data.name,
             tenantId: selectedTenantId.value,
           }),
         onSuccess: async () => {
@@ -289,40 +293,12 @@ async function editAccount(account: BusinessApi.PaymentAccount) {
     },
   });
   formApi?.setValue({
-    externalAccountId: account.externalAccountId,
-    name: account.name,
-  });
-}
-
-async function editCredential(account: BusinessApi.PaymentAccount) {
-  const mode = account.credentialAuthMode ?? 'KEY';
-  const [formApi] = await formModalShow(
-    paymentAccountCredentialModalOptions(mode),
-    {
-      onOk: async (api) => {
-        await api.validate();
-        const values =
-          api.formData() as BusinessApi.AlipayPaymentAccountCredential;
-        await runResourceAction({
-          action: () =>
-            updatePaymentAccountCredentialApi(account.id, {
-              ...normalizeAlipayCredential(values),
-              tenantId: selectedTenantId.value,
-            }),
-          onSuccess: async () => {
-            formModalClose();
-            await gridApi.query();
-          },
-          successMessage: '支付账号凭据已更新',
-        });
-      },
-    },
-  );
-  formApi?.setValue({
     appId: account.credentialAppId ?? '',
     authMode: mode,
+    externalAccountId: account.externalAccountId,
     gateway:
       account.credentialGateway ?? 'https://openapi.alipay.com/gateway.do',
+    name: account.name,
   });
 }
 
@@ -545,14 +521,6 @@ onMounted(async () => {
             @click="editAccount(row)"
           >
             编辑
-          </AButton>
-          <AButton
-            v-access:code="['payment:account:update']"
-            size="small"
-            type="link"
-            @click="editCredential(row)"
-          >
-            凭据配置
           </AButton>
           <AButton
             v-access:code="['payment:account:delete']"

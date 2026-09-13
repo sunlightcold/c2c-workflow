@@ -28,7 +28,6 @@ import {
   TenantContextDto,
   UpdatePaymentAccountChannelDto,
   UpdatePaymentAccountDto,
-  UpdatePaymentAccountCredentialDto,
   UpdatePaymentPlanDto,
   UpdateMerchantDto,
 } from './business.dto'
@@ -214,22 +213,6 @@ export class BusinessController {
   ) {
     const { tenantId, ...input } = dto
     return this.payments.updateAccount(this.scope.resolveTenantId(actor, tenantId), id, input)
-  }
-
-  @Put('payment-accounts/:id/credential')
-  @Permission(PaymentPermissions.UPDATE)
-  @ApiOperation({ summary: '覆盖支付账号唯一的支付宝凭据' })
-  updatePaymentAccountCredential(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdatePaymentAccountCredentialDto,
-    @User() actor: AuthUser,
-  ) {
-    const { tenantId, ...credential } = dto
-    return this.payments.updateAccountCredential(
-      this.scope.resolveTenantId(actor, tenantId),
-      id,
-      credential,
-    )
   }
 
   @Patch('payment-accounts/:id/status')

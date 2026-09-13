@@ -33,7 +33,6 @@ describe('Business configuration API contract (e2e)', () => {
   const payments = {
     createAccount: jest.fn(),
     updateAccount: jest.fn(),
-    updateAccountCredential: jest.fn(),
     setAccountStatus: jest.fn(),
     removeAccount: jest.fn(),
     openAccountChannel: jest.fn(),
@@ -339,39 +338,7 @@ describe('Business configuration API contract (e2e)', () => {
     expect(payments.createAccount).not.toHaveBeenCalled()
   })
 
-  it('replaces the single payment account credential through a dedicated endpoint', async () => {
-    const tenantId = '00000000-0000-4000-8000-000000000010'
-    const accountId = '00000000-0000-4000-8000-000000000030'
-    payments.updateAccountCredential.mockResolvedValue({
-      id: accountId,
-      credentialAuthMode: 'CERT',
-      credentialConfigured: true,
-    })
-
-    const response = await request(app.getHttpServer())
-      .put(`/v1/sys/payment-accounts/${accountId}/credential`)
-      .send({
-        tenantId,
-        authMode: 'CERT',
-        appId: '2026000000000001',
-        gateway: 'https://openapi.alipay.com/gateway.do',
-        privateKey: 'application-private-key',
-        appCertContent: 'application-certificate',
-        alipayPublicCertContent: 'alipay-public-certificate',
-        alipayRootCertContent: 'alipay-root-certificate',
-      })
-      .expect(200)
-
-    expectWrappedSuccess(response.body)
-    expect(response.body.data).not.toHaveProperty('privateKey')
-    expect(payments.updateAccountCredential).toHaveBeenCalledWith(
-      'tenant-1',
-      accountId,
-      expect.objectContaining({ authMode: 'CERT' }),
-    )
-  })
-
-  it('edits, disables and deletes payment accounts and their channel bindings in the tenant', async () => {
+  it('edits account identity and credential together, then manages its lifecycle and channels', async () => {
     const tenantId = '00000000-0000-4000-8000-000000000010'
     const accountId = '00000000-0000-4000-8000-000000000030'
     const bindingId = '00000000-0000-4000-8000-000000000040'
@@ -389,6 +356,11 @@ describe('Business configuration API contract (e2e)', () => {
         tenantId,
         name: '主支付账号',
         externalAccountId: '20881234',
+        credential: {
+          authMode: 'KEY',
+          appId: '2026000000000002',
+          gateway: 'https://payments.example.com/alipay/gateway.do',
+        },
       })
       .expect(200)
     await request(app.getHttpServer())
@@ -432,7 +404,13 @@ describe('Business configuration API contract (e2e)', () => {
     expect(payments.updateAccount).toHaveBeenCalledWith(
       'tenant-1',
       accountId,
-      expect.objectContaining({ name: '主支付账号' }),
+      expect.objectContaining({
+        name: '主支付账号',
+        credential: expect.objectContaining({
+          appId: '2026000000000002',
+          authMode: 'KEY',
+        }),
+      }),
     )
     expect(payments.setAccountStatus).toHaveBeenCalledWith('tenant-1', accountId, 'disabled')
     expect(payments.openAccountChannel).toHaveBeenCalledWith(

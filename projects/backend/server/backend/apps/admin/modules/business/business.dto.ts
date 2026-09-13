@@ -391,6 +391,54 @@ export class CreatePaymentAccountDto extends TenantContextDto {
   credential: PaymentAccountCredentialDto
 }
 
+export class PatchPaymentAccountCredentialDto {
+  @ApiProperty({ enum: ['KEY', 'CERT'], description: '支付宝签名模式' })
+  @IsIn(['KEY', 'CERT'])
+  authMode: 'CERT' | 'KEY'
+
+  @ApiProperty({ description: '支付宝开放平台应用 ID' })
+  @Transform(trim)
+  @IsNotEmpty()
+  @MaxLength(64)
+  appId: string
+
+  @ApiProperty({ description: '支付宝 API 网关完整地址' })
+  @Transform(trim)
+  @IsUrl({ protocols: ['http', 'https'], require_protocol: true, require_tld: false })
+  @MaxLength(2048)
+  gateway: string
+
+  @ApiPropertyOptional({ description: '新的应用私钥；不传则保留现有值' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  privateKey?: string
+
+  @ApiPropertyOptional({ description: '公钥模式：新的支付宝公钥；不传则保留现有值' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  alipayPublicKey?: string
+
+  @ApiPropertyOptional({ description: '证书模式：新的应用公钥证书；不传则保留现有值' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100000)
+  appCertContent?: string
+
+  @ApiPropertyOptional({ description: '证书模式：新的支付宝公钥证书；不传则保留现有值' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100000)
+  alipayPublicCertContent?: string
+
+  @ApiPropertyOptional({ description: '证书模式：新的支付宝根证书；不传则保留现有值' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200000)
+  alipayRootCertContent?: string
+}
+
 export class UpdatePaymentAccountDto extends TenantContextDto {
   @ApiPropertyOptional()
   @Transform(trim)
@@ -405,13 +453,15 @@ export class UpdatePaymentAccountDto extends TenantContextDto {
   @IsNotEmpty()
   @MaxLength(128)
   externalAccountId?: string
-}
 
-export class UpdatePaymentAccountCredentialDto extends PaymentAccountCredentialDto {
-  @ApiPropertyOptional({ description: '平台人员当前经营的所属单位；代理商人员忽略此字段' })
+  @ApiPropertyOptional({
+    type: PatchPaymentAccountCredentialDto,
+    description: '账号唯一的支付宝凭据；密钥或证书内容不传时保留原值',
+  })
   @IsOptional()
-  @IsUUID()
-  tenantId?: string
+  @ValidateNested()
+  @Type(() => PatchPaymentAccountCredentialDto)
+  credential?: PatchPaymentAccountCredentialDto
 }
 
 export class PaymentAccountListDto extends TenantContextDto {

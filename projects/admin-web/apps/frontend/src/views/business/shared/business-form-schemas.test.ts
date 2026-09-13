@@ -10,9 +10,9 @@ import {
   editPaymentAccountModalOptions,
   editPaymentChannelModalOptions,
   normalizeAlipayCredential,
+  normalizeAlipayCredentialPatch,
   normalizePaymentChannelFormData,
   openPaymentChannelModalOptions,
-  paymentAccountCredentialModalOptions,
 } from './business-form-schemas';
 
 describe('merchant order operation forms', () => {
@@ -123,20 +123,14 @@ describe('merchant order operation forms', () => {
     expect(onReceipt).toHaveBeenCalledWith(file);
   });
 
-  it('keeps basic payment account editing separate from credentials', () => {
-    const options = editPaymentAccountModalOptions();
-    const fields = options.formProps?.rule?.map(({ field }) => field);
-
-    expect(fields).toEqual(['name', 'externalAccountId']);
-  });
-
-  it('offers key and certificate modes for the one account credential', () => {
-    const options = paymentAccountCredentialModalOptions('KEY');
-    const rules = options.formProps?.rule ?? [];
-    const fields = rules.map(({ field }) => field);
+  it('combines payment account identity and its one credential in editing', () => {
+    const options = editPaymentAccountModalOptions('KEY');
+    const fields = options.formProps?.rule?.map(({ field }) => field) ?? [];
 
     expect(fields).toEqual(
       expect.arrayContaining([
+        'name',
+        'externalAccountId',
         'authMode',
         'appId',
         'gateway',
@@ -147,6 +141,7 @@ describe('merchant order operation forms', () => {
         'alipayRootCertContent',
       ]),
     );
+    const rules = options.formProps?.rule ?? [];
     expect(fields.some((field) => String(field).endsWith('File'))).toBe(false);
     expect(rules.find(({ field }) => field === 'privateKey')).toMatchObject({
       col: { md: 12, xs: 24 },
@@ -181,6 +176,9 @@ describe('merchant order operation forms', () => {
     expect(
       rules.find(({ field }) => field === 'gateway')?.options,
     ).toBeUndefined();
+    expect(
+      rules.find(({ field }) => field === 'privateKey')?.validate,
+    ).toBeUndefined();
   });
 
   it('submits only the credential fields used by the selected mode', () => {
@@ -201,6 +199,22 @@ describe('merchant order operation forms', () => {
       authMode: 'KEY',
       gateway: 'https://openapi.alipay.com/gateway.do',
       privateKey: 'application-private-key',
+    });
+  });
+
+  it('omits empty write-only credential values while editing', () => {
+    expect(
+      normalizeAlipayCredentialPatch({
+        alipayPublicKey: '',
+        appId: '2026000000000001',
+        authMode: 'KEY',
+        gateway: 'https://openapi.alipay.com/gateway.do',
+        privateKey: '',
+      }),
+    ).toEqual({
+      appId: '2026000000000001',
+      authMode: 'KEY',
+      gateway: 'https://openapi.alipay.com/gateway.do',
     });
   });
 

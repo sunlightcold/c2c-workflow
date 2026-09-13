@@ -489,9 +489,11 @@ export function createPaymentAccountModalOptions(
   };
 }
 
-export function editPaymentAccountModalOptions(): FormModalOptions {
+export function editPaymentAccountModalOptions(
+  initialMode: 'CERT' | 'KEY',
+): FormModalOptions {
   return {
-    props: businessModalProps('编辑支付账号', 680),
+    props: businessModalProps('编辑支付账号'),
     formProps: {
       option: businessFormOption,
       rule: layoutBusinessFormRules([
@@ -511,6 +513,7 @@ export function editPaymentAccountModalOptions(): FormModalOptions {
           validate: required('请输入支付宝商户号'),
           value: '',
         },
+        ...alipayCredentialRules(initialMode, 'account-edit'),
       ]),
     },
   };
@@ -529,6 +532,7 @@ function credentialTextFileRule(
   accept: string,
   hidden: boolean,
   contentKind: 'certificate' | 'text' = 'text',
+  requiredValue = true,
 ) {
   return {
     field,
@@ -538,21 +542,24 @@ function credentialTextFileRule(
       ariaLabel: title,
       contentKind,
       fileButtonLabel: `读取${title}`,
-      placeholder: '可直接粘贴内容，或读取本地文件',
+      placeholder: requiredValue
+        ? '可直接粘贴内容，或读取本地文件'
+        : '留空保留现有内容，也可粘贴或读取新文件',
       rows: 3,
     },
     title,
     type: 'credentialTextFileInput',
-    validate: required(`请输入或读取${title}`),
+    validate: requiredValue ? required(`请输入或读取${title}`) : undefined,
     value: '',
   };
 }
 
 function alipayCredentialRules(
   initialMode: 'CERT' | 'KEY',
-  layout: 'account-create' | 'credential' = 'credential',
+  layout: 'account-create' | 'account-edit' | 'credential' = 'credential',
 ) {
   const certificateMode = initialMode === 'CERT';
+  const requireSecrets = layout !== 'account-edit';
   const authModeRule = {
     field: 'authMode',
     options: [
@@ -594,12 +601,21 @@ function alipayCredentialRules(
     value: 'https://openapi.alipay.com/gateway.do',
   };
   const credentialRules = [
-    credentialTextFileRule('privateKey', '应用私钥', '.pem,.key,.txt', false),
+    credentialTextFileRule(
+      'privateKey',
+      '应用私钥',
+      '.pem,.key,.txt',
+      false,
+      'text',
+      requireSecrets,
+    ),
     credentialTextFileRule(
       'alipayPublicKey',
       '支付宝公钥',
       '.pem,.txt',
       certificateMode,
+      'text',
+      requireSecrets,
     ),
     credentialTextFileRule(
       'appCertContent',
@@ -607,6 +623,7 @@ function alipayCredentialRules(
       '.crt,.cer,.pem,.der',
       !certificateMode,
       'certificate',
+      requireSecrets,
     ),
     credentialTextFileRule(
       'alipayPublicCertContent',
@@ -614,6 +631,7 @@ function alipayCredentialRules(
       '.crt,.cer,.pem,.der',
       !certificateMode,
       'certificate',
+      requireSecrets,
     ),
     credentialTextFileRule(
       'alipayRootCertContent',
@@ -621,25 +639,12 @@ function alipayCredentialRules(
       '.crt,.cer,.pem,.der',
       !certificateMode,
       'certificate',
+      requireSecrets,
     ),
   ];
   return layout === 'account-create'
     ? [appIdRule, authModeRule, gatewayRule, ...credentialRules]
     : [authModeRule, appIdRule, gatewayRule, ...credentialRules];
-}
-
-export function paymentAccountCredentialModalOptions(
-  initialMode: 'CERT' | 'KEY',
-): FormModalOptions {
-  return {
-    props: businessModalProps('配置支付账号凭据'),
-    formProps: {
-      option: businessFormOption,
-      rule: layoutBusinessFormRules(alipayCredentialRules(initialMode), [
-        'authMode',
-      ]),
-    },
-  };
 }
 
 export function normalizeAlipayCredential(
@@ -658,6 +663,32 @@ export function normalizeAlipayCredential(
         alipayPublicCertContent: values.alipayPublicCertContent,
         alipayRootCertContent: values.alipayRootCertContent,
         appCertContent: values.appCertContent,
+      };
+}
+
+export function normalizeAlipayCredentialPatch(
+  values: BusinessApi.AlipayPaymentAccountCredential,
+): BusinessApi.AlipayPaymentAccountCredentialPatch {
+  const optionalValue = (value: string | undefined) => {
+    const normalized = value?.trim();
+    return normalized || undefined;
+  };
+  const common = {
+    appId: values.appId.trim(),
+    authMode: values.authMode,
+    gateway: values.gateway.trim(),
+    privateKey: optionalValue(values.privateKey),
+  };
+  return values.authMode === 'KEY'
+    ? {
+        ...common,
+        alipayPublicKey: optionalValue(values.alipayPublicKey),
+      }
+    : {
+        ...common,
+        alipayPublicCertContent: optionalValue(values.alipayPublicCertContent),
+        alipayRootCertContent: optionalValue(values.alipayRootCertContent),
+        appCertContent: optionalValue(values.appCertContent),
       };
 }
 
