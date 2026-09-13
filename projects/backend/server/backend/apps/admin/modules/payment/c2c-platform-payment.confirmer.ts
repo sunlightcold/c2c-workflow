@@ -117,17 +117,15 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
       await this.binance.markOrderAsPaid(credentials as BinanceCredentials, orderId, payId)
       return
     }
-    const risk = await this.okx.checkAntiFraud(
-      credentials as OkxWebPrivateCredentials,
-      orderId,
-      context.merchantOrder.fiatCurrency,
-    )
-    if (risk.riskReviewRequired) throw new Error('欧易反欺诈检查要求人工复核')
-    await this.okx.markOrderAsPaid(
-      credentials as OkxWebPrivateCredentials,
-      orderId,
-      paymentMethodId,
-    )
+    const okxCredentials = credentials as OkxWebPrivateCredentials
+    if (okxCredentials.signaturePrivateKey) {
+      await this.okx.markOrderAsPaid(okxCredentials, orderId, paymentMethodId, {
+        fiat: context.merchantOrder.fiatCurrency,
+        skipPaymentProofUpload: okxCredentials.skipPaymentProofUpload ?? true,
+      })
+    } else {
+      await this.okx.markOrderAsPaid(okxCredentials, orderId, paymentMethodId)
+    }
   }
 
   private verifyPlatformOrder(

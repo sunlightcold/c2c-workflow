@@ -1,10 +1,21 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { generateKeyPairSync, sign } from 'node:crypto'
 import { addOrder } from '@mock/upstreams/okx-c2c/control'
 import { getOkxC2cPlugin } from '@mock/upstreams/okx-c2c/plugin-registry'
 import { getOkxC2cState } from '@mock/upstreams/okx-c2c/state'
 
-const headers = () =>
-  new Headers({ Authorization: 'Bearer mock-okx-authorization', Cookie: 'token=mock-okx-token; sid=mock-okx-session' })
+const headers = (paid = false) =>
+  new Headers({
+    Authorization: 'Bearer mock-okx-authorization',
+    Cookie: 'token=mock-okx-token; sid=mock-okx-session',
+    ...(paid
+      ? {
+          'x-request-timestamp': String(Date.now()),
+          'x-client-signature': '{P1363}mock-signature',
+          'x-client-signature-version': '1.3',
+        }
+      : {}),
+  })
 const request = (
   method: string,
   path: string,
@@ -29,7 +40,6 @@ describe('OKX C2C mock', () => {
     const result = getOkxC2cPlugin().handle(
       request('GET', '/v4/c2c/order/getOrderList', {
         orderType: 'pending',
-        isBuy: 'true',
         startTime: String(Date.now() - 1000),
         endTime: String(Date.now() + 1000),
         pageSize: '20',
@@ -52,14 +62,14 @@ describe('OKX C2C mock', () => {
     })
     addOrder({ publicTradingOrderId: 'PROCESS-3', orderProcessStatus: 3, orderStatus: 'cancelled' })
     const result = getOkxC2cPlugin().handle(
-      request('GET', '/v4/c2c/order/getOrderList', { orderType: 'pending', isBuy: 'true' }),
+      request('GET', '/v4/c2c/order/getOrderList', { orderType: 'pending' }),
     )
     expect((result.body as any).data.items.map((item: any) => item.id)).toEqual(['260905000000001'])
   })
 
   it('requires the copied Authorization and Cookie values', () => {
     const result = getOkxC2cPlugin().handle({
-      ...request('GET', '/v4/c2c/order/getOrderList', { orderType: 'pending', isBuy: 'true' }),
+      ...request('GET', '/v4/c2c/order/getOrderList', { orderType: 'pending' }),
       headers: new Headers({ Authorization: 'wrong', Cookie: 'wrong' }),
     })
     expect(result.body).toMatchObject({ code: '400001', error_message: 'Authorization不匹配' })
@@ -74,7 +84,11 @@ describe('OKX C2C mock', () => {
         paymentDeadline: expect.any(Number),
         receiptAccountId: '25990076',
         counterPartyName: '测试用户',
-        orderDetailUserVo: { realName: '测试用户', kycVerified: true, sellerReceiptAccount: { id: '25990076' } },
+        orderDetailUserVo: {
+          realName: '测试用户',
+          kycVerified: true,
+          sellerReceiptAccount: { id: '25990076' },
+        },
       },
     })
 
@@ -83,27 +97,92 @@ describe('OKX C2C mock', () => {
     expect(risk.body).toMatchObject({ code: 0, data: { shouldShowPopup: true, isShowPopup: true } })
   })
 
-  it('marks payment and transitions the order to completed', () => {
-    const result = getOkxC2cPlugin().handle(
-      request('POST', '/v3/c2c/orders/260905000000001/payment/paid', {}, { receiptAccountId: 25990076 }),
-    )
+  it('marks payment and transitions the order to paid', () => {
+    const result = getOkxC2cPlugin().handle({
+      ...request(
+        'POST',
+        '/v3/c2c/orders/260905000000001/payment/paid',
+        {},
+        { receiptAccountId: 25990076 },
+      ),
+      headers: headers(true),
+    })
     expect(result.body).toMatchObject({ code: 0 })
     expect(getOkxC2cState().orders.find('260905000000001')).toMatchObject({
-      orderStatus: 'completed',
-      orderProcessStatus: 4,
-      paymentStatus: 'confirmed',
+      orderStatus: 'new',
+      orderProcessStatus: 2,
+      paymentStatus: 'paid',
     })
   })
 
-  it('rejects an incorrect account and supports deterministic failures', () => {
-    const badAccount = getOkxC2cPlugin().handle(
-      request('POST', '/v3/c2c/orders/260905000000001/payment/paid', {}, { receiptAccountId: 1 }),
+  it('uploads a payment proof and accepts only a valid EC signature', () => {
+    const path = '/v3/c2c/orders/260905000000001/payment/paid'
+    const body = {
+      receiptAccountId: 25990076,
+      paymentProofFileUrls: ['/mock/payment-proof/receipt.jpg'],
+    }
+    const timestamp = String(Date.now())
+    const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+    getOkxC2cState().updateSettings({
+      signaturePublicKey: publicKey.export({ format: 'der', type: 'spki' }).toString('base64'),
+    })
+    const upload = getOkxC2cPlugin().handle(
+      request('POST', '/v3/c2c/files/', { type: 'paymentProof' }),
     )
+    expect(upload.body).toMatchObject({
+      code: 0,
+      data: { imgPath: '/mock/payment-proof/receipt.jpg' },
+    })
+
+    const validSignature = sign(
+      'sha256',
+      Buffer.from(`${path}${JSON.stringify(body)}${timestamp}`),
+      { key: privateKey, dsaEncoding: 'ieee-p1363' },
+    ).toString('base64')
+    const signedHeaders = new Headers({
+      Authorization: 'Bearer mock-okx-authorization',
+      Cookie: 'token=mock-okx-token; sid=mock-okx-session',
+      'x-request-timestamp': timestamp,
+      'x-client-signature': `{P1363}${validSignature}`,
+      'x-client-signature-version': '1.3',
+    })
+    const invalid = getOkxC2cPlugin().handle({
+      ...request('POST', path, {}, body),
+      headers: new Headers({
+        ...Object.fromEntries(signedHeaders),
+        'x-client-signature': '{P1363}invalid',
+      }),
+    })
+    expect(invalid.body).toMatchObject({ code: '400011', error_message: '客户端签名无效' })
+
+    const valid = getOkxC2cPlugin().handle({
+      ...request('POST', path, {}, body),
+      headers: signedHeaders,
+    })
+    expect(valid.body).toMatchObject({ code: 0 })
+  })
+
+  it('rejects an incorrect account and supports deterministic failures', () => {
+    const badAccount = getOkxC2cPlugin().handle({
+      ...request(
+        'POST',
+        '/v3/c2c/orders/260905000000001/payment/paid',
+        {},
+        { receiptAccountId: 1 },
+      ),
+      headers: headers(true),
+    })
     expect(badAccount.body).toMatchObject({ code: '400004' })
     getOkxC2cState().updateSettings({ markOrderAsPaidFailure: true })
-    const failed = getOkxC2cPlugin().handle(
-      request('POST', '/v3/c2c/orders/260905000000001/payment/paid', {}, { receiptAccountId: 25990076 }),
-    )
+    const failed = getOkxC2cPlugin().handle({
+      ...request(
+        'POST',
+        '/v3/c2c/orders/260905000000001/payment/paid',
+        {},
+        { receiptAccountId: 25990076 },
+      ),
+      headers: headers(true),
+    })
     expect(failed.body).toMatchObject({ code: '400003' })
   })
 })

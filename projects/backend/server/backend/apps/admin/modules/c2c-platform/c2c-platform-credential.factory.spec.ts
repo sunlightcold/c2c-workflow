@@ -23,11 +23,19 @@ describe('C2cPlatformCredentialFactory', () => {
       factory.create(
         MerchantPlatform.OKX,
         { clientType: null, xUserId: null, requestTimeoutMs: 6000 },
-        { cookie: ' cookie ', authorization: ' token ', ignored: 'value' },
+        {
+          cookie: ' cookie ',
+          authorization: ' token ',
+          signaturePrivateKey: ' private-key ',
+          skipPaymentProofUpload: true,
+          ignored: 'value',
+        },
       ),
     ).toEqual({
       cookie: 'cookie',
       authorization: 'token',
+      signaturePrivateKey: 'private-key',
+      skipPaymentProofUpload: true,
       baseUrl: 'https://www.okx.com',
       timeoutMs: 6000,
     })

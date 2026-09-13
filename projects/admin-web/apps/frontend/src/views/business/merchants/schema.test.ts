@@ -142,6 +142,7 @@ describe('merchant account form schemas', () => {
         'secretKey',
         'sessionCookie',
         'authorization',
+        'signaturePrivateKey',
       ]),
     );
   });
@@ -151,7 +152,11 @@ describe('merchant account form schemas', () => {
     const okx = fields(rotateMerchantCredentialModalOptions('OKX'));
     expect(binance).toEqual(expect.arrayContaining(['apiKey', 'secretKey']));
     expect(okx).toEqual(
-      expect.arrayContaining(['authorization', 'sessionCookie']),
+      expect.arrayContaining([
+        'authorization',
+        'sessionCookie',
+        'signaturePrivateKey',
+      ]),
     );
     expect([...binance, ...okx]).not.toContain('credentialRef');
   });

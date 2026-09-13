@@ -26,7 +26,11 @@ const binanceCredentialFields = [
   'clientType',
   'xUserId',
 ];
-const okxCredentialFields = ['authorization', 'sessionCookie'];
+const okxCredentialFields = [
+  'authorization',
+  'sessionCookie',
+  'signaturePrivateKey',
+];
 const binanceAutomationFields = [
   'botCode',
   'chatId',
@@ -299,6 +303,18 @@ export function createMerchantAccountModalOptions(
             validate: required('请输入 Cookie'),
             value: '',
           },
+          {
+            field: 'signaturePrivateKey',
+            hidden: platform !== 'OKX',
+            props: {
+              autocomplete: 'new-password',
+              placeholder: '请输入 PKCS#8 DER Base64 签名私钥',
+            },
+            title: '签名私钥',
+            type: 'inputPassword',
+            validate: required('请输入签名私钥'),
+            value: '',
+          },
           ...accountSettingRules(platform),
         ],
         [
@@ -312,6 +328,7 @@ export function createMerchantAccountModalOptions(
           'orderStatusList',
           'secretKey',
           'sessionCookie',
+          'signaturePrivateKey',
         ],
       ),
     },
@@ -398,6 +415,17 @@ export function rotateMerchantCredentialModalOptions(
         validate: required('请输入 Cookie'),
         value: '',
       },
+      {
+        field: 'signaturePrivateKey',
+        props: {
+          autocomplete: 'new-password',
+          placeholder: '请输入 PKCS#8 DER Base64 签名私钥',
+        },
+        title: '签名私钥',
+        type: 'inputPassword',
+        validate: required('请输入签名私钥'),
+        value: '',
+      },
     );
   }
   rules.push({
@@ -416,6 +444,7 @@ export function rotateMerchantCredentialModalOptions(
         'authorization',
         'secretKey',
         'sessionCookie',
+        'signaturePrivateKey',
       ]),
     },
   };

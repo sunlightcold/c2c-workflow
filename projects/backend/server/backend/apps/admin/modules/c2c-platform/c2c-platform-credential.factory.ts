@@ -37,6 +37,12 @@ export class C2cPlatformCredentialFactory {
     return {
       cookie,
       authorization,
+      ...(this.text(secret.signaturePrivateKey)
+        ? { signaturePrivateKey: this.text(secret.signaturePrivateKey) }
+        : {}),
+      ...(typeof secret.skipPaymentProofUpload === 'boolean'
+        ? { skipPaymentProofUpload: secret.skipPaymentProofUpload }
+        : {}),
       baseUrl: reference.apiBaseUrl ?? 'https://www.okx.com',
       timeoutMs: reference.requestTimeoutMs,
     }

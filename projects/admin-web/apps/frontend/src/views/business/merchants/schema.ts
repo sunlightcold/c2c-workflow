@@ -38,7 +38,7 @@ const required = (message: string) => [
   { message, required: true, trigger: 'blur' },
 ];
 const binanceFields = ['apiKey', 'secretKey', 'clientType', 'xUserId'];
-const okxFields = ['authorization', 'sessionCookie'];
+const okxFields = ['authorization', 'sessionCookie', 'signaturePrivateKey'];
 const automationFields = [
   'automaticPaymentEnabled',
   'automaticPaymentExecutionMode',
@@ -296,6 +296,10 @@ export function createMerchantAccountModalOptions(
           { ...textRule('xUserId', 'X-User-ID'), hidden: !binance },
           { ...secretRule('authorization', 'Authorization'), hidden: !okx },
           { ...secretRule('sessionCookie', 'Cookie'), hidden: !okx },
+          {
+            ...secretRule('signaturePrivateKey', '签名私钥（PKCS#8 Base64）'),
+            hidden: !okx,
+          },
           ...settings(platform),
         ],
         [
@@ -309,6 +313,7 @@ export function createMerchantAccountModalOptions(
           'orderStatusList',
           'secretKey',
           'sessionCookie',
+          'signaturePrivateKey',
         ],
       ),
     },
@@ -349,6 +354,7 @@ export function rotateMerchantCredentialModalOptions(
       : [
           secretRule('authorization', 'Authorization'),
           secretRule('sessionCookie', 'Cookie'),
+          secretRule('signaturePrivateKey', '签名私钥（PKCS#8 Base64）'),
         ];
   return {
     props: businessModalProps('更新平台凭据', 680),
@@ -366,7 +372,13 @@ export function rotateMerchantCredentialModalOptions(
             1000,
           ),
         ],
-        ['apiKey', 'authorization', 'secretKey', 'sessionCookie'],
+        [
+          'apiKey',
+          'authorization',
+          'secretKey',
+          'sessionCookie',
+          'signaturePrivateKey',
+        ],
       ),
     },
   };

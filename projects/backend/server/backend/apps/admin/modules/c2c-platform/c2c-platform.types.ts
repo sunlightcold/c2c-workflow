@@ -13,6 +13,20 @@ export interface C2cHttpTransport {
   request: <T>(request: C2cHttpRequest) => Promise<T>
 }
 
+export interface C2cPaymentProofImage {
+  content: Buffer
+  fileName: string
+  imageType: 'jpeg' | 'png' | 'webp'
+  width?: number
+  height?: number
+}
+
+export interface C2cMarkPaidOptions {
+  fiat?: string
+  paymentProofImages?: C2cPaymentProofImage[]
+  skipPaymentProofUpload?: boolean
+}
+
 export interface C2cListInput {
   tradeType: 'BUY'
   asset: string

@@ -200,7 +200,7 @@ function normalizeOkxStatus(input: Record<string, unknown>): C2cBuyOrderStatus {
   if (status === 'completed' || process === '4') return C2cBuyOrderStatus.COMPLETED
   if (status === 'cancelled' || process === '3') return C2cBuyOrderStatus.CANCELLED
   if (status === 'expired') return C2cBuyOrderStatus.EXPIRED
-  if (payment === 'confirmed') return C2cBuyOrderStatus.PAID
+  if (payment === 'paid' || payment === 'confirmed') return C2cBuyOrderStatus.PAID
   if (status === 'new' && payment === 'unpaid') return C2cBuyOrderStatus.PENDING_PAYMENT
   return C2cBuyOrderStatus.UNKNOWN
 }

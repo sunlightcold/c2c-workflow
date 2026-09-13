@@ -260,6 +260,7 @@ function normalizeCreateForm(
   if (payload.platform === 'BINANCE') {
     delete payload.authorization;
     delete payload.sessionCookie;
+    delete payload.signaturePrivateKey;
   } else {
     delete payload.apiKey;
     delete payload.secretKey;

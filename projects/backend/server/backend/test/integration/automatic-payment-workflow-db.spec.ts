@@ -67,8 +67,10 @@ import { TypeOrmPaymentPreflightStore } from '@/apps/admin/modules/payment/typeo
 import { C2cAutomationJob } from '@/apps/admin/modules/system/task/jobs/c2c-automation.job'
 import developmentConfig from '@/config/development'
 import { DataSource } from 'typeorm'
+import { generateKeyPairSync } from 'node:crypto'
 
 const MOCK_ORIGIN = 'http://127.0.0.1:13002'
+const OKX_E2E_KEY_PAIR = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
 const tenantId = C2C_FOUNDATION_IDS.headquartersTenant
 const merchantIds = {
   binance: '31000000-0000-4000-8000-000000000001',
@@ -150,6 +152,14 @@ describe('Automatic C2C payment workflow database integration', () => {
       mock('/api/mock/alipay-transfer/reset', { method: 'POST' }),
       mock('/api/mock/alipay-batch/reset', { method: 'POST' }),
     ])
+    await mock('/api/mock/okx-c2c/config', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        signaturePublicKey: OKX_E2E_KEY_PAIR.publicKey
+          .export({ format: 'der', type: 'spki' })
+          .toString('base64'),
+      }),
+    })
   })
 
   afterAll(async () => {
@@ -230,11 +240,12 @@ describe('Automatic C2C payment workflow database integration', () => {
     await advanceTransfer(payment.payeeIdentity, 'SUCCESS')
     await harness.job.recoverPayments()
 
-    expect((await findPayment(harness.dataSource, '260905000000001')).status).toBe(
-      PaymentOrderStatus.COMPLETED,
-    )
+    expect(await findPayment(harness.dataSource, '260905000000001')).toMatchObject({
+      status: PaymentOrderStatus.COMPLETED,
+      lastError: null,
+    })
     expect((await findMerchantOrder(harness.dataSource, '260905000000001')).status).toBe(
-      MerchantOrderStatus.COMPLETED,
+      MerchantOrderStatus.PENDING_RELEASE,
     )
     expect((await transferOrders()).total).toBe(1)
     const okx = await mock<
@@ -246,7 +257,7 @@ describe('Automatic C2C payment workflow database integration', () => {
     >('/api/mock/okx-c2c/orders')
     expect(
       okx.find(({ publicTradingOrderId }) => publicTradingOrderId === '260905000000001-trading'),
-    ).toMatchObject({ orderStatus: 'completed', paymentStatus: 'confirmed' })
+    ).toMatchObject({ orderStatus: 'new', paymentStatus: 'paid' })
   })
 
   it('finishes an already submitted payment after the merchant and locked route are disabled', async () => {
@@ -428,6 +439,10 @@ function createHarness(dataSource: DataSource): WorkflowHarness {
   process.env.C2C_E2E_OKX_SECRET = JSON.stringify({
     cookie: 'token=mock-okx-token; sid=mock-okx-session',
     authorization: 'Bearer mock-okx-authorization',
+    signaturePrivateKey: OKX_E2E_KEY_PAIR.privateKey
+      .export({ format: 'der', type: 'pkcs8' })
+      .toString('base64'),
+    skipPaymentProofUpload: true,
   })
   const transport = new AxiosC2cHttpTransport()
   const binance = new BinanceC2cClient(transport)

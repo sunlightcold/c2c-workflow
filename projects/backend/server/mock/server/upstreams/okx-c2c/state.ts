@@ -4,6 +4,7 @@ import type { OkxC2cMockOrder, OkxC2cSettings } from './types'
 const DEFAULT_SETTINGS: OkxC2cSettings = {
   authorization: process.env.MOCK_OKX_AUTHORIZATION ?? 'Bearer mock-okx-authorization',
   cookie: process.env.MOCK_OKX_COOKIE ?? 'token=mock-okx-token; sid=mock-okx-session',
+  signaturePublicKey: process.env.MOCK_OKX_SIGNATURE_PUBLIC_KEY,
   antiFraudReview: false,
   markOrderAsPaidFailure: false,
 }

@@ -37,6 +37,7 @@ export interface CreateMerchantInput {
   secretKey?: string
   sessionCookie?: string
   authorization?: string
+  signaturePrivateKey?: string
   clientType?: string
   xUserId?: string
   pageSize?: number
@@ -71,7 +72,13 @@ export interface MerchantListInput {
 type UpdateMerchantInput = Partial<
   Omit<
     CreateMerchantInput,
-    'apiKey' | 'authMode' | 'authorization' | 'platform' | 'secretKey' | 'sessionCookie'
+    | 'apiKey'
+    | 'authMode'
+    | 'authorization'
+    | 'platform'
+    | 'secretKey'
+    | 'sessionCookie'
+    | 'signaturePrivateKey'
   >
 > & { telegramGroupId?: string | null }
 
@@ -282,7 +289,12 @@ export class MerchantService {
     authMode: 'API_KEY' | 'WEB_COOKIE',
     input: Pick<
       CreateMerchantInput,
-      'apiKey' | 'authorization' | 'clientType' | 'secretKey' | 'sessionCookie'
+      | 'apiKey'
+      | 'authorization'
+      | 'clientType'
+      | 'secretKey'
+      | 'sessionCookie'
+      | 'signaturePrivateKey'
     >,
   ): void {
     if (platform === MerchantPlatform.BINANCE) {
@@ -291,8 +303,13 @@ export class MerchantService {
       }
       return
     }
-    if (authMode !== 'WEB_COOKIE' || !input.sessionCookie?.trim() || !input.authorization?.trim()) {
-      throw new BadRequestException('欧易商家账号必须配置 Cookie 和 Authorization')
+    if (
+      authMode !== 'WEB_COOKIE' ||
+      !input.sessionCookie?.trim() ||
+      !input.authorization?.trim() ||
+      !input.signaturePrivateKey?.trim()
+    ) {
+      throw new BadRequestException('欧易商家账号必须配置 Cookie、Authorization 和签名私钥')
     }
   }
 
@@ -300,7 +317,11 @@ export class MerchantService {
     const secret =
       platform === MerchantPlatform.BINANCE
         ? { apiKey: input.apiKey!.trim(), secretKey: input.secretKey!.trim() }
-        : { cookie: input.sessionCookie!.trim(), authorization: input.authorization!.trim() }
+        : {
+            cookie: input.sessionCookie!.trim(),
+            authorization: input.authorization!.trim(),
+            signaturePrivateKey: input.signaturePrivateKey!.trim(),
+          }
     return `enc://${this.cipher.encrypt(JSON.stringify(secret))}`
   }
 

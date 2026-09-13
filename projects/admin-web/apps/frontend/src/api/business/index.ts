@@ -349,6 +349,7 @@ export namespace BusinessApi {
     requestTimeoutMs?: number;
     secretKey?: string;
     sessionCookie?: string;
+    signaturePrivateKey?: string;
     xUserId?: string;
   }
 
@@ -361,6 +362,7 @@ export namespace BusinessApi {
       | 'platform'
       | 'secretKey'
       | 'sessionCookie'
+      | 'signaturePrivateKey'
     >
   > &
     TenantContext & { telegramGroupId?: null | string };
@@ -538,6 +540,7 @@ export const rotateMerchantCredentialApi = (
     requestTimeoutMs?: number;
     secretKey?: string;
     sessionCookie?: string;
+    signaturePrivateKey?: string;
     xUserId?: string;
   },
 ) =>

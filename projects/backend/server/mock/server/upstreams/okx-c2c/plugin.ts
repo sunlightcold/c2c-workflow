@@ -1,3 +1,4 @@
+import { verify } from 'node:crypto'
 import type { OkxC2cMockOrder, OkxC2cSettings } from './types'
 
 interface OkxRequest {
@@ -11,7 +12,14 @@ interface OkxRequest {
 function errorResponse(code: string, message: string, status = 400) {
   return {
     status,
-    body: { code, error_code: code, msg: message, error_message: message, detailMsg: message, data: null },
+    body: {
+      code,
+      error_code: code,
+      msg: message,
+      error_message: message,
+      detailMsg: message,
+      data: null,
+    },
   }
 }
 
@@ -38,10 +46,14 @@ export class OkxC2cMockPlugin {
       this.verify(request)
       if (request.method === 'GET' && request.path === '/v4/c2c/order/getOrderList')
         return this.listOrders(request.query)
-      if (request.method === 'GET' && request.path === '/v4/c2c/risk/antiFraudPopup/info') return this.antiFraud()
-      if (request.method === 'GET' && request.path.startsWith('/v3/c2c/orders/')) return this.detail(request.path)
+      if (request.method === 'GET' && request.path === '/v4/c2c/risk/antiFraudPopup/info')
+        return this.antiFraud()
+      if (request.method === 'POST' && request.path === '/v3/c2c/files/')
+        return this.uploadPaymentProof(request)
+      if (request.method === 'GET' && request.path.startsWith('/v3/c2c/orders/'))
+        return this.detail(request.path)
       if (request.method === 'POST' && request.path.endsWith('/payment/paid'))
-        return this.markOrderAsPaid(request.path, request.body)
+        return this.markOrderAsPaid(request)
       return errorResponse('404', '接口不存在', 404)
     } catch (error) {
       return errorResponse('400001', (error as Error).message)
@@ -50,12 +62,13 @@ export class OkxC2cMockPlugin {
 
   private verify(request: OkxRequest) {
     const settings = this.getSettings()
-    if (request.headers.get('authorization') !== settings.authorization) throw new Error('Authorization不匹配')
+    if (request.headers.get('authorization') !== settings.authorization)
+      throw new Error('Authorization不匹配')
     if (request.headers.get('cookie') !== settings.cookie) throw new Error('Cookie不匹配')
   }
 
   private listOrders(query: Record<string, string>) {
-    if (query.orderType !== 'pending' || query.isBuy !== 'true')
+    if (query.orderType !== 'pending')
       return { status: 200, body: { code: 0, data: { total: 0, items: [] } } }
     const start = Number(query.startTime)
     const end = Number(query.endTime)
@@ -102,22 +115,67 @@ export class OkxC2cMockPlugin {
     }
   }
 
-  private markOrderAsPaid(path: string, body: Record<string, unknown>) {
-    if (this.getSettings().markOrderAsPaidFailure) return errorResponse('400003', '模拟确认付款失败')
+  private uploadPaymentProof(request: OkxRequest) {
+    if (request.query.type !== 'paymentProof') return errorResponse('400006', '上传类型不匹配')
+    return { status: 200, body: { code: 0, data: { imgPath: '/mock/payment-proof/receipt.jpg' } } }
+  }
+
+  private markOrderAsPaid(request: OkxRequest) {
+    if (this.getSettings().markOrderAsPaidFailure)
+      return errorResponse('400003', '模拟确认付款失败')
     const marker = '/v3/c2c/orders/'
-    const id = required(path.slice(marker.length, path.indexOf('/payment/paid')), 'orderId')
+    const id = required(
+      request.path.slice(marker.length, request.path.indexOf('/payment/paid')),
+      'orderId',
+    )
     const order = this.find(id)
     if (!order) return errorResponse('400404', '订单不存在', 404)
-    if (String(body.receiptAccountId) !== order.receiptAccountId)
+    if (!request.headers.get('x-request-timestamp'))
+      return errorResponse('400007', '缺少签名时间戳')
+    if (!request.headers.get('x-client-signature')?.startsWith('{P1363}'))
+      return errorResponse('400008', '缺少客户端签名')
+    if (request.headers.get('x-client-signature-version') !== '1.3')
+      return errorResponse('400009', '签名版本不匹配')
+    const publicKey = this.getSettings().signaturePublicKey
+    if (publicKey) {
+      const timestamp = request.headers.get('x-request-timestamp')!
+      const rawSignature = request.headers.get('x-client-signature')!.slice('{P1363}'.length)
+      let valid = false
+      try {
+        valid = verify(
+          'sha256',
+          Buffer.from(`${request.path}${JSON.stringify(request.body)}${timestamp}`, 'utf8'),
+          {
+            key: Buffer.from(publicKey, 'base64'),
+            format: 'der',
+            type: 'spki',
+            dsaEncoding: 'ieee-p1363',
+          },
+          Buffer.from(rawSignature, 'base64'),
+        )
+      } catch {
+        valid = false
+      }
+      if (!valid) return errorResponse('400011', '客户端签名无效')
+    }
+    if (String(request.body.receiptAccountId) !== order.receiptAccountId)
       return errorResponse('400004', 'receiptAccountId不匹配')
+    const proofUrls = request.body.paymentProofFileUrls
+    if (
+      proofUrls !== undefined &&
+      (!Array.isArray(proofUrls) ||
+        proofUrls.length !== 1 ||
+        proofUrls[0] !== '/mock/payment-proof/receipt.jpg')
+    )
+      return errorResponse('400010', 'paymentProofFileUrls不匹配')
     if (order.orderStatus !== 'new' || order.paymentStatus !== 'unpaid')
       return errorResponse('400005', '当前订单状态不允许标记付款')
     const now = Date.now()
     const updated = this.update(id, (current) => ({
       ...current,
-      orderStatus: 'completed',
-      orderProcessStatus: 4,
-      paymentStatus: 'confirmed',
+      orderStatus: 'new',
+      orderProcessStatus: 2,
+      paymentStatus: 'paid',
       orderPaidDate: now,
       modifyDate: now,
     }))

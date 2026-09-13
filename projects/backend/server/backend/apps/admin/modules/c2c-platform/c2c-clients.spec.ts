@@ -1,7 +1,8 @@
 import { Test } from '@nestjs/testing'
 import { BinanceC2cClient } from './binance-c2c.client'
 import { OkxWebPrivateClient } from './okx-web-private.client'
-import { C2C_HTTP_TRANSPORT } from './c2c-platform.types'
+import { C2C_HTTP_TRANSPORT, C2cBuyOrderStatus } from './c2c-platform.types'
+import { generateKeyPairSync, verify } from 'node:crypto'
 
 describe('C2C buy-order clients', () => {
   const http = { request: jest.fn() }
@@ -123,6 +124,105 @@ describe('C2C buy-order clients', () => {
       ),
     ).rejects.toThrow('receiptAccountId')
     expect(http.request).not.toHaveBeenCalled()
+  })
+
+  it('signs OKX paid confirmation and uploads the payment proof first', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+    http.request
+      .mockResolvedValueOnce({ code: '0', data: { imgPath: '/payment-proof/receipt.jpg' } })
+      .mockResolvedValueOnce({ code: '0', data: { shouldShowPopup: false } })
+      .mockResolvedValueOnce({ code: '0', requestId: 'okx-paid' })
+    const credentials = {
+      cookie: 'session',
+      authorization: 'token',
+      signaturePrivateKey: privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64'),
+      timeoutMs: 5000,
+      baseUrl: 'https://www.okx.com',
+    }
+    await expect(
+      okx.markOrderAsPaid(credentials, 'order-1', '9007199254740993', {
+        fiat: 'CNY',
+        paymentProofImages: [
+          { content: Buffer.from('receipt'), fileName: 'receipt.jpg', imageType: 'jpeg' },
+        ],
+      }),
+    ).resolves.toMatchObject({ supported: true, requestId: 'okx-paid' })
+    expect(http.request).toHaveBeenCalledTimes(3)
+    expect(http.request.mock.calls[0][0].body).toBeInstanceOf(FormData)
+    const paidRequest = http.request.mock.calls[2][0]
+    expect(paidRequest.body).toBe(
+      '{"receiptAccountId":9007199254740993,"paymentProofFileUrls":["/payment-proof/receipt.jpg"]}',
+    )
+    expect(paidRequest.headers).toEqual(
+      expect.objectContaining({
+        Referer: 'https://www.okx.com/p2p/order?orderId=order-1',
+        'x-client-signature-version': '1.3',
+      }),
+    )
+    const signature = Buffer.from(
+      paidRequest.headers['x-client-signature'].slice('{P1363}'.length),
+      'base64',
+    )
+    expect(
+      verify(
+        'sha256',
+        Buffer.from(
+          `/v3/c2c/orders/order-1/payment/paid${paidRequest.body}${paidRequest.params.t}`,
+        ),
+        {
+          key: publicKey,
+          dsaEncoding: 'ieee-p1363',
+        },
+        signature,
+      ),
+    ).toBe(true)
+  })
+
+  it('continues OKX marking when anti-fraud is unavailable and supports skipping proof upload', async () => {
+    const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+    http.request
+      .mockRejectedValueOnce(new Error('risk unavailable'))
+      .mockResolvedValueOnce({ code: '0', requestId: 'okx-paid' })
+    await expect(
+      okx.markOrderAsPaid(
+        {
+          cookie: 'session',
+          authorization: 'token',
+          timeoutMs: 5000,
+          signaturePrivateKey: privateKey
+            .export({ format: 'der', type: 'pkcs8' })
+            .toString('base64'),
+          baseUrl: 'https://www.okx.com',
+        },
+        'order-1',
+        '1',
+        { skipPaymentProofUpload: true },
+      ),
+    ).resolves.toMatchObject({ requestId: 'okx-paid' })
+    expect(http.request).toHaveBeenCalledTimes(2)
+    expect(http.request.mock.calls[1][0].body).toBe('{"receiptAccountId":1}')
+  })
+
+  it('blocks OKX marking when anti-fraud requires manual review', async () => {
+    const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+    http.request.mockResolvedValueOnce({ code: '0', data: { shouldShowPopup: true } })
+    await expect(
+      okx.markOrderAsPaid(
+        {
+          cookie: 'session',
+          authorization: 'token',
+          timeoutMs: 5000,
+          signaturePrivateKey: privateKey
+            .export({ format: 'der', type: 'pkcs8' })
+            .toString('base64'),
+          baseUrl: 'https://www.okx.com',
+        },
+        'order-1',
+        '1',
+        { skipPaymentProofUpload: true },
+      ),
+    ).rejects.toThrow('人工复核')
+    expect(http.request).toHaveBeenCalledTimes(1)
   })
 
   it('requires manual review when OKX anti-fraud requests a popup', async () => {
@@ -302,6 +402,10 @@ describe('C2C buy-order clients', () => {
       ],
       total: 1,
     })
+    expect(http.request.mock.calls[0][0].params).toEqual(
+      expect.objectContaining({ orderType: 'pending', startTime: '1', endTime: '2' }),
+    )
+    expect(http.request.mock.calls[0][0].params).not.toHaveProperty('isBuy')
     await expect(okx.getOrderDetail(credentials, 'OKX-INTERNAL-1')).resolves.toMatchObject({
       platformOrderId: 'OKX-INTERNAL-1',
       platformPaymentMethodId: '25990076',
@@ -351,6 +455,44 @@ describe('C2C buy-order clients', () => {
     )
 
     expect(result.items[0].status).toBe('EXPIRED')
+  })
+
+  it('normalizes the latest OKX paid payment status as paid pending release', async () => {
+    http.request.mockResolvedValue({
+      code: 0,
+      data: {
+        id: 'OKX-PAID-1',
+        side: 'buy',
+        orderStatus: 'new',
+        orderProcessStatus: 2,
+        paymentStatus: 'paid',
+        baseAmount: '10',
+        baseCurrency: 'USDT',
+        quoteAmount: '70',
+        quoteCurrency: 'CNY',
+        createdDate: 1_787_586_752_664,
+        receiptAccountId: '1',
+        sellerReceiptAccount: {
+          id: '1',
+          accountName: 'Payee',
+          accountNo: 'account',
+          bankCode: 'ALIPAY',
+        },
+        detailUser: { realName: 'Payee', kycVerified: true },
+      },
+    })
+
+    await expect(
+      okx.getOrderDetail(
+        {
+          cookie: 'session',
+          authorization: 'token',
+          timeoutMs: 5000,
+          baseUrl: 'https://www.okx.com',
+        },
+        'OKX-PAID-1',
+      ),
+    ).resolves.toMatchObject({ status: C2cBuyOrderStatus.PAID, payable: false })
   })
 
   it('uses the Binance complaint reason, upload and submission contracts', async () => {

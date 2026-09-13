@@ -11,7 +11,7 @@ export interface OkxC2cMockOrder {
   side: 'buy' | 'sell'
   orderStatus: 'new' | 'completed' | 'cancelled'
   orderProcessStatus: number
-  paymentStatus: 'unpaid' | 'confirmed'
+  paymentStatus: 'unpaid' | 'paid' | 'confirmed'
   baseAmount: string
   baseCurrency: string
   quoteAmount: string
@@ -41,6 +41,7 @@ export interface OkxC2cMockOrder {
 export interface OkxC2cSettings {
   authorization: string
   cookie: string
+  signaturePublicKey?: string
   antiFraudReview: boolean
   markOrderAsPaidFailure: boolean
 }

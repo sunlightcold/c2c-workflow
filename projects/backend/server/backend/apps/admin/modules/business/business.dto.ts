@@ -107,6 +107,14 @@ export class CreateMerchantDto extends TenantContextDto {
   @MaxLength(20000)
   authorization?: string
 
+  @ApiPropertyOptional({
+    description: '欧易 C2C EC 签名私钥，PKCS#8 DER Base64；创建欧易账号时必填',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  signaturePrivateKey?: string
+
   @ApiPropertyOptional({ default: 'WEB' })
   @Transform(trim)
   @IsOptional()
@@ -472,6 +480,12 @@ export class RotateMerchantPlatformCredentialDto extends TenantContextDto {
   @IsString()
   @MaxLength(20000)
   authorization?: string
+
+  @ApiPropertyOptional({ description: '欧易 C2C EC 签名私钥，PKCS#8 DER Base64' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  signaturePrivateKey?: string
 
   @ApiPropertyOptional({ description: '币安客户端类型' })
   @Transform(trim)

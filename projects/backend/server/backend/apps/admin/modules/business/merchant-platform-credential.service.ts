@@ -21,6 +21,7 @@ export interface RotateMerchantPlatformCredentialInput {
   secretKey?: string
   sessionCookie?: string
   authorization?: string
+  signaturePrivateKey?: string
   clientType?: string
   xUserId?: string
   requestTimeoutMs: number
@@ -178,7 +179,9 @@ export class MerchantPlatformCredentialService {
     }
     if (
       platform === MerchantPlatform.OKX &&
-      (!input.sessionCookie?.trim() || !input.authorization?.trim())
+      (!input.sessionCookie?.trim() ||
+        !input.authorization?.trim() ||
+        !input.signaturePrivateKey?.trim())
     ) {
       throw new BadRequestException('欧易商家账号必须配置 Cookie 和 Authorization')
     }
@@ -191,7 +194,11 @@ export class MerchantPlatformCredentialService {
     const secret =
       platform === MerchantPlatform.BINANCE
         ? { apiKey: input.apiKey!.trim(), secretKey: input.secretKey!.trim() }
-        : { cookie: input.sessionCookie!.trim(), authorization: input.authorization!.trim() }
+        : {
+            cookie: input.sessionCookie!.trim(),
+            authorization: input.authorization!.trim(),
+            signaturePrivateKey: input.signaturePrivateKey!.trim(),
+          }
     return `enc://${this.cipher.encrypt(JSON.stringify(secret))}`
   }
 

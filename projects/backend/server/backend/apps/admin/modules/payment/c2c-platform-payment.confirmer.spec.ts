@@ -216,11 +216,7 @@ describe('C2cPlatformPaymentConfirmer', () => {
 
     await confirmer.confirmPaid(executable)
 
-    expect(okx.checkAntiFraud).toHaveBeenCalledWith(
-      expect.objectContaining({ cookie: 'cookie' }),
-      'platform-order-1',
-      'CNY',
-    )
+    expect(okx.checkAntiFraud).not.toHaveBeenCalled()
     expect(okx.markOrderAsPaid).toHaveBeenCalledWith(expect.anything(), 'platform-order-1', '901')
   })
 
