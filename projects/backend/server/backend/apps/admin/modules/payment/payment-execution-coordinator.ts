@@ -67,8 +67,14 @@ export class PaymentExecutionCoordinator {
 
   async reconcile(tenantId: string, orderId: string): Promise<ExecutablePaymentOrder> {
     const order = await this.store.get(tenantId, orderId)
-    if (![PaymentOrderState.PROCESSING, PaymentOrderState.UNKNOWN].includes(order.status)) {
-      throw new ConflictException('只有处理中或结果未知的支付订单可以回查')
+    if (
+      ![
+        PaymentOrderState.SUBMITTING,
+        PaymentOrderState.PROCESSING,
+        PaymentOrderState.UNKNOWN,
+      ].includes(order.status)
+    ) {
+      throw new ConflictException('只有提交中、处理中或结果未知的支付订单可以回查')
     }
     let result: PaymentExecutionResult
     try {

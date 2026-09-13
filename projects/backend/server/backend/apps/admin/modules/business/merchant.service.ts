@@ -3,6 +3,7 @@ import {
   MerchantEntity,
   MerchantOrderEntity,
   MerchantPlatform,
+  PaymentExecutionMode,
   MerchantPlatformCredentialEntity,
   PaymentSourceType,
   TelegramBotEntity,
@@ -44,6 +45,8 @@ export interface CreateMerchantInput {
   requestTimeoutMs?: number
   paidConfirmIntervalMinMs?: number
   paidConfirmIntervalMaxMs?: number
+  automaticPaymentEnabled?: boolean
+  automaticPaymentExecutionMode?: PaymentExecutionMode
   c2cChatOrderCreatedEnabled?: boolean
   c2cChatOrderCreatedMessage?: string
   c2cChatOrderPaidEnabled?: boolean
@@ -145,6 +148,11 @@ export class MerchantService {
           requestTimeoutMs,
           paidConfirmIntervalMinMs: this.valueOr(input.paidConfirmIntervalMinMs, 0),
           paidConfirmIntervalMaxMs: this.valueOr(input.paidConfirmIntervalMaxMs, 0),
+          automaticPaymentEnabled: this.valueOr(input.automaticPaymentEnabled, false),
+          automaticPaymentExecutionMode: this.valueOr(
+            input.automaticPaymentExecutionMode,
+            PaymentExecutionMode.INSTANT,
+          ),
           botCode: null,
           chatId: null,
           c2cChatOrderCreatedEnabled: this.valueOr(input.c2cChatOrderCreatedEnabled, false),
@@ -202,6 +210,8 @@ export class MerchantService {
         'orderStatusList',
         'paidConfirmIntervalMinMs',
         'paidConfirmIntervalMaxMs',
+        'automaticPaymentEnabled',
+        'automaticPaymentExecutionMode',
         'c2cChatOrderCreatedEnabled',
         'c2cChatOrderCreatedMessage',
         'c2cChatOrderPaidEnabled',

@@ -1,4 +1,4 @@
-import { BusinessStatus, MerchantPlatform } from '@admin/database'
+import { BusinessStatus, MerchantPlatform, PaymentExecutionMode } from '@admin/database'
 import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger'
 import { Transform, Type } from 'class-transformer'
 import {
@@ -162,6 +162,20 @@ export class CreateMerchantDto extends TenantContextDto {
   @Min(0)
   @Max(60000)
   paidConfirmIntervalMaxMs?: number
+
+  @ApiPropertyOptional({ default: false, description: '是否自动创建并执行支付订单' })
+  @IsOptional()
+  @IsBoolean()
+  automaticPaymentEnabled?: boolean
+
+  @ApiPropertyOptional({
+    enum: PaymentExecutionMode,
+    default: PaymentExecutionMode.INSTANT,
+    description: '自动支付执行方式：单笔商家转账或批量有密',
+  })
+  @IsOptional()
+  @IsEnum(PaymentExecutionMode)
+  automaticPaymentExecutionMode?: PaymentExecutionMode
 
   @ApiPropertyOptional({ default: false })
   @IsOptional()

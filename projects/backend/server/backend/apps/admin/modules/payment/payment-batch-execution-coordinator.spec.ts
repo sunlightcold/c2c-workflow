@@ -91,6 +91,23 @@ describe('PaymentBatchExecutionCoordinator', () => {
     expect(executor.query).toHaveBeenCalledTimes(1)
   })
 
+  it('recovers a batch submission interrupted before its local status was advanced', async () => {
+    store.prepare.mockResolvedValue({ ...batch, status: PaymentBatchStatus.SUBMITTING })
+    executor.query.mockResolvedValue({ status: PaymentExecutionStatus.PROCESSING, raw: {} })
+    store.applyQuery.mockResolvedValue({
+      batch: { ...batch, status: PaymentBatchStatus.PROCESSING },
+      paymentsToConfirm: [],
+    })
+
+    await expect(coordinator.reconcile('tenant-1', 'batch-1')).resolves.toMatchObject({
+      status: PaymentBatchStatus.PROCESSING,
+    })
+    expect(executor.submit).not.toHaveBeenCalled()
+    expect(executor.query).toHaveBeenCalledWith(
+      expect.objectContaining({ status: PaymentBatchStatus.SUBMITTING }),
+    )
+  })
+
   it('fails without querying when the request was definitely not submitted', async () => {
     executor.submit.mockRejectedValue(new PaymentNotSubmittedError('支付宝凭据无效'))
 

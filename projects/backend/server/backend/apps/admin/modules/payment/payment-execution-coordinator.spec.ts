@@ -87,6 +87,22 @@ describe('PaymentExecutionCoordinator', () => {
     )
   })
 
+  it('recovers a submission interrupted after the request may have left the process', async () => {
+    store.get.mockResolvedValue({ ...order, status: PaymentOrderState.SUBMITTING })
+    executor.query.mockResolvedValue({
+      status: PaymentExecutionStatus.PROCESSING,
+      upstreamId: 'a1',
+    })
+
+    await expect(coordinator.reconcile('t1', 'o1')).resolves.toMatchObject({
+      status: PaymentOrderState.PROCESSING,
+    })
+    expect(executor.submit).not.toHaveBeenCalled()
+    expect(executor.query).toHaveBeenCalledWith(
+      expect.objectContaining({ status: PaymentOrderState.SUBMITTING }),
+    )
+  })
+
   it('keeps a payment unknown when its query cannot determine the result', async () => {
     executor.query.mockRejectedValue(new Error('query timeout'))
 
@@ -100,7 +116,7 @@ describe('PaymentExecutionCoordinator', () => {
     store.get.mockResolvedValue({ ...order, status: PaymentOrderState.READY })
 
     await expect(coordinator.reconcile('t1', 'o1')).rejects.toThrow(
-      '只有处理中或结果未知的支付订单可以回查',
+      '只有提交中、处理中或结果未知的支付订单可以回查',
     )
     await expect(coordinator.reconcile('t1', 'o1')).rejects.toBeInstanceOf(ConflictException)
     expect(executor.query).not.toHaveBeenCalled()

@@ -161,6 +161,11 @@ describe('TaskService', () => {
     expect(taskInvoker.checkService).toHaveBeenCalledWith(
       'SystemMaintenanceJob.clearExpiredClientErrors',
     )
+    expect(taskInvoker.checkService).toHaveBeenCalledWith('C2cAutomationJob.syncDueOrders')
+    expect(taskInvoker.checkService).toHaveBeenCalledWith(
+      'C2cAutomationJob.processAutomaticPayments',
+    )
+    expect(taskInvoker.checkService).toHaveBeenCalledWith('C2cAutomationJob.recoverPayments')
     expect(taskRepository.save).toHaveBeenCalledTimes(SYSTEM_TASKS.length)
     expect(taskRepository.save).toHaveBeenCalledWith(expect.objectContaining({ source: 'system' }))
     expect(SYSTEM_TASK_SERVICES.has('SystemMaintenanceJob')).toBe(true)

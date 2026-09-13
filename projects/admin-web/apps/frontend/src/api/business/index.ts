@@ -49,6 +49,8 @@ export namespace BusinessApi {
 
   export interface Merchant {
     apiBaseUrl: string;
+    automaticPaymentEnabled: boolean;
+    automaticPaymentExecutionMode: PaymentExecutionMode;
     authMode: 'API_KEY' | 'WEB_COOKIE' | null;
     autoAppealDelayMinutes: number;
     autoAppealEnabled: boolean;
@@ -323,6 +325,8 @@ export namespace BusinessApi {
   export interface CreateMerchantInput extends TenantContext {
     apiBaseUrl?: string;
     apiKey?: string;
+    automaticPaymentEnabled?: boolean;
+    automaticPaymentExecutionMode?: PaymentExecutionMode;
     authorization?: string;
     autoAppealDelayMinutes?: number;
     autoAppealEnabled?: boolean;

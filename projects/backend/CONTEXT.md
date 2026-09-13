@@ -72,6 +72,14 @@ Payment Order 已选定的支付账号与该账号下支付通道的组合。组
 
 Payment Batch 中一笔 Payment Order 的支付明细。每个明细独立记录处理结果，并通过 Payment Order 业务单号与支付平台逐笔结果对应。
 
+## Automatic C2C Payment
+
+商家账号开启的自动支付能力。系统只为该账号下待付款、可支付、实名一致、支付宝人民币且未超过付款截止时间的买币订单创建 Payment Order，并按商家账号选定的单笔商家转账或批量有密方式执行。聊天群组和通知结果不参与资金流程判定。
+
+## Payment Recovery
+
+对已经提交但仍处于提交中、处理中或结果未知状态的 Payment Order / Payment Batch 使用原业务单号回查支付平台；资金成功但币安或欧易标记失败时，只重试平台付款标记。Payment Recovery 不创建新 Payment Order，也不重新提交资金请求。
+
 ## Object Storage Center
 
 平台维护的对象存储基础设施能力。它管理多个 S3-compatible 存储渠道，并为系统和 app 的具体存储用途提供渠道绑定；它不是文件浏览器，也不负责跨渠道迁移或自动故障切换。

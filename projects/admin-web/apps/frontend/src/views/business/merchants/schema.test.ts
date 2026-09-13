@@ -113,6 +113,16 @@ describe('merchant account form schemas', () => {
       rules?.find(({ field }) => field === 'c2cChatOrderCreatedMessage')
         ?.hidden,
     ).toBe(false);
+    expect(
+      rules?.find(({ field }) => field === 'automaticPaymentEnabled')?.hidden,
+    ).toBe(false);
+    expect(
+      rules?.find(({ field }) => field === 'automaticPaymentExecutionMode')
+        ?.options,
+    ).toEqual([
+      { label: '支付宝商家转账', value: 'INSTANT' },
+      { label: '支付宝批量有密', value: 'BATCH' },
+    ]);
   });
 
   it('does not preselect a platform for a new merchant account', () => {

@@ -40,6 +40,8 @@ const required = (message: string) => [
 const binanceFields = ['apiKey', 'secretKey', 'clientType', 'xUserId'];
 const okxFields = ['authorization', 'sessionCookie'];
 const automationFields = [
+  'automaticPaymentEnabled',
+  'automaticPaymentExecutionMode',
   'c2cChatOrderCreatedEnabled',
   'c2cChatOrderCreatedMessage',
   'c2cChatOrderPaidEnabled',
@@ -144,6 +146,26 @@ function settings(
       60_000,
       100,
     ),
+    {
+      field: 'automaticPaymentEnabled',
+      hidden: hideAutomation,
+      title: '自动支付',
+      type: 'switch',
+      value: false,
+    },
+    {
+      field: 'automaticPaymentExecutionMode',
+      hidden: hideAutomation,
+      options: [
+        { label: '支付宝商家转账', value: 'INSTANT' },
+        { label: '支付宝批量有密', value: 'BATCH' },
+      ],
+      props: { allowClear: false, placeholder: '请选择支付方式' },
+      title: '自动支付方式',
+      type: 'select',
+      validate: required('请选择自动支付方式'),
+      value: 'INSTANT',
+    },
     ...(telegramGroupOptions
       ? [
           {

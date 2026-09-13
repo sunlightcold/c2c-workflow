@@ -185,6 +185,13 @@ const gridOptions: VxeTableGridOptions<BusinessApi.Merchant> = {
     },
     {
       align: 'center',
+      field: 'automaticPayment',
+      slots: { default: 'automaticPayment' },
+      title: '自动支付',
+      width: 150,
+    },
+    {
+      align: 'center',
       field: 'status',
       slots: { default: 'status' },
       title: '状态',
@@ -258,18 +265,6 @@ function normalizeCreateForm(
     delete payload.secretKey;
     delete payload.clientType;
     delete payload.xUserId;
-    for (const field of [
-      'c2cChatOrderCreatedEnabled',
-      'c2cChatOrderCreatedMessage',
-      'c2cChatOrderPaidEnabled',
-      'c2cChatOrderPaidMessage',
-      'c2cChatOrderCompletedEnabled',
-      'c2cChatOrderCompletedMessage',
-      'autoAppealEnabled',
-      'autoAppealDelayMinutes',
-    ] as const) {
-      delete payload[field];
-    }
   }
   return payload;
 }
@@ -673,6 +668,19 @@ onMounted(async () => {
           </div>
         </div>
         <span v-else class="text-muted-foreground">未配置</span>
+      </template>
+      <template #automaticPayment="{ row }">
+        <div v-if="row.automaticPaymentEnabled" class="leading-6">
+          <ATag color="success">已开启</ATag>
+          <div class="text-muted-foreground text-xs">
+            {{
+              row.automaticPaymentExecutionMode === 'BATCH'
+                ? '支付宝批量有密'
+                : '支付宝商家转账'
+            }}
+          </div>
+        </div>
+        <ATag v-else>未开启</ATag>
       </template>
       <template #status="{ row }">
         <ATag :color="businessStatusColor(row.status)">

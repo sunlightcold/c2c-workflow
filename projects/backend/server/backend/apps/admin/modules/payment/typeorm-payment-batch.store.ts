@@ -43,6 +43,7 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
     if (
       ![
         PaymentBatchStatus.READY,
+        PaymentBatchStatus.SUBMITTING,
         PaymentBatchStatus.PROCESSING,
         PaymentBatchStatus.UNKNOWN,
       ].includes(batch.status)
@@ -197,6 +198,7 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
   ): Promise<PaymentBatchApplyOutcome> {
     return this.dataSource.transaction(async (manager) => {
       const batch = await this.lockBatch(manager, input, [
+        PaymentBatchStatus.SUBMITTING,
         PaymentBatchStatus.PROCESSING,
         PaymentBatchStatus.UNKNOWN,
       ])

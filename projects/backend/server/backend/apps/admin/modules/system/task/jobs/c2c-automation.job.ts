@@ -5,6 +5,7 @@ import {
   C2cOrderSyncService,
 } from '../../../c2c-order/c2c-order-sync.service'
 import type { C2cOrderSyncStore } from '../../../c2c-order/c2c-order-sync.types'
+import { C2cAutomaticPaymentService } from '../../../payment/c2c-automatic-payment.service'
 import { ScheduleTask } from '../task.decorator'
 
 const SYNC_CLAIM_LIMIT = 20
@@ -18,6 +19,7 @@ export class C2cAutomationJob {
   constructor(
     @Inject(C2C_ORDER_SYNC_STORE) private readonly syncStore: C2cOrderSyncStore,
     private readonly orderSync: C2cOrderSyncService,
+    private readonly automaticPayments: C2cAutomaticPaymentService,
   ) {}
 
   async syncDueOrders(now = new Date()) {
@@ -36,6 +38,16 @@ export class C2cAutomationJob {
       }
     }
     return { claimed: scopes.length, succeeded, failed }
+  }
+
+  async processAutomaticPayments(now = new Date()) {
+    const orders = await this.automaticPayments.createAndSubmit(now)
+    const batches = await this.automaticPayments.submitReadyBatches()
+    return { orders, batches }
+  }
+
+  recoverPayments() {
+    return this.automaticPayments.recover()
   }
 
   private errorMessage(error: unknown): string {

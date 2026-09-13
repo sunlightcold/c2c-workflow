@@ -1,0 +1,128 @@
+import { PaymentExecutionMode, PaymentOrderStatus } from '@admin/database'
+import { C2cAutomaticPaymentService } from './c2c-automatic-payment.service'
+
+describe('C2cAutomaticPaymentService', () => {
+  const now = new Date('2026-09-13T02:00:00.000Z')
+  const candidate = {
+    tenantId: 'tenant-1',
+    merchantId: 'merchant-1',
+    merchantOrderId: 'merchant-order-1',
+    executionMode: PaymentExecutionMode.INSTANT,
+    paymentOrderId: null,
+    paymentOrderStatus: null,
+    paymentOrderExecutionMode: null,
+  }
+  const store = {
+    findCandidates: jest.fn(),
+    findBatchScopes: jest.fn().mockResolvedValue([]),
+    findRecoverablePayments: jest.fn().mockResolvedValue([]),
+    findRecoverableBatches: jest.fn().mockResolvedValue([]),
+    runLocked: jest.fn((_key, work) => work()),
+  }
+  const merchantPayments = { create: jest.fn() }
+  const paymentOrders = { rematch: jest.fn() }
+  const payments = {
+    submit: jest.fn(),
+    reconcile: jest.fn(),
+    confirmPlatform: jest.fn(),
+  }
+  const batchService = { findReadyGroups: jest.fn(), create: jest.fn() }
+  const batchExecution = { submit: jest.fn(), reconcile: jest.fn() }
+  const service = new C2cAutomaticPaymentService(
+    store as never,
+    merchantPayments as never,
+    paymentOrders as never,
+    payments as never,
+    batchService as never,
+    batchExecution as never,
+  )
+
+  beforeEach(() => jest.clearAllMocks())
+
+  it('creates and immediately submits an eligible instant order through the merchant payment flow', async () => {
+    store.findCandidates.mockResolvedValue([candidate])
+    merchantPayments.create.mockResolvedValue({
+      id: 'payment-1',
+      status: PaymentOrderStatus.COMPLETED,
+    })
+
+    await expect(service.createAndSubmit(now)).resolves.toEqual({
+      found: 1,
+      succeeded: 1,
+      failed: 0,
+    })
+    expect(store.findCandidates).toHaveBeenCalledWith(now, 100)
+    expect(merchantPayments.create).toHaveBeenCalledWith(
+      'tenant-1',
+      'merchant-1',
+      'merchant-order-1',
+      PaymentExecutionMode.INSTANT,
+    )
+  })
+
+  it('rematches a pending configuration and submits it without creating a second payment order', async () => {
+    store.findCandidates.mockResolvedValue([
+      {
+        ...candidate,
+        paymentOrderId: 'payment-1',
+        paymentOrderStatus: PaymentOrderStatus.PENDING_CONFIG,
+        paymentOrderExecutionMode: PaymentExecutionMode.INSTANT,
+      },
+    ])
+    paymentOrders.rematch.mockResolvedValue({
+      id: 'payment-1',
+      status: PaymentOrderStatus.READY,
+      executionMode: PaymentExecutionMode.INSTANT,
+    })
+
+    await service.createAndSubmit(now)
+
+    expect(merchantPayments.create).not.toHaveBeenCalled()
+    expect(paymentOrders.rematch).toHaveBeenCalledWith('tenant-1', 'payment-1')
+    expect(payments.submit).toHaveBeenCalledWith('tenant-1', 'payment-1')
+  })
+
+  it('groups and submits ready batch orders automatically', async () => {
+    store.findBatchScopes.mockResolvedValue([{ tenantId: 'tenant-1', merchantId: 'merchant-1' }])
+    batchService.findReadyGroups.mockResolvedValue([
+      { paymentOrderIds: ['payment-1', 'payment-2'], totalAmount: '30.00' },
+    ])
+    batchService.create.mockResolvedValue({ batch: { id: 'batch-1' }, items: [] })
+
+    await expect(service.submitReadyBatches()).resolves.toEqual({
+      found: 1,
+      succeeded: 1,
+      failed: 0,
+    })
+    expect(batchService.create).toHaveBeenCalledWith('tenant-1', ['payment-1', 'payment-2'])
+    expect(batchExecution.submit).toHaveBeenCalledWith('tenant-1', 'batch-1')
+  })
+
+  it('reconciles uncertain payments and only retries platform confirmation after funds succeeded', async () => {
+    store.findRecoverablePayments.mockResolvedValue([
+      {
+        id: 'payment-1',
+        tenantId: 'tenant-1',
+        status: PaymentOrderStatus.UNKNOWN,
+        upstreamId: null,
+      },
+      {
+        id: 'payment-2',
+        tenantId: 'tenant-1',
+        status: PaymentOrderStatus.PLATFORM_CONFIRM_PENDING,
+        upstreamId: 'alipay-2',
+      },
+    ])
+
+    await service.recover()
+
+    expect(payments.reconcile).toHaveBeenCalledWith('tenant-1', 'payment-1')
+    expect(payments.confirmPlatform).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'payment-2',
+        status: PaymentOrderStatus.PLATFORM_CONFIRM_PENDING,
+      }),
+    )
+    expect(payments.submit).not.toHaveBeenCalled()
+  })
+})

@@ -2,6 +2,7 @@ import { BullModule } from '@nestjs/bullmq'
 import { Module, Provider } from '@nestjs/common'
 import { ClientErrorModule } from '../../client-error'
 import { C2cOrderModule } from '../../c2c-order'
+import { PaymentModule } from '../../payment'
 import { LogModule } from '../log'
 import { TaskQueue } from './constant'
 import { C2cAutomationJob, HttpRequestJob, LogClearJob, SystemMaintenanceJob } from './jobs'
@@ -30,6 +31,7 @@ function getAliasProvider() {
     LogModule,
     ClientErrorModule,
     C2cOrderModule,
+    PaymentModule,
     BullModule.registerQueue({
       name: TaskQueue.Task,
     }),

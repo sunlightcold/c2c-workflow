@@ -1,6 +1,6 @@
 import { CommonUuidEntity } from '@/common/entities'
 import { Column, Entity, Index } from 'typeorm'
-import { BusinessStatus, MerchantPlatform } from './business.enums'
+import { BusinessStatus, MerchantPlatform, PaymentExecutionMode } from './business.enums'
 
 @Entity('merchant')
 @Index('uq_merchant_tenant_code', ['tenantId', 'code'], { unique: true })
@@ -46,6 +46,17 @@ export class MerchantEntity extends CommonUuidEntity {
 
   @Column({ type: 'integer', default: 0 })
   paidConfirmIntervalMaxMs: number
+
+  @Column({ type: 'boolean', default: false })
+  automaticPaymentEnabled: boolean
+
+  @Column({
+    type: 'enum',
+    enum: PaymentExecutionMode,
+    enumName: 'payment_execution_mode_enum',
+    default: PaymentExecutionMode.INSTANT,
+  })
+  automaticPaymentExecutionMode: PaymentExecutionMode
 
   @Column({ type: 'varchar', length: 64, nullable: true })
   botCode: string | null

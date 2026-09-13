@@ -105,8 +105,14 @@ export class PaymentBatchExecutionCoordinator {
 
   async reconcile(tenantId: string, batchId: string): Promise<ExecutablePaymentBatch> {
     const batch = await this.store.prepare(tenantId, batchId)
-    if (![PaymentBatchStatus.PROCESSING, PaymentBatchStatus.UNKNOWN].includes(batch.status))
-      throw new ConflictException('只有处理中或结果未知的支付批次可以回查')
+    if (
+      ![
+        PaymentBatchStatus.SUBMITTING,
+        PaymentBatchStatus.PROCESSING,
+        PaymentBatchStatus.UNKNOWN,
+      ].includes(batch.status)
+    )
+      throw new ConflictException('只有提交中、处理中或结果未知的支付批次可以回查')
     return this.queryAndApply(batch)
   }
 

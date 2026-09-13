@@ -45,6 +45,11 @@ import { C2cMerchantPaymentController } from './c2c-merchant-payment.controller'
 import { C2cMerchantPaymentService } from './c2c-merchant-payment.service'
 import { C2cPaymentCancellationService } from './c2c-payment-cancellation.service'
 import { PaymentAccountBalanceService } from './payment-account-balance.service'
+import {
+  C2C_AUTOMATIC_PAYMENT_STORE,
+  C2cAutomaticPaymentService,
+} from './c2c-automatic-payment.service'
+import { TypeOrmC2cAutomaticPaymentStore } from './typeorm-c2c-automatic-payment.store'
 
 @Module({
   imports: [
@@ -67,6 +72,9 @@ import { PaymentAccountBalanceService } from './payment-account-balance.service'
     PaymentAccountBalanceService,
     C2cMerchantPaymentService,
     C2cPaymentCancellationService,
+    C2cAutomaticPaymentService,
+    TypeOrmC2cAutomaticPaymentStore,
+    { provide: C2C_AUTOMATIC_PAYMENT_STORE, useExisting: TypeOrmC2cAutomaticPaymentStore },
     TypeOrmPaymentBatchStore,
     { provide: PAYMENT_BATCH_STORE, useExisting: TypeOrmPaymentBatchStore },
     TypeOrmPaymentOrderStore,
@@ -101,6 +109,7 @@ import { PaymentAccountBalanceService } from './payment-account-balance.service'
     PaymentBatchExecutionCoordinator,
     PAYMENT_ORDER_STORE,
     PAYMENT_PLAN_RESOLVER,
+    C2cAutomaticPaymentService,
   ],
 })
 export class PaymentModule {}
