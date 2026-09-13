@@ -36,6 +36,7 @@ describe('C2cOrderSyncService', () => {
     }),
   }
   const store = {
+    claimDue: jest.fn(),
     getLastSuccessAt: jest.fn().mockResolvedValue(null),
     persistWindow: jest.fn().mockResolvedValue({ created: 1, updated: 0 }),
     recordFailure: jest.fn().mockResolvedValue(undefined),

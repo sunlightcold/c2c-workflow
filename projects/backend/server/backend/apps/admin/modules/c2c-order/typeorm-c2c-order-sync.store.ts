@@ -18,6 +18,56 @@ export class TypeOrmC2cOrderSyncStore implements C2cOrderSyncStore {
     private readonly dataSource: Pick<DataSource, 'transaction' | 'getRepository'>,
   ) {}
 
+  claimDue(
+    owner: string,
+    now: Date,
+    limit: number,
+    leaseMs: number,
+  ): Promise<Array<{ tenantId: string; merchantId: string }>> {
+    return this.dataSource.transaction(async (manager) => {
+      await manager.query(
+        `
+          INSERT INTO merchant_order_sync_checkpoint (
+            "tenantId", "merchantId", "nextSyncAt", "consecutiveFailures"
+          )
+          SELECT merchant."tenantId", merchant.id, $1, 0
+          FROM merchant
+          WHERE merchant.status = 'active'
+          ON CONFLICT ("tenantId", "merchantId") DO NOTHING
+        `,
+        [now],
+      )
+      return manager.query(
+        `
+          WITH due AS (
+            SELECT checkpoint.id
+            FROM merchant_order_sync_checkpoint checkpoint
+            INNER JOIN merchant
+              ON merchant.id = checkpoint."merchantId"
+             AND merchant."tenantId" = checkpoint."tenantId"
+            WHERE merchant.status = 'active'
+              AND checkpoint."nextSyncAt" <= $1
+              AND (
+                checkpoint."leaseExpiresAt" IS NULL
+                OR checkpoint."leaseExpiresAt" <= $1
+              )
+            ORDER BY checkpoint."nextSyncAt" ASC, checkpoint.id ASC
+            FOR UPDATE OF checkpoint SKIP LOCKED
+            LIMIT $2
+          )
+          UPDATE merchant_order_sync_checkpoint checkpoint
+          SET "leaseOwner" = $3,
+              "leaseExpiresAt" = $4,
+              "updatedAt" = $1
+          FROM due
+          WHERE checkpoint.id = due.id
+          RETURNING checkpoint."tenantId", checkpoint."merchantId"
+        `,
+        [now, limit, owner, new Date(now.getTime() + leaseMs)],
+      )
+    })
+  }
+
   async getLastSuccessAt(tenantId: string, merchantId: string): Promise<Date | null> {
     const checkpoint = await this.dataSource
       .getRepository(MerchantOrderSyncCheckpointEntity)
@@ -68,6 +118,8 @@ export class TypeOrmC2cOrderSyncStore implements C2cOrderSyncStore {
           ),
           consecutiveFailures: (existing?.consecutiveFailures ?? 0) + 1,
           lastError: error,
+          leaseOwner: null,
+          leaseExpiresAt: null,
         }),
       )
     })

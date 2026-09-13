@@ -43,6 +43,12 @@ import { TypeOrmC2cOrderAppealStore } from './typeorm-c2c-order-appeal.store'
     C2cOrderAppealService,
     C2cOrderService,
   ],
-  exports: [C2C_SECRET_RESOLVER, C2cOrderAppealService, C2cOrderSyncService, C2cOrderService],
+  exports: [
+    C2C_ORDER_SYNC_STORE,
+    C2C_SECRET_RESOLVER,
+    C2cOrderAppealService,
+    C2cOrderSyncService,
+    C2cOrderService,
+  ],
 })
 export class C2cOrderModule {}

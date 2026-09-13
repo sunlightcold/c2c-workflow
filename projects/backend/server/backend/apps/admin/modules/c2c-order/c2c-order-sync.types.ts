@@ -2,6 +2,12 @@ import type { MerchantPlatform } from '@admin/database'
 import type { C2cBuyOrderDetail } from '../c2c-platform'
 
 export interface C2cOrderSyncStore {
+  claimDue: (
+    owner: string,
+    now: Date,
+    limit: number,
+    leaseMs: number,
+  ) => Promise<Array<{ tenantId: string; merchantId: string }>>
   getLastSuccessAt: (tenantId: string, merchantId: string) => Promise<Date | null>
   persistWindow: (
     scope: { tenantId: string; merchantId: string; platform: MerchantPlatform },
