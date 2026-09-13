@@ -1,14 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { toTenantFilterOptions } from './use-business-tenant-filter';
+import {
+  toTenantFilterOptions,
+  useBusinessTenantFilter,
+} from './use-business-tenant-filter';
 
 vi.mock('@vben/stores', () => ({
   useUserStore: () => ({ userInfo: {} }),
 }));
 
-vi.mock('#/api', () => ({
-  getTenantsApi: vi.fn(),
-}));
+const { getTenantsApi } = vi.hoisted(() => ({ getTenantsApi: vi.fn() }));
+vi.mock('#/api', () => ({ getTenantsApi }));
 
 const tenants = [
   {
@@ -42,5 +44,11 @@ describe('business tenant filter', () => {
       { disabled: false, label: '总部（总部自营）', value: 'hq-1' },
       { disabled: true, label: '代理商二', value: 'agent-2' },
     ]);
+  });
+
+  it('defaults platform users to the active headquarters unit', async () => {
+    getTenantsApi.mockResolvedValueOnce(tenants);
+    const { loadTenantOptions } = useBusinessTenantFilter();
+    await expect(loadTenantOptions()).resolves.toBe('hq-1');
   });
 });

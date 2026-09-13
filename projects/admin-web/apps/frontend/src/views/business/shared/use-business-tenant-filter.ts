@@ -54,7 +54,13 @@ export function useBusinessTenantFilter() {
       tenantOptions.length,
       ...toTenantFilterOptions(tenants),
     );
-    return '';
+    // 平台人员默认在总部自营经营单位下操作；仍可通过筛选切换到代理商单位。
+    return (
+      tenants.find(
+        (tenant) =>
+          tenant.type === 'HEADQUARTERS_SELF' && tenant.status === 'active',
+      )?.id ?? ''
+    );
   }
 
   return { fixedTenantId, loadTenantOptions, tenantOptions };
