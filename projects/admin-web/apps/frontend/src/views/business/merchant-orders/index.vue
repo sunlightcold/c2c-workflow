@@ -155,10 +155,9 @@ const gridOptions: VxeTableGridOptions<BusinessApi.MerchantOrder> = {
   cellConfig: { height: 64 },
   columnConfig: { resizable: true },
   columns: [
-    { align: 'center', type: 'seq', width: 60 },
+    { type: 'seq', width: 60 },
     { field: 'platformOrderId', minWidth: 190, title: '平台订单号' },
     {
-      align: 'center',
       field: 'platform',
       formatter: ({ cellValue }) =>
         merchantPlatformText(cellValue as BusinessApi.MerchantPlatform),
@@ -179,14 +178,12 @@ const gridOptions: VxeTableGridOptions<BusinessApi.MerchantOrder> = {
       title: '收款信息',
     },
     {
-      align: 'center',
       field: 'status',
       slots: { default: 'status' },
       title: '订单状态',
       width: 145,
     },
     {
-      align: 'center',
       field: 'paymentStatus',
       slots: { default: 'paymentStatus' },
       title: '支付状态',

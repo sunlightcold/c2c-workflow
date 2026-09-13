@@ -80,7 +80,7 @@ const formOptions: VbenFormProps = {
 
 const gridOptions: VxeTableGridOptions<BusinessApi.TelegramBot> = {
   columns: [
-    { align: 'center', type: 'seq', width: 60 },
+    { type: 'seq', width: 60 },
     { field: 'name', minWidth: 180, title: '机器人名称' },
     {
       field: 'capabilities',
@@ -113,6 +113,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.TelegramBot> = {
       width: 110,
     },
     {
+      align: 'center',
       field: 'actions',
       fixed: 'right',
       slots: { default: 'actions' },

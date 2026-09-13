@@ -124,7 +124,7 @@ const formOptions: VbenFormProps = {
 
 const gridOptions: VxeTableGridOptions<BusinessApi.PaymentBatchPolicy> = {
   columns: [
-    { align: 'center', type: 'seq', width: 60 },
+    { type: 'seq', width: 60 },
     { field: 'name', minWidth: 180, title: '策略名称' },
     {
       field: 'scopeType',
@@ -146,7 +146,6 @@ const gridOptions: VxeTableGridOptions<BusinessApi.PaymentBatchPolicy> = {
       title: '并行规则',
     },
     {
-      align: 'center',
       field: 'status',
       slots: { default: 'status' },
       title: '状态',

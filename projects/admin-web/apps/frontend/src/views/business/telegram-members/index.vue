@@ -131,7 +131,7 @@ const formOptions: VbenFormProps = {
 
 const gridOptions: VxeTableGridOptions<BusinessApi.TelegramMember> = {
   columns: [
-    { align: 'center', type: 'seq', width: 60 },
+    { type: 'seq', width: 60 },
     { field: 'telegramUserId', title: 'Telegram 用户 ID', width: 180 },
     { field: 'telegramUsername', minWidth: 140, title: 'Telegram 用户名' },
     { field: 'displayName', minWidth: 130, title: '显示名称' },
@@ -171,6 +171,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.TelegramMember> = {
       width: 110,
     },
     {
+      align: 'center',
       field: 'actions',
       fixed: 'right',
       slots: { default: 'actions' },

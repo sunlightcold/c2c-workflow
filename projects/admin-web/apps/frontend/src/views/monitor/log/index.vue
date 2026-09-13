@@ -37,7 +37,7 @@ const formOptions: VbenFormProps = {
 
 const gridOptions: VxeTableGridOptions<RowType> = {
   columns: [
-    { type: 'seq', width: 70, align: 'center' },
+    { type: 'seq', width: 70 },
     { field: 'title', title: '模块', align: 'left' },
     { field: 'content', title: '操作内容', align: 'left' },
     { field: 'username', title: '操作用户' },

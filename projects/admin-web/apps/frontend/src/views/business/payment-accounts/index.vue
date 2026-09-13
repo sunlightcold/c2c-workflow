@@ -139,14 +139,13 @@ const formOptions: VbenFormProps = {
 const gridOptions: VxeTableGridOptions<BusinessApi.PaymentAccount> = {
   columnConfig: { resizable: true },
   columns: [
-    { align: 'center', type: 'seq', width: 60 },
+    { type: 'seq', width: 60 },
     {
       field: 'name',
       title: '支付账号',
       minWidth: 180,
     },
     {
-      align: 'center',
       field: 'platformId',
       slots: { default: 'platform' },
       title: '支付平台',
@@ -154,21 +153,18 @@ const gridOptions: VxeTableGridOptions<BusinessApi.PaymentAccount> = {
     },
     { field: 'externalAccountId', minWidth: 180, title: '支付宝商户号' },
     {
-      align: 'center',
       field: 'credentialConfigured',
       slots: { default: 'credential' },
       title: '平台凭据',
       width: 110,
     },
     {
-      align: 'center',
       field: 'channels',
       slots: { default: 'channels' },
       title: '已开通通道',
       width: 130,
     },
     {
-      align: 'center',
       field: 'status',
       slots: { default: 'status' },
       title: '状态',
@@ -643,7 +639,7 @@ onMounted(async () => {
             />
           </template>
         </ATableColumn>
-        <ATableColumn key="action" title="操作" :width="150">
+        <ATableColumn align="center" key="action" title="操作" :width="150">
           <template #default="{ record }">
             <ASpace :size="4">
               <AButton

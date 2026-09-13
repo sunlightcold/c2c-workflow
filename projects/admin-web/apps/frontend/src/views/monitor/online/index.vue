@@ -45,7 +45,7 @@ const formOptions: VbenFormProps = {
 
 const gridOptions: VxeTableGridOptions<RowType> = {
   columns: [
-    { type: 'seq', width: 70, align: 'center' },
+    { type: 'seq', width: 70 },
     { field: 'id', title: 'Token 会话编号', width: 300 },
     { field: 'username', title: '用户名', width: 150 },
     VxeUtils.tag.getColumn({

@@ -99,7 +99,6 @@ const gridOptions: VxeTableGridOptions<RowType> = {
     {
       field: 'icon',
       title: '图标',
-      align: 'center',
       width: 50,
       slots: {
         default(slotParams) {
@@ -112,7 +111,7 @@ const gridOptions: VxeTableGridOptions<RowType> = {
       },
     },
     { field: 'name', title: '菜单标题' },
-    { field: 'orderNo', title: '排序编号', align: 'center' },
+    { field: 'orderNo', title: '排序编号' },
     { field: 'path', title: '路由地址' },
     { field: 'component', title: '组件地址' },
     { field: 'permission', title: '权限标识' },

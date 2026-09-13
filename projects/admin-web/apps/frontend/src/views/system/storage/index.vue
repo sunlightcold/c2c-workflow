@@ -283,7 +283,13 @@ onMounted(refresh);
               }}
             </template>
           </ATableColumn>
-          <ATableColumn key="action" fixed="right" title="操作" :width="210">
+          <ATableColumn
+            align="center"
+            key="action"
+            fixed="right"
+            title="操作"
+            :width="210"
+          >
             <template #default="{ record }">
               <ASpace :size="4">
                 <AButton
@@ -347,7 +353,12 @@ onMounted(refresh);
               {{ record.bindingChannelName || '未绑定' }}
             </template>
           </ATableColumn>
-          <ATableColumn key="bindingAction" title="操作" :width="90">
+          <ATableColumn
+            align="center"
+            key="bindingAction"
+            title="操作"
+            :width="90"
+          >
             <template #default="{ record }">
               <AButton
                 v-access:code="['system:storage:bind']"

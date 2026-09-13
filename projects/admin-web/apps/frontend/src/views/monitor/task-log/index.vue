@@ -52,7 +52,7 @@ const formOptions: VbenFormProps = {
 
 const gridOptions: VxeTableGridOptions<RowType> = {
   columns: [
-    { type: 'seq', width: 70, align: 'center' },
+    { type: 'seq', width: 70 },
     { field: 'taskId', title: '任务编号', width: 300 },
     { field: 'taskName', title: '任务名称', width: 200 },
     VxeUtils.tag.getColumn({

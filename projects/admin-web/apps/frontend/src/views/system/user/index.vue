@@ -84,7 +84,7 @@ const formOptions: VbenFormProps = {
 
 const gridOptions: VxeTableGridOptions<RowType> = {
   columns: [
-    { type: 'seq', width: 70, align: 'center' },
+    { type: 'seq', width: 70 },
     { field: 'username', title: '用户名', width: 150 },
     { field: 'nickname', title: '昵称', width: 200 },
     { field: 'avatar', title: '头像', width: 120 },
@@ -92,7 +92,6 @@ const gridOptions: VxeTableGridOptions<RowType> = {
       column: {
         field: 'roles',
         title: '所属角色',
-        align: 'center',
         width: 200,
       },
       props: { color: 'blue' },

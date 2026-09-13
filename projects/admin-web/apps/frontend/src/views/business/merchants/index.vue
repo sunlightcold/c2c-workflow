@@ -143,14 +143,13 @@ const formOptions: VbenFormProps = {
 const gridOptions: VxeTableGridOptions<BusinessApi.Merchant> = {
   columnConfig: { resizable: true },
   columns: [
-    { align: 'center', type: 'seq', width: 60 },
+    { type: 'seq', width: 60 },
     {
       field: 'name',
       title: '商家账号',
       minWidth: 180,
     },
     {
-      align: 'center',
       field: 'platform',
       slots: { default: 'platform' },
       title: '交易平台',
@@ -158,28 +157,18 @@ const gridOptions: VxeTableGridOptions<BusinessApi.Merchant> = {
     },
     { field: 'externalMerchantId', minWidth: 170, title: '平台商家编号' },
     {
-      align: 'center',
       field: 'credentialConfigured',
       slots: { default: 'credential' },
       title: '平台凭据',
       width: 110,
     },
     {
-      align: 'center',
-      field: 'botConfig',
-      slots: { default: 'botConfig' },
-      title: '聊天通知',
-      width: 110,
-    },
-    {
-      align: 'center',
       field: 'automaticPayment',
       slots: { default: 'automaticPayment' },
       title: '自动支付',
       width: 150,
     },
     {
-      align: 'center',
       field: 'status',
       slots: { default: 'status' },
       title: '状态',
@@ -706,11 +695,6 @@ onMounted(async () => {
           {{ row.credentialConfigured ? '已配置' : '未配置' }}
         </ATag>
       </template>
-      <template #botConfig="{ row }">
-        <ATag :color="row.botCode && row.chatId ? 'success' : 'default'">
-          {{ row.botCode && row.chatId ? '已绑定' : '未绑定' }}
-        </ATag>
-      </template>
       <template #automaticPayment="{ row }">
         <ATag v-if="row.automaticPaymentEnabled" color="success">
           {{
@@ -813,7 +797,12 @@ onMounted(async () => {
                 title="超时（毫秒）"
                 :width="130"
               />
-              <ATableColumn key="action" title="操作" :width="160">
+              <ATableColumn
+                align="center"
+                key="action"
+                title="操作"
+                :width="160"
+              >
                 <template #default="{ record }">
                   <ASpace :size="4">
                     <AButton
@@ -918,6 +907,7 @@ onMounted(async () => {
                 </template>
               </ATableColumn>
               <ATableColumn
+                align="center"
                 key="action"
                 fixed="right"
                 title="操作"

@@ -20,7 +20,7 @@ export const tutorialColumns: TableColumnsType<Tutorial> = [
   { dataIndex: 'locale', key: 'locale', title: '语言', width: 90 },
   { key: 'status', title: '状态', width: 90 },
   { dataIndex: 'updatedAt', key: 'updatedAt', title: '更新时间', width: 170 },
-  { key: 'action', title: '操作', width: 80 },
+  { align: 'center', key: 'action', title: '操作', width: 80 },
 ];
 
 export function emptyTutorialContent(): TutorialApi.Content {
