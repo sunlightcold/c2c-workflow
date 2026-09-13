@@ -36,7 +36,7 @@ describe('C2cAutomationJob order discovery', () => {
       batches: { found: 1, succeeded: 1, failed: 0 },
     })
     expect(automaticPayments.createAndSubmit).toHaveBeenCalledWith(now)
-    expect(automaticPayments.submitReadyBatches).toHaveBeenCalledTimes(1)
+    expect(automaticPayments.submitReadyBatches).toHaveBeenCalledWith(now)
     expect(automaticPayments.createAndSubmit.mock.invocationCallOrder[0]).toBeLessThan(
       automaticPayments.submitReadyBatches.mock.invocationCallOrder[0],
     )

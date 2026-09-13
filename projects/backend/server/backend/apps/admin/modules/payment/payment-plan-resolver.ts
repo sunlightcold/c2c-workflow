@@ -15,6 +15,7 @@ export interface ResolvePaymentPlanInput {
 }
 
 export interface ResolvedPaymentPlan {
+  batchPolicyId: string | null
   planId: string
   paymentAccountId: string
   paymentAccountChannelId: string
@@ -43,6 +44,7 @@ export class PaymentPlanResolver implements PaymentPlanResolverPort {
          plan.id AS "planId",
          plan."paymentAccountId",
          plan."paymentAccountChannelId",
+         plan."batchPolicyId",
          channel."adapterCode",
          channel."executionMode",
          plan.priority,
@@ -56,6 +58,10 @@ export class PaymentPlanResolver implements PaymentPlanResolverPort {
          ON account_channel.id = plan."paymentAccountChannelId"
         AND account_channel."paymentAccountId" = account.id
        INNER JOIN payment_channel channel ON channel.id = account_channel."channelId"
+       LEFT JOIN payment_batch_policy batch_policy
+          ON batch_policy.id = plan."batchPolicyId"
+         AND batch_policy."tenantId" = plan."tenantId"
+         AND (batch_policy."merchantId" IS NULL OR batch_policy."merchantId" = plan."merchantId")
        INNER JOIN payment_platform platform
          ON platform.id = channel."platformId" AND platform.id = account."platformId"
        WHERE plan."tenantId" = $1
@@ -72,6 +78,10 @@ export class PaymentPlanResolver implements PaymentPlanResolverPort {
          AND (account_channel."maximumAmount" IS NULL OR account_channel."maximumAmount" >= $5::decimal)
          AND platform.code = $6
          AND channel."executionMode" = $7
+         AND (
+           (channel."executionMode" = 'INSTANT' AND plan."batchPolicyId" IS NULL)
+           OR (channel."executionMode" = 'BATCH' AND batch_policy.status = 'active')
+         )
        ORDER BY plan.priority ASC, plan.id ASC`,
       [
         input.tenantId,
@@ -96,6 +106,7 @@ export class PaymentPlanResolver implements PaymentPlanResolverPort {
       }) ?? group[0]
     return {
       planId: selected.planId,
+      batchPolicyId: selected.batchPolicyId,
       paymentAccountId: selected.paymentAccountId,
       paymentAccountChannelId: selected.paymentAccountChannelId,
       adapterCode: selected.adapterCode,

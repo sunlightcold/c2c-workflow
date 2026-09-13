@@ -2,6 +2,8 @@ import {
   MerchantEntity,
   PaymentBatchEntity,
   PaymentBatchItemEntity,
+  PaymentBatchPolicyEntity,
+  PaymentBatchPolicyRuleEntity,
   PaymentOrderEntity,
 } from '@admin/database'
 import { Module } from '@nestjs/common'
@@ -33,6 +35,8 @@ import { TypeOrmPaymentOrderStore } from './typeorm-payment-order.store'
 import { TypeOrmPaymentPreflightStore } from './typeorm-payment-preflight.store'
 import { PaymentBatchController } from './payment-batch.controller'
 import { PaymentBatchService } from './payment-batch.service'
+import { PaymentBatchPolicyController } from './payment-batch-policy.controller'
+import { PaymentBatchPolicyService } from './payment-batch-policy.service'
 import {
   PAYMENT_BATCH_EXECUTOR,
   PAYMENT_BATCH_PREFLIGHT,
@@ -61,14 +65,22 @@ import { TypeOrmC2cAutomaticPaymentStore } from './typeorm-c2c-automatic-payment
       PaymentOrderEntity,
       PaymentBatchEntity,
       PaymentBatchItemEntity,
+      PaymentBatchPolicyEntity,
+      PaymentBatchPolicyRuleEntity,
     ]),
   ],
-  controllers: [PaymentOrderController, PaymentBatchController, C2cMerchantPaymentController],
+  controllers: [
+    PaymentOrderController,
+    PaymentBatchController,
+    PaymentBatchPolicyController,
+    C2cMerchantPaymentController,
+  ],
   providers: [
     PaymentPlanResolver,
     { provide: PAYMENT_PLAN_RESOLVER, useExisting: PaymentPlanResolver },
     PaymentOrderService,
     PaymentBatchService,
+    PaymentBatchPolicyService,
     PaymentAccountBalanceService,
     C2cMerchantPaymentService,
     C2cPaymentCancellationService,

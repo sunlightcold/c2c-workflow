@@ -8,6 +8,8 @@ import {
   PaymentAccountEntity,
   PaymentBatchEntity,
   PaymentBatchItemEntity,
+  PaymentBatchPolicyEntity,
+  PaymentBatchPolicyRuleEntity,
   PaymentBatchStatusHistoryEntity,
   PaymentChannelEntity,
   PaymentExecutionMode,
@@ -28,6 +30,7 @@ import { migrateC2cMerchantAccountOperations } from '@/apps/admin/database/migra
 import { migrateC2cPaymentRouting } from '@/apps/admin/database/migrations/c2c-payment-routing.migration'
 import { migratePaymentAccountCredentials } from '@/apps/admin/database/migrations/payment-account-credentials.migration'
 import { migrateC2cAutomaticPayments } from '@/apps/admin/database/migrations/c2c-automatic-payments.migration'
+import { migrateC2cPaymentBatchPolicies } from '@/apps/admin/database/migrations/c2c-payment-batch-policies.migration'
 import { PaymentOrderService } from '@/apps/admin/modules/payment/payment-order.service'
 import { PaymentPlanResolver } from '@/apps/admin/modules/payment/payment-plan-resolver'
 import { PaymentConfigService } from '@/apps/admin/modules/business/payment-config.service'
@@ -84,6 +87,8 @@ describe('Payment routing database integration', () => {
         PaymentBatchEntity,
         PaymentBatchItemEntity,
         PaymentBatchStatusHistoryEntity,
+        PaymentBatchPolicyEntity,
+        PaymentBatchPolicyRuleEntity,
       ],
       extra: { options: `-c search_path=${schema},public` },
     })
@@ -97,6 +102,7 @@ describe('Payment routing database integration', () => {
     await migrateC2cPaymentBatches(dataSource.manager)
     await migratePaymentAccountCredentials(dataSource.manager)
     await migrateC2cAutomaticPayments(dataSource.manager)
+    await migrateC2cPaymentBatchPolicies(dataSource.manager)
     await seedConfiguration()
     resolver = new PaymentPlanResolver(dataSource)
     orders = new PaymentOrderService(
@@ -112,6 +118,7 @@ describe('Payment routing database integration', () => {
       dataSource.getRepository(MerchantPaymentPlanEntity),
       dataSource.getRepository(PaymentPlatformEntity),
       dataSource.getRepository(PaymentChannelEntity),
+      dataSource.getRepository(PaymentBatchPolicyEntity),
       dataSource,
       null as never,
     )

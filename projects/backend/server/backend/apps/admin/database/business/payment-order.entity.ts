@@ -55,6 +55,7 @@ export class PaymentOrderEntity extends CommonUuidEntity {
   @Column({ type: 'uuid', nullable: true }) paymentPlanId: string | null
   @Column({ type: 'uuid', nullable: true }) paymentAccountId: string | null
   @Column({ type: 'uuid', nullable: true }) paymentAccountChannelId: string | null
+  @Column({ type: 'uuid', nullable: true }) batchPolicyId: string | null
   @Column({ type: 'enum', enum: PaymentOrderStatus, enumName: 'payment_order_status_enum' })
   status: PaymentOrderStatus
   @Column({ type: 'varchar', length: 128, nullable: true }) upstreamId: string | null

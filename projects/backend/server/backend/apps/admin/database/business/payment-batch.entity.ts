@@ -34,6 +34,7 @@ export class PaymentBatchEntity extends CommonUuidEntity {
   @Column({ type: 'varchar', length: 64, update: false }) batchNo: string
   @Column({ type: 'uuid', update: false }) paymentAccountId: string
   @Column({ type: 'uuid', update: false }) paymentAccountChannelId: string
+  @Column({ type: 'uuid', nullable: true, update: false }) batchPolicyId: string | null
   @Column({ type: 'varchar', length: 16, update: false }) currency: string
   @Column({ type: 'integer' }) totalCount: number
   @Column({ type: 'decimal', precision: 20, scale: 2 }) totalAmount: string
@@ -45,6 +46,8 @@ export class PaymentBatchEntity extends CommonUuidEntity {
   @Column({ type: 'enum', enum: PaymentBatchStatus, enumName: 'payment_batch_status_enum' })
   status: PaymentBatchStatus
   @Column({ type: 'varchar', length: 512, nullable: true }) lastError: string | null
+  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" }) triggerRuleIds: string[]
+  @Column({ type: 'varchar', length: 32, default: 'MANUAL' }) triggerSource: string
   @VersionColumn() version: number
 }
 

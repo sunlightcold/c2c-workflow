@@ -145,7 +145,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.TelegramGroup> = {
       field: 'botId',
       formatter: ({ cellValue }) =>
         botOptions().find(({ value }) => value === cellValue)?.label ??
-        String(cellValue),
+        '未知机器人',
       minWidth: 160,
       title: '机器人',
     },
@@ -153,7 +153,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.TelegramGroup> = {
       field: 'merchantId',
       formatter: ({ cellValue }) =>
         merchantOptions().find(({ value }) => value === cellValue)?.label ??
-        String(cellValue),
+        '未知商家',
       minWidth: 160,
       title: '绑定商家',
     },

@@ -13,6 +13,8 @@ import {
   PaymentAccountEntity,
   PaymentBatchEntity,
   PaymentBatchItemEntity,
+  PaymentBatchPolicyEntity,
+  PaymentBatchPolicyRuleEntity,
   PaymentBatchStatusHistoryEntity,
   PaymentExecutionMode,
   PaymentOrderEntity,
@@ -35,6 +37,7 @@ import { migrateC2cMerchantAccountOperations } from '@/apps/admin/database/migra
 import { migrateC2cMerchantOrderAppeals } from '@/apps/admin/database/migrations/c2c-merchant-order-appeals.migration'
 import { migratePaymentAccountCredentials } from '@/apps/admin/database/migrations/payment-account-credentials.migration'
 import { migrateC2cAutomaticPayments } from '@/apps/admin/database/migrations/c2c-automatic-payments.migration'
+import { migrateC2cPaymentBatchPolicies } from '@/apps/admin/database/migrations/c2c-payment-batch-policies.migration'
 import { MerchantPlatformCredentialService } from '@/apps/admin/modules/business/merchant-platform-credential.service'
 import { C2cOrderService } from '@/apps/admin/modules/c2c-order/c2c-order.service'
 import { C2cOrderSyncService } from '@/apps/admin/modules/c2c-order/c2c-order-sync.service'
@@ -57,6 +60,7 @@ import { C2cPaymentPreflightVerifier } from '@/apps/admin/modules/payment/c2c-pa
 import { C2cPlatformPaymentConfirmer } from '@/apps/admin/modules/payment/c2c-platform-payment.confirmer'
 import { PaymentBatchExecutionCoordinator } from '@/apps/admin/modules/payment/payment-batch-execution-coordinator'
 import { PaymentBatchService } from '@/apps/admin/modules/payment/payment-batch.service'
+import { PaymentBatchPolicyService } from '@/apps/admin/modules/payment/payment-batch-policy.service'
 import { PaymentExecutionCoordinator } from '@/apps/admin/modules/payment/payment-execution-coordinator'
 import { PaymentOrderService } from '@/apps/admin/modules/payment/payment-order.service'
 import { PaymentPlanResolver } from '@/apps/admin/modules/payment/payment-plan-resolver'
@@ -125,6 +129,8 @@ describe('Automatic C2C payment workflow database integration', () => {
         PaymentBatchEntity,
         PaymentBatchItemEntity,
         PaymentBatchStatusHistoryEntity,
+        PaymentBatchPolicyEntity,
+        PaymentBatchPolicyRuleEntity,
       ],
       extra: { options: `-c search_path=${schema},public` },
     })
@@ -140,6 +146,7 @@ describe('Automatic C2C payment workflow database integration', () => {
       await migrateC2cMerchantOrderAppeals(manager)
       await migratePaymentAccountCredentials(manager)
       await migrateC2cAutomaticPayments(manager)
+      await migrateC2cPaymentBatchPolicies(manager)
     })
     harness = createHarness(dataSource)
   })
@@ -523,6 +530,12 @@ function createHarness(dataSource: DataSource): WorkflowHarness {
     paymentOrderService,
     paymentCoordinator,
     batchService,
+    new PaymentBatchPolicyService(
+      dataSource.getRepository(PaymentBatchPolicyEntity),
+      dataSource.getRepository(PaymentBatchPolicyRuleEntity),
+      dataSource.getRepository(MerchantEntity),
+      dataSource,
+    ),
     batchCoordinator,
   )
   return { dataSource, job: new C2cAutomationJob(syncStore, orderSync, automaticPayments) }

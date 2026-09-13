@@ -40,6 +40,12 @@ const pages = [
     'payment:batch',
   ],
   [
+    '批次策略',
+    '/business/payment-batch-policies',
+    '/business/payment-batch-policies',
+    'payment:batchPolicy',
+  ],
+  [
     '机器人实例',
     '/business/telegram-bots',
     '/business/telegram-bots',
@@ -90,6 +96,10 @@ const permissions = [
   'payment:batch:create',
   'payment:batch:submit',
   'payment:batch:retry',
+  'payment:batchPolicy:read',
+  'payment:batchPolicy:create',
+  'payment:batchPolicy:update',
+  'payment:batchPolicy:delete',
   'telegram:bot:read',
   'telegram:bot:create',
   'telegram:bot:update',
@@ -191,6 +201,7 @@ test.beforeEach(async ({ page }) => {
     '/sys/merchant-orders',
     '/sys/merchants',
     '/sys/payment-accounts',
+    '/sys/payment-batch-policies',
     '/sys/payment-batches',
     '/sys/payment-orders',
     '/sys/tg/bots',
@@ -202,6 +213,7 @@ test.beforeEach(async ({ page }) => {
   ]);
   let paymentPlans = [
     {
+      batchPolicyId: '00000000-0000-4000-8000-000000000130',
       currency: 'CNY',
       id: '00000000-0000-4000-8000-000000000120',
       merchantId: '00000000-0000-4000-8000-000000000020',
@@ -212,6 +224,29 @@ test.beforeEach(async ({ page }) => {
       status: 'active',
       tenantId,
       weight: 100,
+    },
+  ];
+  let paymentBatchPolicies = [
+    {
+      code: 'PBP202609100001',
+      createdAt: '2026-09-10T08:00:00.000Z',
+      id: '00000000-0000-4000-8000-000000000130',
+      merchantId: null,
+      name: '总部批次策略',
+      rules: [
+        {
+          id: '00000000-0000-4000-8000-000000000131',
+          intervalSeconds: null,
+          orderCount: null,
+          policyId: '00000000-0000-4000-8000-000000000130',
+          ruleType: 'MANUAL',
+          status: 'active',
+        },
+      ],
+      scopeType: 'GLOBAL',
+      status: 'active',
+      tenantId,
+      updatedAt: '2026-09-10T08:00:00.000Z',
     },
   ];
   let botRuntimeRunning = true;
@@ -246,6 +281,9 @@ test.beforeEach(async ({ page }) => {
     }
     const paymentPlanMatch = path.match(
       /^\/sys\/payment-plans\/([^/]+)(\/status)?$/,
+    );
+    const paymentBatchPolicyMatch = path.match(
+      /^\/sys\/payment-batch-policies\/([^/]+)(\/status|\/submit)?$/,
     );
     const botRuntimeMatch = path.match(
       /^\/sys\/tg\/bots\/([^/]+)\/runtime\/(check|restart|start|stop)$/,
@@ -291,6 +329,52 @@ test.beforeEach(async ({ page }) => {
         data = paymentPlans.find(({ id }) => id === planId);
       } else if (method === 'DELETE' && plan) {
         paymentPlans = paymentPlans.filter(({ id }) => id !== planId);
+      }
+      await route.fulfill({
+        body: JSON.stringify(ok(data)),
+        contentType: 'application/json',
+        status: 200,
+      });
+      return;
+    }
+
+    if (paymentBatchPolicyMatch) {
+      const policyId = paymentBatchPolicyMatch[1];
+      const suffix = paymentBatchPolicyMatch[2];
+      const method = request.method();
+      const policy = paymentBatchPolicies.find(({ id }) => id === policyId);
+      if (method === 'PUT' && policy) {
+        const input = request.postDataJSON() as {
+          name: string;
+          rules: Array<Record<string, unknown>>;
+        };
+        paymentBatchPolicies = paymentBatchPolicies.map((item) =>
+          item.id === policyId
+            ? {
+                ...item,
+                name: input.name,
+                rules: input.rules.map((rule, index) => ({
+                  ...rule,
+                  id: `00000000-0000-4000-8000-${String(150 + index).padStart(12, '0')}`,
+                  policyId,
+                })),
+              }
+            : item,
+        );
+        data = paymentBatchPolicies.find(({ id }) => id === policyId);
+      } else if (method === 'PATCH' && suffix === '/status' && policy) {
+        paymentBatchPolicies = paymentBatchPolicies.map((item) =>
+          item.id === policyId
+            ? { ...item, status: requestBody?.status as string }
+            : item,
+        );
+        data = paymentBatchPolicies.find(({ id }) => id === policyId);
+      } else if (method === 'POST' && suffix === '/submit' && policy) {
+        data = { batchCount: 1, orderCount: 2 };
+      } else if (method === 'DELETE' && policy) {
+        paymentBatchPolicies = paymentBatchPolicies.filter(
+          ({ id }) => id !== policyId,
+        );
       }
       await route.fulfill({
         body: JSON.stringify(ok(data)),
@@ -468,6 +552,53 @@ test.beforeEach(async ({ page }) => {
           pageSize: 20,
           total: 1,
         };
+        break;
+      }
+      case '/sys/payment-batch-policies': {
+        if (request.method() === 'POST') {
+          const input = request.postDataJSON() as {
+            merchantId?: string;
+            name: string;
+            rules: Array<Record<string, unknown>>;
+            scopeType: 'GLOBAL' | 'MERCHANT';
+          };
+          const policyId = '00000000-0000-4000-8000-000000000140';
+          const created = {
+            code: 'PBP202609100002',
+            createdAt: '2026-09-10T09:00:00.000Z',
+            id: policyId,
+            merchantId: input.merchantId ?? null,
+            name: input.name,
+            rules: input.rules.map((rule, index) => ({
+              ...rule,
+              id: `00000000-0000-4000-8000-${String(141 + index).padStart(12, '0')}`,
+              policyId,
+            })),
+            scopeType: input.scopeType,
+            status: 'active',
+            tenantId,
+            updatedAt: '2026-09-10T09:00:00.000Z',
+          };
+          paymentBatchPolicies = [created, ...paymentBatchPolicies];
+          data = created;
+        } else {
+          const applicableMerchantId = url.searchParams.get(
+            'applicableMerchantId',
+          );
+          const merchantId = url.searchParams.get('merchantId');
+          const scopeType = url.searchParams.get('scopeType');
+          const status = url.searchParams.get('status');
+          const items = paymentBatchPolicies.filter(
+            (policy) =>
+              (!applicableMerchantId ||
+                policy.scopeType === 'GLOBAL' ||
+                policy.merchantId === applicableMerchantId) &&
+              (!merchantId || policy.merchantId === merchantId) &&
+              (!scopeType || policy.scopeType === scopeType) &&
+              (!status || policy.status === status),
+          );
+          data = { items, page: 1, pageSize: 20, total: items.length };
+        }
         break;
       }
       case '/sys/payment-plans': {
@@ -751,7 +882,9 @@ test('loads all second-level business pages under one menu', async ({
     ),
   ).toBeVisible();
   await expect(channelDrawer.getByText('支付宝批量有密')).toBeVisible();
-  await expect(channelDrawer.getByText('1.00 至 50000.00')).toBeVisible();
+  await expect(
+    channelDrawer.getByText('1.00 至 50000.00').first(),
+  ).toBeVisible();
   const channelViewport = page.viewportSize();
   if (!channelViewport) throw new Error('无法读取通道抽屉尺寸');
   await expect
@@ -773,11 +906,17 @@ test('loads all second-level business pages under one menu', async ({
   await expect(
     channelDrawer.getByRole('button', { name: '开通支付通道' }),
   ).toBeInViewport({ ratio: 1 });
-  for (const actionName of [/编\s*辑/, /停\s*用/, /移\s*除/]) {
+  for (const actionName of [/编\s*辑/, /移\s*除/]) {
     await expect(
       channelDrawer.getByRole('button', { name: actionName }),
     ).toBeInViewport({ ratio: 1 });
   }
+  await expect(
+    channelDrawer.getByRole('button', { name: /停\s*用|启\s*用/ }),
+  ).toHaveCount(0);
+  await expect(
+    channelDrawer.getByRole('switch', { name: '支付宝批量有密状态' }),
+  ).toBeVisible();
   await page.screenshot({
     fullPage: true,
     path: `node_modules/.e2e/screenshots/payment-accounts-${testInfo.project.name}.png`,
@@ -861,11 +1000,14 @@ test('manages payment plans inside the merchant configuration drawer', async ({
   await drawer.getByRole('tab', { name: '支付方案' }).click();
   const planTable = drawer.getByTestId('payment-plan-table');
   await expect(planTable.getByText('总部支付宝主账号')).toBeVisible();
-  for (const actionName of [/编\s*辑/, /停\s*用/, /删\s*除/]) {
+  for (const actionName of [/编\s*辑/, /删\s*除/]) {
     await expect(
       planTable.getByRole('button', { name: actionName }),
     ).toBeVisible();
   }
+  await expect(
+    planTable.getByRole('button', { name: /停\s*用|启\s*用/ }),
+  ).toHaveCount(0);
 
   await drawer.getByRole('button', { name: '新增方案' }).click();
   const createDialog = page.getByRole('dialog', { name: '新增支付方案' });
@@ -892,6 +1034,23 @@ test('manages payment plans inside the merchant configuration drawer', async ({
   await expect(routeField.locator('.ant-select-selection-item')).toHaveText(
     routeName,
   );
+  const batchPolicyField = createDialog
+    .locator('.ant-form-item')
+    .filter({ hasText: '批次策略' });
+  await expect(batchPolicyField).toBeVisible();
+  await createDialog.getByRole('button', { name: /确\s*定/ }).click();
+  await expect(
+    createDialog.getByText('批量支付方案必须选择批次策略'),
+  ).toBeVisible();
+  await batchPolicyField.locator('.ant-select-selector').click();
+  await page
+    .locator('.ant-select-dropdown:visible .ant-select-item-option')
+    .filter({ hasText: '全局 · 总部批次策略' })
+    .click({ timeout: 5000 });
+  await expect(
+    batchPolicyField.locator('.ant-select-selection-item'),
+  ).toHaveText('全局 · 总部批次策略');
+
   await createDialog.getByRole('button', { name: /取\s*消/ }).click();
 
   await planTable.getByRole('button', { name: /编\s*辑/ }).click();
@@ -907,17 +1066,23 @@ test('manages payment plans inside the merchant configuration drawer', async ({
   );
   await editDialog.getByRole('button', { name: /确\s*定/ }).click();
   const updatedPlanRequest = await updateRequest;
-  expect(updatedPlanRequest.postDataJSON()).toMatchObject({ priority: 20 });
+  expect(updatedPlanRequest.postDataJSON()).toMatchObject({
+    batchPolicyId: '00000000-0000-4000-8000-000000000130',
+    priority: 20,
+  });
   await expect(planTable.getByText('20', { exact: true })).toBeVisible();
 
   const statusRequest = page.waitForRequest(
     (request) =>
       request.method() === 'PATCH' && request.url().includes('/status'),
   );
-  await planTable.getByRole('button', { name: /停\s*用/ }).click();
+  const planStatusSwitch = planTable.getByRole('switch', {
+    name: '总部支付宝主账号支付方案状态',
+  });
+  await planStatusSwitch.click();
   const updatedStatusRequest = await statusRequest;
   expect(updatedStatusRequest.postDataJSON()).toEqual({ status: 'disabled' });
-  await expect(planTable.getByText('停用', { exact: true })).toBeVisible();
+  await expect(planStatusSwitch).not.toBeChecked();
 
   await planTable.getByRole('button', { name: /删\s*除/ }).click();
   const confirmDialog = page.locator('.ant-modal-confirm:visible');
@@ -944,6 +1109,222 @@ test('manages payment plans inside the merchant configuration drawer', async ({
   await confirmDialog.getByRole('button', { name: /删\s*除/ }).click();
   await deleteRequest;
   await expect(planTable.getByText('总部支付宝主账号')).toHaveCount(0);
+});
+
+test('manages parallel payment batch policy rules without horizontal overflow', async ({
+  page,
+}, testInfo) => {
+  testInfo.setTimeout(120_000);
+  await page.goto('/business/payment-batch-policies');
+  await selectHeadquartersTenant(page);
+
+  await expect(
+    page.getByText('手动提交', { exact: true }).first(),
+  ).toBeVisible();
+  const submitRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' && request.url().endsWith('/submit'),
+  );
+  await page.getByRole('button', { name: '手动提交' }).click();
+  const submitConfirm = page.locator('.ant-modal-confirm:visible');
+  await submitConfirm.getByRole('button', { name: /确\s*定/ }).click();
+  const submittedRequest = await submitRequest;
+  expect(submittedRequest.postDataJSON()).toEqual({ tenantId });
+  await expect(submitConfirm).toBeHidden();
+
+  await page.getByRole('button', { name: '新增批次策略' }).click();
+  const createDialog = page.getByRole('dialog', { name: '新增批次策略' });
+  await expectDialogWithoutHorizontalOverflow(createDialog);
+  await createDialog
+    .getByRole('textbox', { name: '策略名称' })
+    .fill('晚间并行策略');
+  await createDialog
+    .locator('.ant-select-selector')
+    .nth(0)
+    .click({ force: true });
+  await page
+    .locator('.ant-select-dropdown:visible .ant-select-item-option')
+    .filter({ hasText: '指定商家' })
+    .click();
+  await createDialog
+    .locator('.ant-select-selector')
+    .nth(1)
+    .click({ force: true });
+  await page
+    .locator('.ant-select-dropdown:visible .ant-select-item-option')
+    .filter({ hasText: '币安主账号' })
+    .click();
+
+  await createDialog
+    .getByTestId('payment-batch-policy-rule')
+    .nth(0)
+    .locator('.ant-select-selector')
+    .click({ force: true });
+  await page
+    .locator('.ant-select-dropdown:visible .ant-select-item-option')
+    .filter({ hasText: '按时间间隔' })
+    .click();
+  await createDialog
+    .getByRole('spinbutton', { name: '规则 1 时间间隔' })
+    .fill('120');
+
+  await createDialog.getByRole('button', { name: '添加规则' }).click();
+  await createDialog
+    .getByTestId('payment-batch-policy-rule')
+    .nth(1)
+    .locator('.ant-select-selector')
+    .click({ force: true });
+  await page
+    .locator('.ant-select-dropdown:visible .ant-select-item-option')
+    .filter({ hasText: '按订单数' })
+    .click();
+  await createDialog
+    .getByRole('spinbutton', { name: '规则 2 订单数' })
+    .fill('20');
+
+  const createRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' &&
+      new URL(request.url()).pathname.endsWith('/payment-batch-policies'),
+  );
+  await createDialog.getByRole('button', { name: /确\s*定/ }).click();
+  const createdRequest = await createRequest;
+  expect(createdRequest.postDataJSON()).toMatchObject({
+    merchantId: '00000000-0000-4000-8000-000000000020',
+    name: '晚间并行策略',
+    rules: [
+      {
+        intervalSeconds: 120,
+        ruleType: 'INTERVAL',
+        status: 'active',
+      },
+      { orderCount: 20, ruleType: 'ORDER_COUNT', status: 'active' },
+    ],
+    scopeType: 'MERCHANT',
+    tenantId,
+  });
+
+  let createdRow = page.locator('tr').filter({ hasText: '晚间并行策略' });
+  await expect(createdRow.getByText('间隔 120 秒')).toBeVisible();
+  await expect(createdRow.getByText('满 20 笔')).toBeVisible();
+  await expect(
+    createdRow.getByRole('button', { name: '手动提交' }),
+  ).toHaveCount(0);
+
+  await page
+    .getByRole('button', { name: /编\s*辑/ })
+    .first()
+    .click();
+  const editDialog = page.getByRole('dialog', { name: '编辑批次策略' });
+  const nameInput = editDialog.getByRole('textbox', { name: '策略名称' });
+  await nameInput.fill('晚间并行策略（已调整）');
+  const updateRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'PUT' &&
+      request.url().includes('/payment-batch-policies/'),
+  );
+  await editDialog.getByRole('button', { name: /确\s*定/ }).click();
+  const updatedRequest = await updateRequest;
+  expect(updatedRequest.postDataJSON()).toMatchObject({
+    name: '晚间并行策略（已调整）',
+  });
+
+  createdRow = page.locator('tr').filter({ hasText: '晚间并行策略（已调整）' });
+  const statusSwitch = page.getByRole('switch', {
+    name: '晚间并行策略（已调整）状态',
+  });
+  const disableRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'PATCH' && request.url().endsWith('/status'),
+  );
+  await statusSwitch.click();
+  const disabledRequest = await disableRequest;
+  expect(disabledRequest.postDataJSON()).toMatchObject({
+    status: 'disabled',
+    tenantId,
+  });
+  await expect(statusSwitch).not.toBeChecked();
+
+  const enableRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'PATCH' && request.url().endsWith('/status'),
+  );
+  await statusSwitch.click();
+  const enabledRequest = await enableRequest;
+  expect(enabledRequest.postDataJSON()).toMatchObject({
+    status: 'active',
+    tenantId,
+  });
+  await expect(statusSwitch).toBeChecked();
+
+  await page
+    .getByRole('button', { name: /删\s*除/ })
+    .first()
+    .click();
+  const deleteConfirm = page.locator('.ant-modal-confirm:visible');
+  const deleteRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'DELETE' &&
+      request.url().includes('/payment-batch-policies/'),
+  );
+  await deleteConfirm.getByRole('button', { name: /删\s*除/ }).click();
+  await deleteRequest;
+  await expect(page.getByText('晚间并行策略（已调整）')).toHaveCount(0);
+});
+
+test('creates a tenant-global batch policy before any merchant exists', async ({
+  page,
+}) => {
+  await page.route('**/v1/sys/merchants**', async (route) => {
+    await route.fulfill({
+      body: JSON.stringify(ok({ items: [], page: 1, pageSize: 100, total: 0 })),
+      contentType: 'application/json',
+      status: 200,
+    });
+  });
+  await page.goto('/business/payment-batch-policies');
+  await selectHeadquartersTenant(page);
+
+  const createButton = page.getByRole('button', { name: '新增批次策略' });
+  await expect(createButton).toBeEnabled();
+  await createButton.click();
+
+  const createDialog = page.getByRole('dialog', { name: '新增批次策略' });
+  await createDialog.getByLabel('策略名称').fill('经营单位默认策略');
+  await createDialog
+    .locator('.ant-select-selector')
+    .first()
+    .click({ force: true });
+  await page
+    .locator('.ant-select-dropdown:visible .ant-select-item-option')
+    .filter({ hasText: '经营单位全局' })
+    .click();
+  await expect(createDialog.getByLabel('商家账号')).toHaveCount(0);
+
+  const createRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' &&
+      new URL(request.url()).pathname.endsWith('/payment-batch-policies'),
+  );
+  await createDialog.getByRole('button', { name: /确\s*定/ }).click();
+  const createdRequest = await createRequest;
+  const payload = createdRequest.postDataJSON();
+  expect(payload).toMatchObject({
+    name: '经营单位默认策略',
+    rules: [{ ruleType: 'MANUAL', status: 'active' }],
+    scopeType: 'GLOBAL',
+    tenantId,
+  });
+  expect(payload).not.toHaveProperty('merchantId');
+
+  const createdRow = page.locator('tr').filter({
+    hasText: '经营单位默认策略',
+  });
+  await expect(createdRow.getByText('经营单位全局')).toBeVisible();
+  await expect(createdRow.getByText('全部商家')).toBeVisible();
+  await expect(
+    page.locator('button:visible').filter({ hasText: '手动提交' }).first(),
+  ).toBeVisible();
 });
 
 test('lists selectable channels when opening a payment channel', async ({
@@ -1003,7 +1384,7 @@ test('selects a bound robot group and restores default merchant chat messages', 
     .click();
   await expect(page.locator('.ant-select-dropdown:visible')).toHaveCount(0);
   await page.screenshot({
-    fullPage: true,
+    fullPage: !testInfo.project.name.includes('mobile'),
     path: `node_modules/.e2e/screenshots/merchant-robot-group-${testInfo.project.name}.png`,
   });
   const requestPromise = page.waitForRequest(
@@ -1088,12 +1469,20 @@ test('provides complete Telegram administration actions', async ({ page }) => {
 
   await page.goto('/business/telegram-members');
   await selectHeadquartersTenant(page);
-  await expect(page.getByRole('button', { name: /停\s*用/ })).toBeVisible();
+  await expect(page.getByRole('switch', { name: '值班员状态' })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /停\s*用|启\s*用/ }),
+  ).toHaveCount(0);
   await expect(page.getByRole('button', { name: /移\s*除/ })).toBeVisible();
 
   await page.goto('/business/telegram-super-admins');
   await selectHeadquartersTenant(page);
-  await expect(page.getByRole('button', { name: /停\s*用/ })).toBeVisible();
+  await expect(
+    page.getByRole('switch', { name: 'supervisor状态' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /停\s*用|启\s*用/ }),
+  ).toHaveCount(0);
   await expect(page.getByRole('button', { name: /移\s*除/ })).toBeVisible();
 
   await page.goto('/business/telegram-bots');
@@ -1103,7 +1492,17 @@ test('provides complete Telegram administration actions', async ({ page }) => {
     page.getByText('Telegram 连接正常，机器人正在运行'),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: /检\s*测/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '停止运行' })).toHaveCount(0);
+  const botStatusSwitch = page.getByRole('switch', {
+    name: '总部支付机器人账号状态',
+  });
+  const runtimeSwitch = page.getByRole('switch', {
+    name: '总部支付机器人运行状态',
+  });
+  await expect(botStatusSwitch).toBeChecked();
+  await expect(runtimeSwitch).toBeChecked();
+  await expect(
+    page.getByRole('button', { name: /停\s*用|启\s*用|启\s*动|停\s*止/ }),
+  ).toHaveCount(0);
   await expect(page.getByRole('button', { name: /重\s*启/ })).toBeVisible();
 
   const restartRequest = page.waitForRequest(
@@ -1115,6 +1514,7 @@ test('provides complete Telegram administration actions', async ({ page }) => {
   expect(new URL(restartedRequest.url()).searchParams.get('tenantId')).toBe(
     tenantId,
   );
+  expect(restartedRequest.postData()).toBeNull();
 
   await page.evaluate(
     async ({ botId, currentTenantId }) => {
@@ -1130,15 +1530,19 @@ test('provides complete Telegram administration actions', async ({ page }) => {
   );
   await page.reload();
   await selectHeadquartersTenant(page);
-  await expect(page.getByRole('button', { name: /启\s*动/ })).toBeVisible();
+  const stoppedRuntimeSwitch = page.getByRole('switch', {
+    name: '总部支付机器人运行状态',
+  });
+  await expect(stoppedRuntimeSwitch).not.toBeChecked();
   await expect(page.getByRole('button', { name: /重\s*启/ })).toHaveCount(0);
 
   const startRequest = page.waitForRequest(
     (request) =>
       request.method() === 'POST' && request.url().includes('/runtime/start'),
   );
-  await page.getByRole('button', { name: /启\s*动/ }).click();
-  await startRequest;
+  await stoppedRuntimeSwitch.click();
+  const startedRequest = await startRequest;
+  expect(startedRequest.postData()).toBeNull();
   await expect(page.getByRole('button', { name: /重\s*启/ })).toBeVisible();
 
   const listRequestCount = botListRequestCounts.get(page);
@@ -1214,6 +1618,66 @@ test('keeps internal business codes out of create forms', async ({
   await page.getByRole('button', { name: '新增机器人' }).click();
   const botDialog = page.getByRole('dialog', { name: '新增支付机器人' });
   await expect(botDialog.getByText('机器人编码', { exact: true })).toHaveCount(
+    0,
+  );
+});
+
+test('keeps internal business codes out of filters and tables', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/business/tenants');
+  await expect(
+    page.locator('.vxe-grid').getByText('总部自营', { exact: true }).last(),
+  ).toBeVisible();
+  await expect(page.getByText('单位编码', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('HQ', { exact: true })).toHaveCount(0);
+
+  await page.goto('/business/merchants');
+  await selectHeadquartersTenant(page);
+  await expect(page.getByText('币安主账号', { exact: true })).toBeVisible();
+  await expect(page.getByText('账号编码', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('BINANCE_MAIN', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('同步配置', { exact: true })).toHaveCount(0);
+  await expect(
+    page
+      .getByRole('combobox', { name: '交易平台' })
+      .locator('.ant-select-selection-item'),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText('binance-merchant-main', { exact: true }),
+  ).toBeVisible();
+  if (testInfo.project.name === 'desktop-chromium') {
+    await page.setViewportSize({ height: 800, width: 1920 });
+  }
+  await expect(page.getByText('加载菜单中...')).toBeHidden();
+  await page.screenshot({
+    fullPage: true,
+    path: `node_modules/.e2e/screenshots/merchant-list-${testInfo.project.name}.png`,
+  });
+
+  await page.goto('/business/payment-accounts');
+  await selectHeadquartersTenant(page);
+  await expect(
+    page.getByText('总部支付宝主账号', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText('账号编码', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('alipay-main', { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText('2088123456789000', { exact: true }),
+  ).toBeVisible();
+
+  await page.goto('/business/telegram-bots');
+  await selectHeadquartersTenant(page);
+  await expect(page.getByText('总部支付机器人', { exact: true })).toBeVisible();
+  await expect(page.getByText('机器人编码', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('机器人类型', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('PAYMENT_MAIN', { exact: true })).toHaveCount(0);
+
+  await page.goto('/business/payment-batch-policies');
+  await selectHeadquartersTenant(page);
+  await expect(page.getByText('总部批次策略', { exact: true })).toBeVisible();
+  await expect(page.getByText('策略编号', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('PBP202609100001', { exact: true })).toHaveCount(
     0,
   );
 });

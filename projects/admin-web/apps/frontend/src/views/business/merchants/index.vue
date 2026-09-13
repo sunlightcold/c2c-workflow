@@ -16,6 +16,7 @@ import {
   filterMerchantsApi,
   getMerchantCredentialsApi,
   getPaymentAccountsApi,
+  getPaymentBatchPoliciesApi,
   getPaymentPlansApi,
   getTelegramBotsApi,
   getTelegramGroupsApi,
@@ -27,6 +28,7 @@ import {
   updateMerchantApi,
   updatePaymentPlanApi,
 } from '#/api';
+import { AsyncStatusSwitch } from '#/components';
 import {
   confirmResourceAction,
   runResourceAction,
@@ -36,7 +38,6 @@ import {
 
 import { createEmptyBusinessPage } from '../shared/business-grid';
 import {
-  businessStatusColor,
   businessStatusOptions,
   businessStatusText,
   formatBusinessTime,
@@ -56,7 +57,6 @@ import {
 } from './schema';
 
 type SearchValues = {
-  accountCode?: string;
   accountName?: string;
   externalMerchantId?: string;
   platform?: BusinessApi.MerchantPlatform;
@@ -77,6 +77,7 @@ const selectedMerchant = ref<BusinessApi.Merchant>();
 const credentials = ref<BusinessApi.MerchantCredential[]>([]);
 const paymentAccounts = ref<BusinessApi.PaymentAccount[]>([]);
 const paymentPlans = ref<BusinessApi.PaymentPlan[]>([]);
+const paymentBatchPolicies = ref<BusinessApi.PaymentBatchPolicy[]>([]);
 const testingId = ref<string>();
 const syncingId = ref<string>();
 const editingId = ref<string>();
@@ -111,12 +112,6 @@ const formOptions: VbenFormProps = {
     },
     {
       component: 'Input',
-      componentProps: { placeholder: '请输入账号编码' },
-      fieldName: 'accountCode',
-      label: '账号编码',
-    },
-    {
-      component: 'Input',
       componentProps: { placeholder: '请输入平台商家编号' },
       fieldName: 'externalMerchantId',
       label: '平台商家编号',
@@ -146,16 +141,13 @@ const formOptions: VbenFormProps = {
 };
 
 const gridOptions: VxeTableGridOptions<BusinessApi.Merchant> = {
-  cellConfig: { height: 64 },
   columnConfig: { resizable: true },
   columns: [
     { align: 'center', type: 'seq', width: 60 },
     {
-      align: 'center',
-      field: 'account',
-      slots: { default: 'account' },
+      field: 'name',
       title: '商家账号',
-      width: 220,
+      minWidth: 180,
     },
     {
       align: 'center',
@@ -173,16 +165,11 @@ const gridOptions: VxeTableGridOptions<BusinessApi.Merchant> = {
       width: 110,
     },
     {
-      field: 'syncConfig',
-      slots: { default: 'syncConfig' },
-      title: '同步配置',
-      width: 190,
-    },
-    {
+      align: 'center',
       field: 'botConfig',
       slots: { default: 'botConfig' },
       title: '聊天通知',
-      width: 190,
+      width: 110,
     },
     {
       align: 'center',
@@ -196,7 +183,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.Merchant> = {
       field: 'status',
       slots: { default: 'status' },
       title: '状态',
-      width: 90,
+      width: 110,
     },
     {
       field: 'updatedAt',
@@ -210,7 +197,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.Merchant> = {
       fixed: 'right',
       slots: { default: 'action' },
       title: '操作',
-      width: 370,
+      width: 320,
     },
   ],
 };
@@ -387,8 +374,8 @@ async function loadMerchantGroupBindings(
   });
 }
 
-function toggleStatus(merchant: BusinessApi.Merchant) {
-  const status = merchant.status === 'active' ? 'disabled' : 'active';
+function changeStatus(merchant: BusinessApi.Merchant, checked: boolean) {
+  const status = checked ? 'active' : 'disabled';
   return runResourceAction({
     action: () =>
       setMerchantStatusApi(merchant.id, status, selectedTenantId.value),
@@ -443,17 +430,27 @@ async function openConfig(merchant: BusinessApi.Merchant) {
   configOpen.value = true;
   configLoading.value = true;
   try {
-    [credentials.value, paymentAccounts.value, paymentPlans.value] =
-      await Promise.all([
-        getMerchantCredentialsApi(merchant.id, {
-          tenantId: selectedTenantId.value,
-        }),
-        getPaymentAccountsApi({ tenantId: selectedTenantId.value }),
-        getPaymentPlansApi({
-          merchantId: merchant.id,
-          tenantId: selectedTenantId.value,
-        }),
-      ]);
+    const [merchantCredentials, accounts, plans, policies] = await Promise.all([
+      getMerchantCredentialsApi(merchant.id, {
+        tenantId: selectedTenantId.value,
+      }),
+      getPaymentAccountsApi({ tenantId: selectedTenantId.value }),
+      getPaymentPlansApi({
+        merchantId: merchant.id,
+        tenantId: selectedTenantId.value,
+      }),
+      getPaymentBatchPoliciesApi({
+        applicableMerchantId: merchant.id,
+        page: 1,
+        pageSize: 100,
+        status: 'active',
+        tenantId: selectedTenantId.value,
+      }),
+    ]);
+    credentials.value = merchantCredentials;
+    paymentAccounts.value = accounts;
+    paymentPlans.value = plans;
+    paymentBatchPolicies.value = policies.items;
   } finally {
     configLoading.value = false;
   }
@@ -511,36 +508,41 @@ function createPaymentPlan() {
   const merchant = selectedMerchant.value;
   if (!merchant) return;
   const routes = paymentPlanRouteOptions();
-  formModalShow(createPaymentPlanModalOptions(routes), {
-    onOk: async (api) => {
-      await api.validate();
-      const data = api.formData() as {
-        priority: number;
-        routeKey: string;
-        weight: number;
-      };
-      const [paymentAccountId, paymentAccountChannelId] =
-        data.routeKey.split(':');
-      await runResourceAction({
-        action: () =>
-          createPaymentPlanApi({
-            currency: 'CNY',
-            merchantId: merchant.id,
-            paymentAccountChannelId: paymentAccountChannelId!,
-            paymentAccountId: paymentAccountId!,
-            priority: data.priority,
-            scene: 'C2C_BUY',
-            tenantId: selectedTenantId.value,
-            weight: data.weight,
-          }),
-        onSuccess: async () => {
-          formModalClose();
-          await reloadPaymentPlans();
-        },
-        successMessage: '支付方案已新增',
-      });
+  formModalShow(
+    createPaymentPlanModalOptions(routes, paymentBatchPolicyOptions()),
+    {
+      onOk: async (api) => {
+        await api.validate();
+        const data = api.formData() as {
+          batchPolicyId?: string;
+          priority: number;
+          routeKey: string;
+          weight: number;
+        };
+        const [paymentAccountId, paymentAccountChannelId] =
+          data.routeKey.split(':');
+        await runResourceAction({
+          action: () =>
+            createPaymentPlanApi({
+              batchPolicyId: data.batchPolicyId || null,
+              currency: 'CNY',
+              merchantId: merchant.id,
+              paymentAccountChannelId: paymentAccountChannelId!,
+              paymentAccountId: paymentAccountId!,
+              priority: data.priority,
+              scene: 'C2C_BUY',
+              tenantId: selectedTenantId.value,
+              weight: data.weight,
+            }),
+          onSuccess: async () => {
+            formModalClose();
+            await reloadPaymentPlans();
+          },
+          successMessage: '支付方案已新增',
+        });
+      },
     },
-  });
+  );
 }
 
 function paymentPlanRouteOptions() {
@@ -548,12 +550,29 @@ function paymentPlanRouteOptions() {
     account.status === 'active'
       ? account.channels
           .filter((channel) => channel.status === 'active')
-          .map((channel) => ({
-            label: `${account.name} · ${channel.channelName ?? channel.channelCode}`,
-            value: `${account.id}:${channel.id}`,
-          }))
+          .flatMap((channel) =>
+            channel.executionMode
+              ? [
+                  {
+                    executionMode: channel.executionMode,
+                    label: `${account.name} · ${channel.channelName ?? '未知支付通道'}`,
+                    value: `${account.id}:${channel.id}`,
+                  },
+                ]
+              : [],
+          )
       : [],
   );
+}
+
+function paymentBatchPolicyOptions() {
+  return paymentBatchPolicies.value.map((policy) => ({
+    label:
+      policy.scopeType === 'GLOBAL'
+        ? `全局 · ${policy.name}`
+        : `商家 · ${policy.name}`,
+    value: policy.id,
+  }));
 }
 
 async function reloadPaymentPlans() {
@@ -567,11 +586,15 @@ async function reloadPaymentPlans() {
 
 async function editPaymentPlan(plan: BusinessApi.PaymentPlan) {
   const [formApi] = await formModalShow(
-    editPaymentPlanModalOptions(paymentPlanRouteOptions()),
+    editPaymentPlanModalOptions(
+      paymentPlanRouteOptions(),
+      paymentBatchPolicyOptions(),
+    ),
     {
       onOk: async (api) => {
         await api.validate();
         const data = api.formData() as {
+          batchPolicyId?: string;
           priority: number;
           routeKey: string;
           weight: number;
@@ -581,6 +604,7 @@ async function editPaymentPlan(plan: BusinessApi.PaymentPlan) {
         await runResourceAction({
           action: () =>
             updatePaymentPlanApi(plan.id, {
+              batchPolicyId: data.batchPolicyId || null,
               paymentAccountChannelId: paymentAccountChannelId!,
               paymentAccountId: paymentAccountId!,
               priority: data.priority,
@@ -597,14 +621,18 @@ async function editPaymentPlan(plan: BusinessApi.PaymentPlan) {
     },
   );
   formApi?.setValue({
+    batchPolicyId: plan.batchPolicyId ?? '',
     priority: plan.priority,
     routeKey: `${plan.paymentAccountId}:${plan.paymentAccountChannelId}`,
     weight: plan.weight,
   });
 }
 
-function togglePaymentPlanStatus(plan: BusinessApi.PaymentPlan) {
-  const status = plan.status === 'active' ? 'disabled' : 'active';
+function changePaymentPlanStatus(
+  plan: BusinessApi.PaymentPlan,
+  checked: boolean,
+) {
+  const status = checked ? 'active' : 'disabled';
   return runResourceAction({
     action: () =>
       setPaymentPlanStatusApi(plan.id, status, selectedTenantId.value),
@@ -626,14 +654,24 @@ function removePaymentPlan(plan: BusinessApi.PaymentPlan) {
 }
 
 function paymentAccountName(id: string) {
-  return paymentAccounts.value.find((item) => item.id === id)?.name ?? id;
+  return (
+    paymentAccounts.value.find((item) => item.id === id)?.name ?? '未知支付账号'
+  );
 }
 
 function paymentChannelName(accountId: string, channelId: string) {
   return (
     paymentAccounts.value
       .find((item) => item.id === accountId)
-      ?.channels.find((item) => item.id === channelId)?.channelName ?? channelId
+      ?.channels.find((item) => item.id === channelId)?.channelName ??
+    '未知支付通道'
+  );
+}
+
+function paymentBatchPolicyName(id: null | string) {
+  if (!id) return '-';
+  return (
+    paymentBatchPolicies.value.find((item) => item.id === id)?.name ?? '已失效'
   );
 }
 
@@ -660,16 +698,6 @@ onMounted(async () => {
           新增商家账号
         </AButton>
       </template>
-      <template #account="{ row }">
-        <div
-          class="inline-grid grid-cols-[48px_minmax(0,1fr)] items-center gap-x-2 gap-y-1 text-left"
-        >
-          <ATag class="m-0 text-center" color="blue">名称</ATag>
-          <span class="truncate">{{ row.name }}</span>
-          <ATag class="m-0 text-center">编码</ATag>
-          <span class="truncate tabular-nums">{{ row.code }}</span>
-        </div>
-      </template>
       <template #platform="{ row }">
         {{ merchantPlatformText(row.platform) }}
       </template>
@@ -678,38 +706,28 @@ onMounted(async () => {
           {{ row.credentialConfigured ? '已配置' : '未配置' }}
         </ATag>
       </template>
-      <template #syncConfig="{ row }">
-        <div class="text-sm tabular-nums leading-6">
-          <div>每页 {{ row.pageSize }} 笔</div>
-          <div>重叠 {{ row.overlapSeconds }} 秒</div>
-        </div>
-      </template>
       <template #botConfig="{ row }">
-        <div v-if="row.botCode" class="text-sm leading-6">
-          <div>{{ row.botCode }}</div>
-          <div class="text-muted-foreground">
-            {{ row.chatId || '未绑定群组' }}
-          </div>
-        </div>
-        <span v-else class="text-muted-foreground">未配置</span>
+        <ATag :color="row.botCode && row.chatId ? 'success' : 'default'">
+          {{ row.botCode && row.chatId ? '已绑定' : '未绑定' }}
+        </ATag>
       </template>
       <template #automaticPayment="{ row }">
-        <div v-if="row.automaticPaymentEnabled" class="leading-6">
-          <ATag color="success">已开启</ATag>
-          <div class="text-muted-foreground text-xs">
-            {{
-              row.automaticPaymentExecutionMode === 'BATCH'
-                ? '支付宝批量有密'
-                : '支付宝商家转账'
-            }}
-          </div>
-        </div>
+        <ATag v-if="row.automaticPaymentEnabled" color="success">
+          {{
+            row.automaticPaymentExecutionMode === 'BATCH'
+              ? '批次付款'
+              : '单笔付款'
+          }}
+        </ATag>
         <ATag v-else>未开启</ATag>
       </template>
       <template #status="{ row }">
-        <ATag :color="businessStatusColor(row.status)">
-          {{ businessStatusText(row.status) }}
-        </ATag>
+        <AsyncStatusSwitch
+          v-access:code="['merchant:account:update']"
+          :checked="row.status === 'active'"
+          :label="`${row.name}状态`"
+          :request="(checked) => changeStatus(row, checked)"
+        />
       </template>
       <template #action="{ row }">
         <ASpace :size="4">
@@ -738,14 +756,6 @@ onMounted(async () => {
             @click="editMerchant(row)"
           >
             编辑
-          </AButton>
-          <AButton
-            v-access:code="['merchant:account:update']"
-            size="small"
-            type="link"
-            @click="toggleStatus(row)"
-          >
-            {{ row.status === 'active' ? '停用' : '启用' }}
           </AButton>
           <AButton
             v-access:code="['merchant:account:delete']"
@@ -854,7 +864,7 @@ onMounted(async () => {
               :pagination="false"
               row-key="id"
               size="small"
-              :scroll="{ x: 820 }"
+              :scroll="{ x: 1040 }"
             >
               <ATableColumn key="account" title="支付账号" :width="180">
                 <template #default="{ record }">
@@ -871,6 +881,24 @@ onMounted(async () => {
                   }}
                 </template>
               </ATableColumn>
+              <ATableColumn key="mode" title="付款模式" :width="110">
+                <template #default="{ record }">
+                  {{
+                    paymentAccounts
+                      .find((item) => item.id === record.paymentAccountId)
+                      ?.channels.find(
+                        (item) => item.id === record.paymentAccountChannelId,
+                      )?.executionMode === 'BATCH'
+                      ? '批次付款'
+                      : '单笔付款'
+                  }}
+                </template>
+              </ATableColumn>
+              <ATableColumn key="batchPolicy" title="批次策略" :width="150">
+                <template #default="{ record }">
+                  {{ paymentBatchPolicyName(record.batchPolicyId) }}
+                </template>
+              </ATableColumn>
               <ATableColumn
                 data-index="priority"
                 title="使用顺序"
@@ -879,16 +907,21 @@ onMounted(async () => {
               <ATableColumn data-index="weight" title="分配比例" :width="100" />
               <ATableColumn key="status" title="状态" :width="90">
                 <template #default="{ record }">
-                  <ATag :color="businessStatusColor(record.status)">
-                    {{ businessStatusText(record.status) }}
-                  </ATag>
+                  <AsyncStatusSwitch
+                    v-access:code="['payment:account:bind']"
+                    :checked="record.status === 'active'"
+                    :label="`${paymentAccountName(record.paymentAccountId)}支付方案状态`"
+                    :request="
+                      (checked) => changePaymentPlanStatus(record, checked)
+                    "
+                  />
                 </template>
               </ATableColumn>
               <ATableColumn
                 key="action"
                 fixed="right"
                 title="操作"
-                :width="210"
+                :width="150"
               >
                 <template #default="{ record }">
                   <ASpace :size="4">
@@ -899,14 +932,6 @@ onMounted(async () => {
                       @click="editPaymentPlan(record)"
                     >
                       编辑
-                    </AButton>
-                    <AButton
-                      v-access:code="['payment:account:bind']"
-                      size="small"
-                      type="link"
-                      @click="togglePaymentPlanStatus(record)"
-                    >
-                      {{ record.status === 'active' ? '停用' : '启用' }}
                     </AButton>
                     <AButton
                       v-access:code="['payment:account:bind']"

@@ -575,6 +575,11 @@ export class PaymentPlanListDto extends TenantContextDto {
 }
 
 export class CreatePaymentPlanDto extends TenantContextDto {
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @IsOptional()
+  @IsUUID()
+  batchPolicyId?: string | null
+
   @ApiProperty()
   @IsUUID()
   merchantId: string
@@ -611,6 +616,11 @@ export class CreatePaymentPlanDto extends TenantContextDto {
 }
 
 export class UpdatePaymentPlanDto extends TenantContextDto {
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @IsOptional()
+  @IsUUID()
+  batchPolicyId?: string | null
+
   @ApiPropertyOptional({ format: 'uuid' })
   @IsOptional()
   @IsUUID()

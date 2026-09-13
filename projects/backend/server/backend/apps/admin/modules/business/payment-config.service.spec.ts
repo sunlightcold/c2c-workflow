@@ -8,8 +8,10 @@ import {
   PaymentAccountChannelEntity,
   PaymentAccountEntity,
   PaymentChannelEntity,
+  PaymentExecutionMode,
   PaymentPlatformEntity,
   PaymentOrderEntity,
+  PaymentBatchPolicyEntity,
 } from '@admin/database'
 import { DataSource } from 'typeorm'
 import { PaymentConfigService } from './payment-config.service'
@@ -43,6 +45,7 @@ describe('PaymentConfigService', () => {
     },
     platform: { find: jest.fn(), findOne: jest.fn() },
     channel: { find: jest.fn(), findOne: jest.fn() },
+    batchPolicy: { findOne: jest.fn() },
   }
   const txRepositories = {
     account: { delete: jest.fn(), findOne: jest.fn() },
@@ -73,8 +76,14 @@ describe('PaymentConfigService', () => {
     repositories.account.findOne.mockResolvedValue({ id: accountId, tenantId, status: 'active' })
     repositories.accountChannel.findOne.mockResolvedValue({
       id: accountChannelId,
+      channelId: 'channel-1',
       paymentAccountId: accountId,
       status: 'active',
+    })
+    repositories.channel.findOne.mockResolvedValue({
+      id: 'channel-1',
+      executionMode: PaymentExecutionMode.INSTANT,
+      status: BusinessStatus.ACTIVE,
     })
     txRepositories.account.findOne.mockResolvedValue({ id: accountId, tenantId })
     txRepositories.accountChannel.findOne.mockResolvedValue({
@@ -103,6 +112,10 @@ describe('PaymentConfigService', () => {
         },
         { provide: getRepositoryToken(PaymentPlatformEntity), useValue: repositories.platform },
         { provide: getRepositoryToken(PaymentChannelEntity), useValue: repositories.channel },
+        {
+          provide: getRepositoryToken(PaymentBatchPolicyEntity),
+          useValue: repositories.batchPolicy,
+        },
         { provide: DataSource, useValue: dataSource },
         { provide: CredentialCipherService, useValue: cipher },
       ],
@@ -129,6 +142,85 @@ describe('PaymentConfigService', () => {
         paymentAccountChannelId: accountChannelId,
       }),
     )
+  })
+
+  it('requires a batch policy when a payment plan uses a batch channel', async () => {
+    repositories.channel.findOne.mockResolvedValue({
+      id: 'channel-1',
+      executionMode: PaymentExecutionMode.BATCH,
+      status: BusinessStatus.ACTIVE,
+    })
+
+    await expect(
+      service.createPlan(tenantId, {
+        merchantId,
+        paymentAccountId: accountId,
+        paymentAccountChannelId: accountChannelId,
+        scene: 'C2C_BUY',
+        currency: 'CNY',
+        priority: 10,
+        weight: 100,
+      }),
+    ).rejects.toThrow('批量支付方案必须选择批次策略')
+  })
+
+  it('allows a batch plan to bind an active global policy in the same tenant', async () => {
+    repositories.channel.findOne.mockResolvedValue({
+      id: 'channel-1',
+      executionMode: PaymentExecutionMode.BATCH,
+      status: BusinessStatus.ACTIVE,
+    })
+    repositories.batchPolicy.findOne.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000060',
+      merchantId: null,
+      tenantId,
+      status: BusinessStatus.ACTIVE,
+    })
+
+    await service.createPlan(tenantId, {
+      merchantId,
+      paymentAccountId: accountId,
+      paymentAccountChannelId: accountChannelId,
+      batchPolicyId: '00000000-0000-4000-8000-000000000060',
+      scene: 'C2C_BUY',
+      currency: 'CNY',
+      priority: 10,
+      weight: 100,
+    })
+
+    expect(repositories.plan.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        batchPolicyId: '00000000-0000-4000-8000-000000000060',
+        merchantId,
+      }),
+    )
+  })
+
+  it('rejects a batch policy owned by another merchant', async () => {
+    repositories.channel.findOne.mockResolvedValue({
+      id: 'channel-1',
+      executionMode: PaymentExecutionMode.BATCH,
+      status: BusinessStatus.ACTIVE,
+    })
+    repositories.batchPolicy.findOne.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000060',
+      merchantId: '00000000-0000-4000-8000-000000000099',
+      tenantId,
+      status: BusinessStatus.ACTIVE,
+    })
+
+    await expect(
+      service.createPlan(tenantId, {
+        merchantId,
+        paymentAccountId: accountId,
+        paymentAccountChannelId: accountChannelId,
+        batchPolicyId: '00000000-0000-4000-8000-000000000060',
+        scene: 'C2C_BUY',
+        currency: 'CNY',
+        priority: 10,
+        weight: 100,
+      }),
+    ).rejects.toThrow('批次策略不可用或不适用于当前商家')
   })
 
   it('updates a payment plan only inside its tenant', async () => {

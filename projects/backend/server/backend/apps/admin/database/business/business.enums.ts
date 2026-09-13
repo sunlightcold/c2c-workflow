@@ -18,6 +18,17 @@ export enum PaymentExecutionMode {
   BATCH = 'BATCH',
 }
 
+export enum PaymentBatchRuleType {
+  MANUAL = 'MANUAL',
+  INTERVAL = 'INTERVAL',
+  ORDER_COUNT = 'ORDER_COUNT',
+}
+
+export enum PaymentBatchPolicyScope {
+  GLOBAL = 'GLOBAL',
+  MERCHANT = 'MERCHANT',
+}
+
 export enum PaymentAdapterCode {
   ALIPAY_BATCH = 'ALIPAY_BATCH',
   ALIPAY_MERCHANT_TRANSFER = 'ALIPAY_MERCHANT_TRANSFER',

@@ -202,6 +202,7 @@ export class PaymentOrderService {
   private routeFields(route: ResolvedPaymentPlan | null) {
     return {
       paymentPlanId: route?.planId ?? null,
+      batchPolicyId: route?.batchPolicyId ?? null,
       paymentAccountId: route?.paymentAccountId ?? null,
       paymentAccountChannelId: route?.paymentAccountChannelId ?? null,
     }

@@ -11,6 +11,7 @@ describe('PaymentPlanResolver', () => {
     dataSource.query.mockResolvedValue([
       {
         planId: 'plan-a',
+        batchPolicyId: null,
         paymentAccountId: 'account-a',
         paymentAccountChannelId: 'channel-a',
         adapterCode: 'ALIPAY_MERCHANT_TRANSFER',
@@ -20,6 +21,7 @@ describe('PaymentPlanResolver', () => {
       },
       {
         planId: 'plan-b',
+        batchPolicyId: null,
         paymentAccountId: 'account-b',
         paymentAccountChannelId: 'channel-b',
         adapterCode: 'ALIPAY_MERCHANT_TRANSFER',
@@ -29,6 +31,7 @@ describe('PaymentPlanResolver', () => {
       },
       {
         planId: 'backup',
+        batchPolicyId: null,
         paymentAccountId: 'backup-account',
         paymentAccountChannelId: 'backup-channel',
         adapterCode: 'ALIPAY_MERCHANT_TRANSFER',

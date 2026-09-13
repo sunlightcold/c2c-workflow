@@ -21,6 +21,7 @@ import {
   updatePaymentAccountChannelApi,
   updatePaymentAccountCredentialApi,
 } from '#/api';
+import { AsyncStatusSwitch } from '#/components';
 import {
   confirmResourceAction,
   runResourceAction,
@@ -39,15 +40,12 @@ import {
 } from '../shared/business-form-schemas';
 import { createEmptyBusinessPage } from '../shared/business-grid';
 import {
-  businessStatusColor,
   businessStatusOptions,
-  businessStatusText,
   formatBusinessTime,
 } from '../shared/business-ui';
 import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 
 type SearchValues = {
-  accountCode?: string;
   accountName?: string;
   externalAccountId?: string;
   platformId?: string;
@@ -110,12 +108,6 @@ const formOptions: VbenFormProps = {
     },
     {
       component: 'Input',
-      componentProps: { placeholder: '请输入账号编码' },
-      fieldName: 'accountCode',
-      label: '账号编码',
-    },
-    {
-      component: 'Input',
       componentProps: { placeholder: '请输入支付宝商户号' },
       fieldName: 'externalAccountId',
       label: '支付宝商户号',
@@ -145,15 +137,13 @@ const formOptions: VbenFormProps = {
 };
 
 const gridOptions: VxeTableGridOptions<BusinessApi.PaymentAccount> = {
-  cellConfig: { height: 64 },
   columnConfig: { resizable: true },
   columns: [
     { align: 'center', type: 'seq', width: 60 },
     {
-      field: 'account',
-      slots: { default: 'account' },
+      field: 'name',
       title: '支付账号',
-      width: 220,
+      minWidth: 180,
     },
     {
       align: 'center',
@@ -182,7 +172,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.PaymentAccount> = {
       field: 'status',
       slots: { default: 'status' },
       title: '状态',
-      width: 90,
+      width: 110,
     },
     {
       field: 'updatedAt',
@@ -196,7 +186,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.PaymentAccount> = {
       fixed: 'right',
       slots: { default: 'action' },
       title: '操作',
-      width: 360,
+      width: 310,
     },
   ],
 };
@@ -340,8 +330,11 @@ async function editCredential(account: BusinessApi.PaymentAccount) {
   });
 }
 
-function toggleAccountStatus(account: BusinessApi.PaymentAccount) {
-  const status = account.status === 'active' ? 'disabled' : 'active';
+function changeAccountStatus(
+  account: BusinessApi.PaymentAccount,
+  checked: boolean,
+) {
+  const status = checked ? 'active' : 'disabled';
   return runResourceAction({
     action: () =>
       setPaymentAccountStatusApi(account.id, status, selectedTenantId.value),
@@ -401,9 +394,7 @@ async function editChannel(channel: BusinessApi.PaymentChannelBinding) {
   const account = selectedAccount.value;
   if (!account) return;
   const [formApi] = await formModalShow(
-    editPaymentChannelModalOptions(
-      channel.channelName ?? channel.channelCode ?? channel.channelId,
-    ),
+    editPaymentChannelModalOptions(channel.channelName ?? '未知支付通道'),
     {
       onOk: async (api) => {
         await api.validate();
@@ -428,18 +419,20 @@ async function editChannel(channel: BusinessApi.PaymentChannelBinding) {
     },
   );
   formApi?.setValue({
-    channelName:
-      channel.channelName ?? channel.channelCode ?? channel.channelId,
+    channelName: channel.channelName ?? '未知支付通道',
     concurrencyLimit: channel.concurrencyLimit,
     maximumAmount: channel.maximumAmount ?? '',
     minimumAmount: channel.minimumAmount ?? '',
   });
 }
 
-function toggleChannelStatus(channel: BusinessApi.PaymentChannelBinding) {
+function changeChannelStatus(
+  channel: BusinessApi.PaymentChannelBinding,
+  checked: boolean,
+) {
   const account = selectedAccount.value;
   if (!account) return;
-  const status = channel.status === 'active' ? 'disabled' : 'active';
+  const status = checked ? 'active' : 'disabled';
   return runResourceAction({
     action: () =>
       setPaymentAccountChannelStatusApi(
@@ -468,12 +461,15 @@ function removeChannel(channel: BusinessApi.PaymentChannelBinding) {
     okText: '移除',
     onSuccess: () => gridApi.query(),
     successMessage: '支付通道已移除',
-    title: `确认移除“${channel.channelName ?? channel.channelCode}”吗？`,
+    title: `确认移除“${channel.channelName ?? '未知支付通道'}”吗？`,
   });
 }
 
 function platformName(id: string) {
-  return platforms.value.find((platform) => platform.id === id)?.name ?? id;
+  return (
+    platforms.value.find((platform) => platform.id === id)?.name ??
+    '未知支付平台'
+  );
 }
 
 function executionModeText(mode: BusinessApi.PaymentExecutionMode | null) {
@@ -512,16 +508,6 @@ onMounted(async () => {
           新增支付账号
         </AButton>
       </template>
-      <template #account="{ row }">
-        <div
-          class="inline-grid grid-cols-[48px_minmax(0,1fr)] items-center gap-x-2 gap-y-1 text-left"
-        >
-          <ATag class="m-0 text-center" color="blue">名称</ATag>
-          <span class="truncate">{{ row.name }}</span>
-          <ATag class="m-0 text-center">编码</ATag>
-          <span class="truncate tabular-nums">{{ row.code }}</span>
-        </div>
-      </template>
       <template #platform="{ row }">
         {{ platformName(row.platformId) }}
       </template>
@@ -544,9 +530,12 @@ onMounted(async () => {
         </AButton>
       </template>
       <template #status="{ row }">
-        <ATag :color="businessStatusColor(row.status)">
-          {{ businessStatusText(row.status) }}
-        </ATag>
+        <AsyncStatusSwitch
+          v-access:code="['payment:account:update']"
+          :checked="row.status === 'active'"
+          :label="`${row.name}状态`"
+          :request="(checked) => changeAccountStatus(row, checked)"
+        />
       </template>
       <template #action="{ row }">
         <ASpace :size="4">
@@ -568,14 +557,6 @@ onMounted(async () => {
             @click="editCredential(row)"
           >
             凭据配置
-          </AButton>
-          <AButton
-            v-access:code="['payment:account:update']"
-            size="small"
-            type="link"
-            @click="toggleAccountStatus(row)"
-          >
-            {{ row.status === 'active' ? '停用' : '启用' }}
           </AButton>
           <AButton
             v-access:code="['payment:account:delete']"
@@ -634,7 +615,7 @@ onMounted(async () => {
       >
         <ATableColumn key="channel" title="支付通道" :width="180">
           <template #default="{ record }">
-            {{ record.channelName ?? record.channelCode ?? record.channelId }}
+            {{ record.channelName ?? '未知支付通道' }}
           </template>
         </ATableColumn>
         <ATableColumn key="mode" title="支付方式" :width="110">
@@ -654,12 +635,15 @@ onMounted(async () => {
         />
         <ATableColumn key="status" title="状态" :width="90">
           <template #default="{ record }">
-            <ATag :color="businessStatusColor(record.status)">
-              {{ businessStatusText(record.status) }}
-            </ATag>
+            <AsyncStatusSwitch
+              v-access:code="['payment:account:bind']"
+              :checked="record.status === 'active'"
+              :label="`${record.channelName ?? '支付通道'}状态`"
+              :request="(checked) => changeChannelStatus(record, checked)"
+            />
           </template>
         </ATableColumn>
-        <ATableColumn key="action" title="操作" :width="210">
+        <ATableColumn key="action" title="操作" :width="150">
           <template #default="{ record }">
             <ASpace :size="4">
               <AButton
@@ -669,14 +653,6 @@ onMounted(async () => {
                 @click="editChannel(record)"
               >
                 编辑
-              </AButton>
-              <AButton
-                v-access:code="['payment:account:bind']"
-                size="small"
-                type="link"
-                @click="toggleChannelStatus(record)"
-              >
-                {{ record.status === 'active' ? '停用' : '启用' }}
               </AButton>
               <AButton
                 v-access:code="['payment:account:bind']"
@@ -699,16 +675,15 @@ onMounted(async () => {
         >
           <div class="mb-3 flex items-start justify-between gap-3">
             <span class="min-w-0 break-words font-medium">
-              {{
-                channel.channelName ?? channel.channelCode ?? channel.channelId
-              }}
+              {{ channel.channelName ?? '未知支付通道' }}
             </span>
-            <ATag
-              :color="businessStatusColor(channel.status)"
-              class="m-0 shrink-0"
-            >
-              {{ businessStatusText(channel.status) }}
-            </ATag>
+            <AsyncStatusSwitch
+              v-access:code="['payment:account:bind']"
+              :checked="channel.status === 'active'"
+              class="shrink-0"
+              :label="`${channel.channelName ?? '支付通道'}状态`"
+              :request="(checked) => changeChannelStatus(channel, checked)"
+            />
           </div>
           <dl
             class="grid grid-cols-[88px_minmax(0,1fr)] gap-x-2 gap-y-2 text-sm"
@@ -729,13 +704,6 @@ onMounted(async () => {
               @click="editChannel(channel)"
             >
               编辑
-            </AButton>
-            <AButton
-              v-access:code="['payment:account:bind']"
-              size="small"
-              @click="toggleChannelStatus(channel)"
-            >
-              {{ channel.status === 'active' ? '停用' : '启用' }}
             </AButton>
             <AButton
               v-access:code="['payment:account:bind']"

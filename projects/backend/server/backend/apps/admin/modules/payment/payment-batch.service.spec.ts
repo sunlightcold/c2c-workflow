@@ -23,8 +23,26 @@ describe('PaymentBatchService ready groups', () => {
     await expect(
       service.findReadyGroups('tenant-1', 'merchant-1', PaymentSourceType.BOT_MANUAL),
     ).resolves.toEqual([
-      { paymentOrderIds: ['order-1', 'order-2'], totalAmount: '30.00' },
-      { paymentOrderIds: ['order-3'], totalAmount: '30.00' },
+      {
+        batchPolicyId: 'policy-1',
+        currency: 'CNY',
+        merchantId: 'merchant-1',
+        oldestReadyAt: new Date('2026-09-13T01:00:00.000Z'),
+        paymentAccountChannelId: 'channel-1',
+        paymentAccountId: 'account-1',
+        paymentOrderIds: ['order-1', 'order-2'],
+        totalAmount: '30.00',
+      },
+      {
+        batchPolicyId: 'policy-1',
+        currency: 'CNY',
+        merchantId: 'merchant-1',
+        oldestReadyAt: new Date('2026-09-13T01:00:00.000Z'),
+        paymentAccountChannelId: 'channel-2',
+        paymentAccountId: 'account-2',
+        paymentOrderIds: ['order-3'],
+        totalAmount: '30.00',
+      },
     ])
     expect(query.where).toHaveBeenCalledWith('payment_order."tenantId" = :tenantId', {
       tenantId: 'tenant-1',
@@ -35,6 +53,42 @@ describe('PaymentBatchService ready groups', () => {
     expect(query.andWhere).toHaveBeenCalledWith(expect.stringContaining('NOT EXISTS'), {
       activeItemStatuses: ['QUEUED', 'SUBMITTING', 'PROCESSING', 'UNKNOWN'],
     })
+  })
+
+  it('finds a global policy ready groups across merchants without mixing them', async () => {
+    const query = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getMany: jest
+        .fn()
+        .mockResolvedValue([
+          order('order-1', 'account-1', 'channel-1', '10.00'),
+          { ...order('order-2', 'account-1', 'channel-1', '20.00'), merchantId: 'merchant-2' },
+        ]),
+    }
+    const repository = { createQueryBuilder: jest.fn().mockReturnValue(query) }
+    const dataSource = { getRepository: jest.fn().mockReturnValue(repository) }
+    const service = new PaymentBatchService(dataSource as never)
+
+    const groups = await service.findReadyGroups(
+      'tenant-1',
+      null,
+      PaymentSourceType.C2C_BUY,
+      'policy-1',
+    )
+
+    expect(
+      groups.map(({ merchantId, paymentOrderIds }) => ({ merchantId, paymentOrderIds })),
+    ).toEqual([
+      { merchantId: 'merchant-1', paymentOrderIds: ['order-1'] },
+      { merchantId: 'merchant-2', paymentOrderIds: ['order-2'] },
+    ])
+    expect(query.andWhere).not.toHaveBeenCalledWith(
+      'payment_order."merchantId" = :merchantId',
+      expect.anything(),
+    )
   })
 })
 
@@ -51,6 +105,8 @@ function order(
     sourceType: PaymentSourceType.BOT_MANUAL,
     paymentAccountId,
     paymentAccountChannelId,
+    batchPolicyId: 'policy-1',
+    createdAt: new Date('2026-09-13T01:00:00.000Z'),
     currency: 'CNY',
     paymentMethod: 'ALIPAY',
     executionMode: PaymentExecutionMode.BATCH,

@@ -13,6 +13,7 @@ export const BusinessNoPrefix = {
   MERCHANT: 'MCH',
   PAYMENT_ACCOUNT: 'PAC',
   PAYMENT_BATCH: 'BAT',
+  PAYMENT_BATCH_POLICY: 'BPS',
   PAYMENT_ORDER: 'PAY',
   TELEGRAM_BOT: 'BOT',
 } as const

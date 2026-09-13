@@ -1,4 +1,4 @@
-import { PaymentExecutionMode, PaymentOrderStatus } from '@admin/database'
+import { PaymentExecutionMode, PaymentOrderStatus, PaymentSourceType } from '@admin/database'
 import { C2cAutomaticPaymentService } from './c2c-automatic-payment.service'
 
 describe('C2cAutomaticPaymentService', () => {
@@ -27,6 +27,11 @@ describe('C2cAutomaticPaymentService', () => {
     confirmPlatform: jest.fn(),
   }
   const batchService = { findReadyGroups: jest.fn(), create: jest.fn() }
+  const batchPolicies = {
+    evaluateRules: jest.fn().mockReturnValue(['count-rule']),
+    findActiveRules: jest.fn().mockResolvedValue([]),
+    requireManualRule: jest.fn(),
+  }
   const batchExecution = { submit: jest.fn(), reconcile: jest.fn() }
   const service = new C2cAutomaticPaymentService(
     store as never,
@@ -34,6 +39,7 @@ describe('C2cAutomaticPaymentService', () => {
     paymentOrders as never,
     payments as never,
     batchService as never,
+    batchPolicies as never,
     batchExecution as never,
   )
 
@@ -85,17 +91,79 @@ describe('C2cAutomaticPaymentService', () => {
   it('groups and submits ready batch orders automatically', async () => {
     store.findBatchScopes.mockResolvedValue([{ tenantId: 'tenant-1', merchantId: 'merchant-1' }])
     batchService.findReadyGroups.mockResolvedValue([
-      { paymentOrderIds: ['payment-1', 'payment-2'], totalAmount: '30.00' },
+      {
+        batchPolicyId: 'policy-1',
+        currency: 'CNY',
+        merchantId: 'merchant-1',
+        oldestReadyAt: new Date('2026-09-13T01:59:00.000Z'),
+        paymentAccountChannelId: 'channel-1',
+        paymentAccountId: 'account-1',
+        paymentOrderIds: ['payment-1', 'payment-2'],
+        totalAmount: '30.00',
+      },
     ])
     batchService.create.mockResolvedValue({ batch: { id: 'batch-1' }, items: [] })
 
-    await expect(service.submitReadyBatches()).resolves.toEqual({
+    await expect(service.submitReadyBatches(now)).resolves.toEqual({
       found: 1,
       succeeded: 1,
       failed: 0,
     })
-    expect(batchService.create).toHaveBeenCalledWith('tenant-1', ['payment-1', 'payment-2'])
+    expect(batchService.create).toHaveBeenCalledWith('tenant-1', ['payment-1', 'payment-2'], {
+      ruleIds: ['count-rule'],
+      source: 'AUTOMATIC',
+    })
     expect(batchExecution.submit).toHaveBeenCalledWith('tenant-1', 'batch-1')
+  })
+
+  it('manually submits a global policy in isolated merchant groups', async () => {
+    batchService.findReadyGroups.mockResolvedValue([
+      {
+        batchPolicyId: 'policy-1',
+        currency: 'CNY',
+        merchantId: 'merchant-1',
+        oldestReadyAt: now,
+        paymentAccountChannelId: 'channel-1',
+        paymentAccountId: 'account-1',
+        paymentOrderIds: ['payment-1'],
+        totalAmount: '10.00',
+      },
+      {
+        batchPolicyId: 'policy-1',
+        currency: 'CNY',
+        merchantId: 'merchant-2',
+        oldestReadyAt: now,
+        paymentAccountChannelId: 'channel-2',
+        paymentAccountId: 'account-2',
+        paymentOrderIds: ['payment-2'],
+        totalAmount: '20.00',
+      },
+    ])
+    batchService.create
+      .mockResolvedValueOnce({ batch: { id: 'batch-1' }, items: [] })
+      .mockResolvedValueOnce({ batch: { id: 'batch-2' }, items: [] })
+
+    await expect(service.submitPolicyManually('tenant-1', 'policy-1', null)).resolves.toEqual({
+      found: 2,
+      succeeded: 2,
+      failed: 0,
+    })
+
+    expect(batchPolicies.requireManualRule).toHaveBeenCalledWith('tenant-1', null, 'policy-1')
+    expect(batchService.findReadyGroups).toHaveBeenCalledWith(
+      'tenant-1',
+      null,
+      PaymentSourceType.C2C_BUY,
+      'policy-1',
+    )
+    expect(batchService.create).toHaveBeenNthCalledWith(1, 'tenant-1', ['payment-1'], {
+      ruleIds: [],
+      source: 'MANUAL',
+    })
+    expect(batchService.create).toHaveBeenNthCalledWith(2, 'tenant-1', ['payment-2'], {
+      ruleIds: [],
+      source: 'MANUAL',
+    })
   })
 
   it('reconciles uncertain payments and only retries platform confirmation after funds succeeded', async () => {

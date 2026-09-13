@@ -2,10 +2,12 @@ import {
   BusinessStatus,
   MerchantEntity,
   MerchantPaymentPlanEntity,
+  PaymentBatchPolicyEntity,
   PaymentBatchEntity,
   PaymentAccountChannelEntity,
   PaymentAccountEntity,
   PaymentChannelEntity,
+  PaymentExecutionMode,
   PaymentPlatformEntity,
   PaymentOrderEntity,
 } from '@admin/database'
@@ -31,6 +33,7 @@ export interface PaymentAccountListInput {
 }
 
 export interface CreatePaymentPlanInput {
+  batchPolicyId?: string | null
   merchantId: string
   paymentAccountId: string
   paymentAccountChannelId: string
@@ -41,6 +44,7 @@ export interface CreatePaymentPlanInput {
 }
 
 export interface UpdatePaymentPlanInput {
+  batchPolicyId?: string | null
   paymentAccountChannelId?: string
   paymentAccountId?: string
   priority?: number
@@ -84,6 +88,8 @@ export class PaymentConfigService {
     private readonly platformRepository: Repository<PaymentPlatformEntity>,
     @InjectRepository(PaymentChannelEntity)
     private readonly channelRepository: Repository<PaymentChannelEntity>,
+    @InjectRepository(PaymentBatchPolicyEntity)
+    private readonly batchPolicyRepository: Repository<PaymentBatchPolicyEntity>,
     private readonly dataSource: DataSource,
     private readonly cipher: CredentialCipherService,
   ) {}
@@ -372,18 +378,22 @@ export class PaymentConfigService {
 
     const routeChanged =
       input.paymentAccountId !== undefined || input.paymentAccountChannelId !== undefined
-    if (routeChanged) {
+    if (routeChanged || input.batchPolicyId !== undefined) {
       if (!input.paymentAccountId || !input.paymentAccountChannelId) {
-        throw new BadRequestException('支付账号与支付通道必须同时选择')
+        if (routeChanged) throw new BadRequestException('支付账号与支付通道必须同时选择')
       }
       await this.requireActivePlanRoute(
         tenantId,
         plan.merchantId,
-        input.paymentAccountId,
-        input.paymentAccountChannelId,
+        input.paymentAccountId ?? plan.paymentAccountId,
+        input.paymentAccountChannelId ?? plan.paymentAccountChannelId,
+        input.batchPolicyId === undefined ? plan.batchPolicyId : input.batchPolicyId,
       )
-      plan.paymentAccountId = input.paymentAccountId
-      plan.paymentAccountChannelId = input.paymentAccountChannelId
+      if (input.paymentAccountId) plan.paymentAccountId = input.paymentAccountId
+      if (input.paymentAccountChannelId) {
+        plan.paymentAccountChannelId = input.paymentAccountChannelId
+      }
+      if (input.batchPolicyId !== undefined) plan.batchPolicyId = input.batchPolicyId
     }
     if (input.priority !== undefined) plan.priority = input.priority
     if (input.weight !== undefined) plan.weight = input.weight
@@ -418,6 +428,7 @@ export class PaymentConfigService {
         plan.merchantId,
         plan.paymentAccountId,
         plan.paymentAccountChannelId,
+        plan.batchPolicyId,
       )
     }
     plan.status = status
@@ -430,6 +441,7 @@ export class PaymentConfigService {
       input.merchantId,
       input.paymentAccountId,
       input.paymentAccountChannelId,
+      input.batchPolicyId ?? null,
     )
     return this.planRepository.save(
       this.planRepository.create({
@@ -445,6 +457,7 @@ export class PaymentConfigService {
     merchantId: string,
     paymentAccountId: string,
     paymentAccountChannelId: string,
+    batchPolicyId: string | null,
   ): Promise<void> {
     const [merchant, account, accountChannel] = await Promise.all([
       this.merchantRepository.findOne({ where: { id: merchantId, tenantId } }),
@@ -460,6 +473,21 @@ export class PaymentConfigService {
       accountChannel.status !== BusinessStatus.ACTIVE
     ) {
       throw new BadRequestException('支付通道未在所选支付账号下启用')
+    }
+    const channel = await this.channelRepository.findOne({
+      where: { id: accountChannel.channelId, status: BusinessStatus.ACTIVE },
+    })
+    if (!channel) throw new BadRequestException('支付通道不可用')
+    if (channel.executionMode === PaymentExecutionMode.BATCH) {
+      if (!batchPolicyId) throw new BadRequestException('批量支付方案必须选择批次策略')
+      const policy = await this.batchPolicyRepository.findOne({
+        where: { id: batchPolicyId, tenantId, status: BusinessStatus.ACTIVE },
+      })
+      if (!policy || (policy.merchantId !== null && policy.merchantId !== merchantId)) {
+        throw new BadRequestException('批次策略不可用或不适用于当前商家')
+      }
+    } else if (batchPolicyId) {
+      throw new BadRequestException('单笔支付方案不能选择批次策略')
     }
   }
 

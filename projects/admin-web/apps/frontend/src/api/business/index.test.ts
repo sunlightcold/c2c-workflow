@@ -7,6 +7,7 @@ import {
   confirmMerchantOrderPaidApi,
   createManualPaymentOrderApi,
   createMerchantOrderPaymentApi,
+  createPaymentBatchPolicyApi,
   createTelegramBotApi,
   createTelegramGroupApi,
   createTelegramMemberApi,
@@ -21,6 +22,7 @@ import {
   filterMerchantsApi,
   filterPaymentAccountsApi,
   getMerchantOrderAppealReasonsApi,
+  getPaymentBatchPoliciesApi,
   getPaymentOrdersApi,
   getTelegramMemberEligibleUsersApi,
   getTelegramSuperAdminEligibleUsersApi,
@@ -35,6 +37,7 @@ import {
   startTelegramBotRuntimeApi,
   stopTelegramBotRuntimeApi,
   submitMerchantOrderAppealApi,
+  submitPaymentBatchPolicyApi,
   syncMerchantOrdersApi,
   testMerchantConnectionApi,
   unbindTelegramGroupApi,
@@ -52,6 +55,7 @@ const requestMocks = vi.hoisted(() => ({
   delete: vi.fn(),
   get: vi.fn(),
   post: vi.fn(),
+  patch: vi.fn(),
   put: vi.fn(),
   request: vi.fn(),
 }));
@@ -65,8 +69,58 @@ describe('business api', () => {
     requestMocks.get.mockReset();
     requestMocks.delete.mockReset();
     requestMocks.post.mockReset();
+    requestMocks.patch.mockReset();
     requestMocks.put.mockReset();
     requestMocks.request.mockReset();
+  });
+
+  it('uses tenant-scoped batch policy endpoints and preserves parallel rules', async () => {
+    requestMocks.get.mockResolvedValue({
+      items: [],
+      page: 1,
+      pageSize: 20,
+      total: 0,
+    });
+
+    await getPaymentBatchPoliciesApi({
+      merchantId: 'merchant-1',
+      page: 1,
+      pageSize: 20,
+      tenantId: 'tenant-1',
+    });
+    await createPaymentBatchPolicyApi({
+      merchantId: 'merchant-1',
+      name: '主批次策略',
+      rules: [
+        { ruleType: 'INTERVAL', status: 'active', intervalSeconds: 60 },
+        { ruleType: 'ORDER_COUNT', status: 'active', orderCount: 10 },
+      ],
+      scopeType: 'MERCHANT',
+      tenantId: 'tenant-1',
+    });
+    await submitPaymentBatchPolicyApi('policy-1', { tenantId: 'tenant-1' });
+
+    expect(requestMocks.get).toHaveBeenCalledWith(
+      '/sys/payment-batch-policies',
+      {
+        params: {
+          merchantId: 'merchant-1',
+          page: 1,
+          pageSize: 20,
+          tenantId: 'tenant-1',
+        },
+      },
+    );
+    expect(requestMocks.post).toHaveBeenNthCalledWith(
+      1,
+      '/sys/payment-batch-policies',
+      expect.objectContaining({ rules: expect.any(Array) }),
+    );
+    expect(requestMocks.post).toHaveBeenNthCalledWith(
+      2,
+      '/sys/payment-batch-policies/policy-1/submit',
+      { tenantId: 'tenant-1' },
+    );
   });
 
   it('maps merchant account filters and pagination to the grid contract', async () => {
@@ -485,7 +539,7 @@ describe('business api', () => {
     });
   });
 
-  it('uses tenant-scoped Telegram runtime lifecycle endpoints', async () => {
+  it('uses tenant-scoped Telegram runtime lifecycle endpoints without a JSON body', async () => {
     requestMocks.post.mockResolvedValue({
       state: 'ONLINE',
       runtimeRunning: true,
@@ -505,7 +559,7 @@ describe('business api', () => {
       expect(requestMocks.post).toHaveBeenNthCalledWith(
         index + 1,
         `/sys/tg/bots/bot-1/runtime/${action}`,
-        null,
+        undefined,
         { params: { tenantId: 'tenant-1' } },
       );
     }

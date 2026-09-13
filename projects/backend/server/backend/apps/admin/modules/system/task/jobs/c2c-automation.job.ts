@@ -42,7 +42,7 @@ export class C2cAutomationJob {
 
   async processAutomaticPayments(now = new Date()) {
     const orders = await this.automaticPayments.createAndSubmit(now)
-    const batches = await this.automaticPayments.submitReadyBatches()
+    const batches = await this.automaticPayments.submitReadyBatches(now)
     return { orders, batches }
   }
 

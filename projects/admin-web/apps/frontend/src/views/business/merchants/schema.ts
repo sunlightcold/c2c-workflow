@@ -15,6 +15,9 @@ import {
 
 type Platform = 'BINANCE' | 'OKX';
 type SelectOption = { label: string; value: string };
+export type PaymentPlanRouteOption = SelectOption & {
+  executionMode: 'BATCH' | 'INSTANT';
+};
 
 export const DEFAULT_ORDER_CREATED_CHAT_MESSAGE = `您好，请确认本订单由您本人自主发起，所出售 USDT 为本人合法持有。
 
@@ -154,7 +157,7 @@ function settings(
     {
       field: 'automaticPaymentEnabled',
       hidden: hideAutomation,
-      title: '自动支付',
+      title: '自动付款',
       type: 'switch',
       value: false,
     },
@@ -162,13 +165,13 @@ function settings(
       field: 'automaticPaymentExecutionMode',
       hidden: hideAutomation,
       options: [
-        { label: '支付宝商家转账', value: 'INSTANT' },
-        { label: '支付宝批量有密', value: 'BATCH' },
+        { label: '单笔付款（订单逐笔提交）', value: 'INSTANT' },
+        { label: '批次付款（按批次策略提交）', value: 'BATCH' },
       ],
-      props: { allowClear: false, placeholder: '请选择支付方式' },
-      title: '自动支付方式',
+      props: { allowClear: false, placeholder: '请选择付款模式' },
+      title: '付款模式',
       type: 'select',
-      validate: required('请选择自动支付方式'),
+      validate: required('请选择付款模式'),
       value: 'INSTANT',
     },
     ...(telegramGroupOptions
@@ -409,7 +412,8 @@ export function rotateMerchantCredentialModalOptions(
 
 function paymentPlanModalOptions(
   title: string,
-  routes: SelectOption[],
+  routes: PaymentPlanRouteOption[],
+  batchPolicies: SelectOption[],
 ): FormModalOptions {
   return {
     props: {
@@ -425,7 +429,29 @@ function paymentPlanModalOptions(
             options: routes,
             title: '支付账号与通道',
             type: 'select',
+            update: (value, _rule, api) => {
+              const route = routes.find((item) => item.value === value);
+              const isBatch = route?.executionMode === 'BATCH';
+              api.hidden(!isBatch, ['batchPolicyId']);
+              if (!isBatch) api.setValue('batchPolicyId', '');
+            },
             validate: required('请选择支付账号与通道'),
+            value: '',
+          },
+          {
+            field: 'batchPolicyId',
+            hidden: true,
+            options: batchPolicies,
+            props: {
+              disabled: batchPolicies.length === 0,
+              placeholder:
+                batchPolicies.length === 0
+                  ? '请先新增并启用批次策略'
+                  : '请选择批次策略',
+            },
+            title: '批次策略',
+            type: 'select',
+            validate: required('批量支付方案必须选择批次策略'),
             value: '',
           },
           numberRule('priority', '使用顺序', 100, 1, 1000),
@@ -438,13 +464,15 @@ function paymentPlanModalOptions(
 }
 
 export function createPaymentPlanModalOptions(
-  routes: SelectOption[],
+  routes: PaymentPlanRouteOption[],
+  batchPolicies: SelectOption[] = [],
 ): FormModalOptions {
-  return paymentPlanModalOptions('新增支付方案', routes);
+  return paymentPlanModalOptions('新增支付方案', routes, batchPolicies);
 }
 
 export function editPaymentPlanModalOptions(
-  routes: SelectOption[],
+  routes: PaymentPlanRouteOption[],
+  batchPolicies: SelectOption[] = [],
 ): FormModalOptions {
-  return paymentPlanModalOptions('编辑支付方案', routes);
+  return paymentPlanModalOptions('编辑支付方案', routes, batchPolicies);
 }

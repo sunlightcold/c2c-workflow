@@ -72,6 +72,14 @@ Payment Order 已选定的支付账号与该账号下支付通道的组合。组
 
 Payment Batch 中一笔 Payment Order 的支付明细。每个明细独立记录处理结果，并通过 Payment Order 业务单号与支付平台逐笔结果对应。
 
+## Payment Batch Policy
+
+批量支付方案用于决定何时提交待付款 Payment Order 的规则集合。Global Policy 适用于同一所属单位下的全部商家，Merchant Policy 只适用于指定商家；两者都不能跨所属单位。一个 Payment Batch Policy 可以包含多条并行规则；任一启用的自动规则满足即可提交一个批次，Manual 规则只允许人工提交。
+
+## Payment Batch Rule
+
+Payment Batch Policy 中的单个提交条件。Interval 从同一批次隔离范围内最早待付款订单开始计时，Order Count 按该范围内当前可组批订单数量判断。Payment Order 锁定支付方案时同时锁定 Payment Batch Policy。
+
 ## Automatic C2C Payment
 
 商家账号开启的自动支付能力。系统只为该账号下待付款、可支付、实名一致、支付宝人民币且未超过付款截止时间的买币订单创建 Payment Order，并按商家账号选定的单笔商家转账或批量有密方式执行。聊天群组和通知结果不参与资金流程判定。

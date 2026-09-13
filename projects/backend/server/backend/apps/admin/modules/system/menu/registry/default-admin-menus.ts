@@ -72,6 +72,19 @@ const businessPages: BusinessPageDefinition[] = [
     ],
   },
   {
+    key: 'paymentBatchPolicies',
+    name: '批次策略',
+    path: '/business/payment-batch-policies',
+    permission: 'payment:batchPolicy',
+    icon: 'lucide:list-checks',
+    actions: [
+      ['read', '查询'],
+      ['create', '新增'],
+      ['update', '编辑与启停'],
+      ['delete', '删除'],
+    ],
+  },
+  {
     key: 'paymentOrders',
     name: '支付订单',
     path: '/business/payment-orders',

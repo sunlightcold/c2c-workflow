@@ -120,8 +120,8 @@ describe('merchant account form schemas', () => {
       rules?.find(({ field }) => field === 'automaticPaymentExecutionMode')
         ?.options,
     ).toEqual([
-      { label: '支付宝商家转账', value: 'INSTANT' },
-      { label: '支付宝批量有密', value: 'BATCH' },
+      { label: '单笔付款（订单逐笔提交）', value: 'INSTANT' },
+      { label: '批次付款（按批次策略提交）', value: 'BATCH' },
     ]);
   });
 
@@ -169,14 +169,24 @@ describe('merchant account form schemas', () => {
 
   it('renders payment plan forms above the merchant configuration drawer', () => {
     const routes = [
-      { label: '主账号 · 支付宝批量有密', value: 'account:channel' },
+      {
+        executionMode: 'BATCH' as const,
+        label: '主账号 · 支付宝批量有密',
+        value: 'account:channel',
+      },
     ];
-    const create = createPaymentPlanModalOptions(routes);
-    const edit = editPaymentPlanModalOptions(routes);
+    const policies = [{ label: '常规批次', value: 'policy-1' }];
+    const create = createPaymentPlanModalOptions(routes, policies);
+    const edit = editPaymentPlanModalOptions(routes, policies);
 
     expect(create.props.zIndex).toBeGreaterThan(1000);
     expect(edit.props.zIndex).toBe(create.props.zIndex);
     expect(edit.props.title).toBe('编辑支付方案');
-    expect(fields(edit)).toEqual(['routeKey', 'priority', 'weight']);
+    expect(fields(edit)).toEqual([
+      'routeKey',
+      'batchPolicyId',
+      'priority',
+      'weight',
+    ]);
   });
 });

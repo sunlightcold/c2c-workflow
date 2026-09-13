@@ -6,6 +6,8 @@ export namespace BusinessApi {
   export type BusinessStatus = 'active' | 'disabled';
   export type MerchantPlatform = 'BINANCE' | 'OKX';
   export type PaymentExecutionMode = 'BATCH' | 'INSTANT';
+  export type PaymentBatchRuleType = 'INTERVAL' | 'MANUAL' | 'ORDER_COUNT';
+  export type PaymentBatchPolicyScope = 'GLOBAL' | 'MERCHANT';
   export type PaymentSourceType = 'BOT_MANUAL' | 'C2C_BUY' | 'REFUND';
   export type TelegramCapability =
     | 'ALIPAY_BATCH_PAYMENT'
@@ -141,6 +143,7 @@ export namespace BusinessApi {
   }
 
   export interface PaymentPlan {
+    batchPolicyId: null | string;
     currency: string;
     id: string;
     merchantId: string;
@@ -154,10 +157,40 @@ export namespace BusinessApi {
   }
 
   export interface UpdatePaymentPlanInput extends TenantContext {
+    batchPolicyId?: null | string;
     paymentAccountChannelId?: string;
     paymentAccountId?: string;
     priority?: number;
     weight?: number;
+  }
+
+  export interface PaymentBatchPolicyRule {
+    id: string;
+    intervalSeconds: null | number;
+    orderCount: null | number;
+    policyId: string;
+    ruleType: PaymentBatchRuleType;
+    status: BusinessStatus;
+  }
+
+  export interface PaymentBatchPolicy {
+    code: string;
+    createdAt: string;
+    id: string;
+    merchantId: null | string;
+    name: string;
+    rules: PaymentBatchPolicyRule[];
+    scopeType: PaymentBatchPolicyScope;
+    status: BusinessStatus;
+    tenantId: string;
+    updatedAt: string;
+  }
+
+  export interface PaymentBatchPolicyRuleInput {
+    intervalSeconds?: number;
+    orderCount?: number;
+    ruleType: PaymentBatchRuleType;
+    status: BusinessStatus;
   }
 
   export interface StatusHistory {
@@ -233,6 +266,7 @@ export namespace BusinessApi {
   }
 
   export interface PaymentBatch {
+    batchPolicyId: null | string;
     batchNo: string;
     createdAt: string;
     currency: string;
@@ -251,6 +285,8 @@ export namespace BusinessApi {
     unknownCount: number;
     updatedAt: string;
     upstreamId: null | string;
+    triggerRuleIds: string[];
+    triggerSource: 'AUTOMATIC' | 'MANUAL';
   }
 
   export interface PaymentBatchItem {
@@ -664,6 +700,7 @@ export const createPaymentPlanApi = (
   data: BusinessApi.TenantContext &
     Pick<
       BusinessApi.PaymentPlan,
+      | 'batchPolicyId'
       | 'currency'
       | 'merchantId'
       | 'paymentAccountChannelId'
@@ -693,6 +730,62 @@ export const setPaymentPlanStatusApi = (
   );
 export const deletePaymentPlanApi = (id: string, tenantId?: string) =>
   requestClient.delete(`/sys/payment-plans/${id}`, { params: { tenantId } });
+
+export async function getPaymentBatchPoliciesApi(
+  params: BusinessApi.TenantContext & {
+    applicableMerchantId?: string;
+    merchantId?: string;
+    page?: number;
+    pageSize?: number;
+    scopeType?: BusinessApi.PaymentBatchPolicyScope;
+    status?: BusinessApi.BusinessStatus;
+  },
+) {
+  return toPagination<BusinessApi.PaymentBatchPolicy>(
+    await requestClient.get('/sys/payment-batch-policies', { params }),
+  );
+}
+export const createPaymentBatchPolicyApi = (
+  data: BusinessApi.TenantContext & {
+    merchantId?: string;
+    name: string;
+    rules: BusinessApi.PaymentBatchPolicyRuleInput[];
+    scopeType: BusinessApi.PaymentBatchPolicyScope;
+  },
+) =>
+  requestClient.post<BusinessApi.PaymentBatchPolicy>(
+    '/sys/payment-batch-policies',
+    data,
+  );
+export const updatePaymentBatchPolicyApi = (
+  id: string,
+  data: BusinessApi.TenantContext & {
+    name: string;
+    rules: BusinessApi.PaymentBatchPolicyRuleInput[];
+  },
+) =>
+  requestClient.put<BusinessApi.PaymentBatchPolicy>(
+    `/sys/payment-batch-policies/${id}`,
+    data,
+  );
+export const setPaymentBatchPolicyStatusApi = (
+  id: string,
+  data: BusinessApi.TenantContext & {
+    status: BusinessApi.BusinessStatus;
+  },
+) =>
+  requestClient.request<BusinessApi.PaymentBatchPolicy>(
+    `/sys/payment-batch-policies/${id}/status`,
+    { data, method: 'PATCH' },
+  );
+export const deletePaymentBatchPolicyApi = (id: string, tenantId?: string) =>
+  requestClient.delete(`/sys/payment-batch-policies/${id}`, {
+    params: { tenantId },
+  });
+export const submitPaymentBatchPolicyApi = (
+  id: string,
+  data: BusinessApi.TenantContext,
+) => requestClient.post(`/sys/payment-batch-policies/${id}/submit`, data);
 
 export async function getMerchantOrdersApi(
   params: BusinessApi.MerchantOrderQuery,
@@ -888,21 +981,21 @@ export const setTelegramBotStatusApi = (
 export const deleteTelegramBotApi = (id: string, tenantId?: string) =>
   requestClient.delete(`/sys/tg/bots/${id}`, { params: { tenantId } });
 export const startTelegramBotRuntimeApi = (id: string, tenantId?: string) =>
-  requestClient.post(`/sys/tg/bots/${id}/runtime/start`, null, {
+  requestClient.post(`/sys/tg/bots/${id}/runtime/start`, undefined, {
     params: { tenantId },
   });
 export const stopTelegramBotRuntimeApi = (id: string, tenantId?: string) =>
-  requestClient.post(`/sys/tg/bots/${id}/runtime/stop`, null, {
+  requestClient.post(`/sys/tg/bots/${id}/runtime/stop`, undefined, {
     params: { tenantId },
   });
 export const restartTelegramBotRuntimeApi = (id: string, tenantId?: string) =>
-  requestClient.post(`/sys/tg/bots/${id}/runtime/restart`, null, {
+  requestClient.post(`/sys/tg/bots/${id}/runtime/restart`, undefined, {
     params: { tenantId },
   });
 export const checkTelegramBotRuntimeApi = (id: string, tenantId?: string) =>
   requestClient.post<BusinessApi.TelegramBotRuntime>(
     `/sys/tg/bots/${id}/runtime/check`,
-    null,
+    undefined,
     { params: { tenantId } },
   );
 export async function getTelegramGroupsApi(

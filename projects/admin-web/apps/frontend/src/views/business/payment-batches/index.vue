@@ -328,7 +328,9 @@ async function reconcileBatch(batch: BusinessApi.PaymentBatch) {
 }
 
 function accountName(id: string) {
-  return accounts.value.find((account) => account.id === id)?.name ?? id;
+  return (
+    accounts.value.find((account) => account.id === id)?.name ?? '未知支付账号'
+  );
 }
 
 onMounted(async () => {

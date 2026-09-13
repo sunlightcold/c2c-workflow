@@ -6,6 +6,7 @@ import {
   PaymentAccountEntity,
   PaymentAdapterCode,
   PaymentBatchEntity,
+  PaymentBatchPolicyEntity,
   PaymentBatchItemEntity,
   PaymentBatchItemStatus,
   PaymentBatchStatus,
@@ -33,6 +34,12 @@ export interface PaymentBatchView {
 }
 
 export interface ReadyPaymentBatchGroup {
+  batchPolicyId: string
+  currency: string
+  merchantId: string
+  oldestReadyAt: Date
+  paymentAccountChannelId: string
+  paymentAccountId: string
   paymentOrderIds: string[]
   totalAmount: string
 }
@@ -43,14 +50,14 @@ export class PaymentBatchService {
 
   async findReadyGroups(
     tenantId: string,
-    merchantId: string,
+    merchantId: string | null,
     sourceType: PaymentSourceType,
+    batchPolicyId?: string,
   ): Promise<ReadyPaymentBatchGroup[]> {
-    const orders = await this.dataSource
+    const query = this.dataSource
       .getRepository(PaymentOrderEntity)
       .createQueryBuilder('payment_order')
       .where('payment_order."tenantId" = :tenantId', { tenantId })
-      .andWhere('payment_order."merchantId" = :merchantId', { merchantId })
       .andWhere('payment_order."sourceType" = :sourceType', { sourceType })
       .andWhere('payment_order.status = :status', { status: PaymentOrderStatus.READY })
       .andWhere('payment_order."executionMode" = :executionMode', {
@@ -62,6 +69,10 @@ export class PaymentBatchService {
       .andWhere('payment_order.currency = :currency', { currency: 'CNY' })
       .andWhere('payment_order."paymentAccountId" IS NOT NULL')
       .andWhere('payment_order."paymentAccountChannelId" IS NOT NULL')
+      .andWhere('payment_order."batchPolicyId" IS NOT NULL')
+      .andWhere(batchPolicyId ? 'payment_order."batchPolicyId" = :batchPolicyId' : 'TRUE', {
+        ...(batchPolicyId ? { batchPolicyId } : {}),
+      })
       .andWhere(
         `NOT EXISTS (
           SELECT 1 FROM payment_batch_item active_item
@@ -79,15 +90,30 @@ export class PaymentBatchService {
       )
       .orderBy('payment_order."createdAt"', 'ASC')
       .take(500)
-      .getMany()
+    if (merchantId) {
+      query.andWhere('payment_order."merchantId" = :merchantId', { merchantId })
+    }
+    const orders = await query.getMany()
     const groups = new Map<string, PaymentOrderEntity[]>()
     for (const order of orders) {
-      const key = [order.paymentAccountId, order.paymentAccountChannelId, order.currency].join(':')
+      const key = [
+        order.merchantId,
+        order.batchPolicyId,
+        order.paymentAccountId,
+        order.paymentAccountChannelId,
+        order.currency,
+      ].join(':')
       const group = groups.get(key) ?? []
       group.push(order)
       groups.set(key, group)
     }
     return [...groups.values()].map((group) => ({
+      batchPolicyId: group[0].batchPolicyId!,
+      currency: group[0].currency,
+      merchantId: group[0].merchantId,
+      oldestReadyAt: group[0].createdAt,
+      paymentAccountChannelId: group[0].paymentAccountChannelId!,
+      paymentAccountId: group[0].paymentAccountId!,
       paymentOrderIds: group.map(({ id }) => id),
       totalAmount: sumCnyAmounts(group.map(({ amount }) => amount)),
     }))
@@ -120,11 +146,18 @@ export class PaymentBatchService {
     return { batch, items }
   }
 
-  async create(tenantId: string, paymentOrderIds: string[]): Promise<PaymentBatchView> {
+  async create(
+    tenantId: string,
+    paymentOrderIds: string[],
+    trigger: { ruleIds: string[]; source: 'AUTOMATIC' | 'MANUAL' } = {
+      ruleIds: [],
+      source: 'MANUAL',
+    },
+  ): Promise<PaymentBatchView> {
     this.validateOrderIds(paymentOrderIds)
     try {
       return await this.dataSource.transaction((manager) =>
-        this.createInTransaction(manager, tenantId, paymentOrderIds),
+        this.createInTransaction(manager, tenantId, paymentOrderIds, trigger),
       )
     } catch (error) {
       if (this.isUniqueViolation(error)) {
@@ -138,6 +171,7 @@ export class PaymentBatchService {
     manager: EntityManager,
     tenantId: string,
     paymentOrderIds: string[],
+    trigger: { ruleIds: string[]; source: 'AUTOMATIC' | 'MANUAL' },
   ): Promise<PaymentBatchView> {
     const orders = await manager
       .getRepository(PaymentOrderEntity)
@@ -160,7 +194,8 @@ export class PaymentBatchService {
           order.currency !== 'CNY' ||
           !order.paymentPlanId ||
           !order.paymentAccountId ||
-          !order.paymentAccountChannelId,
+          !order.paymentAccountChannelId ||
+          !order.batchPolicyId,
       )
     ) {
       throw new ConflictException('只能组批待提交的支付宝批量支付订单')
@@ -171,14 +206,17 @@ export class PaymentBatchService {
           order.merchantId !== first.merchantId ||
           order.paymentAccountId !== first.paymentAccountId ||
           order.paymentAccountChannelId !== first.paymentAccountChannelId ||
+          order.batchPolicyId !== first.batchPolicyId ||
           order.currency !== first.currency,
       )
     ) {
-      throw new BadRequestException('批次内支付订单的商家、支付账号、支付通道和币种必须一致')
+      throw new BadRequestException(
+        '批次内支付订单的商家、支付账号、支付通道、批次策略和币种必须一致',
+      )
     }
 
     const planIds = [...new Set(orders.map((order) => order.paymentPlanId!))]
-    const [plans, account, accountChannel] = await Promise.all([
+    const [plans, account, accountChannel, batchPolicy] = await Promise.all([
       manager.getRepository(MerchantPaymentPlanEntity).findBy({
         id: In(planIds),
         tenantId,
@@ -199,14 +237,28 @@ export class PaymentBatchService {
           status: BusinessStatus.ACTIVE,
         },
       }),
+      manager.getRepository(PaymentBatchPolicyEntity).findOne({
+        where: {
+          id: first.batchPolicyId!,
+          tenantId,
+          status: BusinessStatus.ACTIVE,
+        },
+      }),
     ])
-    if (plans.length !== planIds.length || !account || !accountChannel)
+    if (
+      plans.length !== planIds.length ||
+      !account ||
+      !accountChannel ||
+      !batchPolicy ||
+      (batchPolicy.merchantId !== null && batchPolicy.merchantId !== first.merchantId)
+    )
       throw new ConflictException('支付订单锁定的批量支付配置已失效')
     if (
       plans.some(
         (plan) =>
           plan.paymentAccountId !== account.id ||
-          plan.paymentAccountChannelId !== accountChannel.id,
+          plan.paymentAccountChannelId !== accountChannel.id ||
+          plan.batchPolicyId !== batchPolicy.id,
       )
     ) {
       throw new ConflictException('支付订单锁定的批量支付方案不一致')
@@ -238,6 +290,7 @@ export class PaymentBatchService {
         batchNo: IdUtils.generateBusinessNo(BusinessNoPrefix.PAYMENT_BATCH),
         paymentAccountId: account.id,
         paymentAccountChannelId: accountChannel.id,
+        batchPolicyId: batchPolicy.id,
         currency: first.currency,
         totalCount: orders.length,
         totalAmount: sumCnyAmounts(orders.map(({ amount }) => amount)),
@@ -248,6 +301,8 @@ export class PaymentBatchService {
         upstreamId: null,
         status: PaymentBatchStatus.READY,
         lastError: null,
+        triggerRuleIds: trigger.ruleIds,
+        triggerSource: trigger.source,
       }),
     )
     const items = await manager.save(

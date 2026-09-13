@@ -7,6 +7,7 @@ import type {
 } from './c2c-automatic-payment.types'
 import { PaymentBatchExecutionCoordinator } from './payment-batch-execution-coordinator'
 import { PaymentBatchService } from './payment-batch.service'
+import { PaymentBatchPolicyService } from './payment-batch-policy.service'
 import { PaymentExecutionCoordinator } from './payment-execution-coordinator'
 import { PaymentOrderService } from './payment-order.service'
 import { EVENT_KEYS, EventEmitterService } from '../event-emitter'
@@ -24,6 +25,7 @@ export class C2cAutomaticPaymentService {
     private readonly paymentOrders: PaymentOrderService,
     private readonly payments: PaymentExecutionCoordinator,
     private readonly batches: PaymentBatchService,
+    private readonly batchPolicies: PaymentBatchPolicyService,
     private readonly batchExecution: PaymentBatchExecutionCoordinator,
     @Optional() private readonly eventEmitter?: EventEmitterService,
   ) {}
@@ -37,7 +39,7 @@ export class C2cAutomaticPaymentService {
     )
   }
 
-  async submitReadyBatches() {
+  async submitReadyBatches(now = new Date()) {
     const scopes = await this.store.findBatchScopes(AUTOMATION_LIMIT)
     const groups = (
       await Promise.all(
@@ -46,10 +48,46 @@ export class C2cAutomaticPaymentService {
         ),
       )
     ).flatMap((readyGroups, index) => readyGroups.map((group) => ({ ...scopes[index], ...group })))
-    return this.runItems(groups, (group) =>
-      this.store.runLocked(`automatic-batch:${group.paymentOrderIds[0]}`, async () => {
-        const created = await this.batches.create(group.tenantId, group.paymentOrderIds)
+    const eligible: Array<(typeof groups)[number] & { ruleIds: string[] }> = []
+    for (const group of groups) {
+      const rules = await this.batchPolicies.findActiveRules(
+        group.tenantId,
+        group.merchantId,
+        group.batchPolicyId,
+      )
+      const ruleIds = this.batchPolicies.evaluateRules(rules, {
+        now,
+        oldestReadyAt: group.oldestReadyAt,
+        readyCount: group.paymentOrderIds.length,
+      })
+      if (ruleIds.length) eligible.push({ ...group, ruleIds })
+    }
+    return this.runItems(eligible, (group) =>
+      this.store.runLocked(this.batchLockKey(group), async () => {
+        const created = await this.batches.create(group.tenantId, group.paymentOrderIds, {
+          ruleIds: group.ruleIds,
+          source: 'AUTOMATIC',
+        })
         return this.batchExecution.submit(group.tenantId, created.batch.id)
+      }),
+    )
+  }
+
+  async submitPolicyManually(tenantId: string, policyId: string, merchantId: string | null) {
+    await this.batchPolicies.requireManualRule(tenantId, merchantId, policyId)
+    const groups = await this.batches.findReadyGroups(
+      tenantId,
+      merchantId,
+      PaymentSourceType.C2C_BUY,
+      policyId,
+    )
+    return this.runItems(groups, (group) =>
+      this.store.runLocked(this.batchLockKey({ ...group, tenantId }), async () => {
+        const created = await this.batches.create(tenantId, group.paymentOrderIds, {
+          ruleIds: [],
+          source: 'MANUAL',
+        })
+        return this.batchExecution.submit(tenantId, created.batch.id)
       }),
     )
   }
@@ -133,5 +171,24 @@ export class C2cAutomaticPaymentService {
 
   private errorMessage(error: unknown): string {
     return (error instanceof Error ? error.message : String(error)).slice(0, 512)
+  }
+
+  private batchLockKey(group: {
+    batchPolicyId: string
+    currency: string
+    merchantId: string
+    paymentAccountChannelId: string
+    paymentAccountId: string
+    tenantId: string
+  }) {
+    return [
+      'automatic-batch',
+      group.tenantId,
+      group.merchantId,
+      group.batchPolicyId,
+      group.paymentAccountId,
+      group.paymentAccountChannelId,
+      group.currency,
+    ].join(':')
   }
 }
