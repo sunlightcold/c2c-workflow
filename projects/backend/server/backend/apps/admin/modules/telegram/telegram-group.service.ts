@@ -194,7 +194,11 @@ export class TelegramGroupService {
     group.verifiedAt = new Date()
     group.verificationCodeHash = null
     group.verificationExpiresAt = null
-    return this.publicView(await this.groups.save(group))
+    const savedGroup = await this.groups.save(group)
+    merchant.botCode = bot.code
+    merchant.chatId = input.chatId
+    await this.merchants.save(merchant)
+    return this.publicView(savedGroup)
   }
 
   async unbind(tenantId: string, id: string) {
