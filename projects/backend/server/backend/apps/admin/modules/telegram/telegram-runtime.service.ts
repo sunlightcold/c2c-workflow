@@ -150,7 +150,7 @@ export class TelegramRuntimeService {
     }
     try {
       if (!this.groups) throw new Error('群组绑定服务不可用')
-      const binding = await this.groups.bindByMerchant({
+      await this.groups.bindByMerchant({
         tenantId: bot.tenantId,
         botId: bot.id,
         merchantCode: args[0],
@@ -158,7 +158,12 @@ export class TelegramRuntimeService {
         chatType: message.chatType,
         chatName: message.chatName,
       })
-      await this.reply(bot.tokenRef, message, `商家群绑定成功\n商家：${binding.name}\n发送 /help 查看可用命令`)
+      const groupName = message.chatName?.trim() || `当前群组（${message.chatId}）`
+      await this.reply(
+        bot.tokenRef,
+        message,
+        `商家群绑定成功\n平台商家编号：${args[0]}\n群组：${groupName}\n发送 /help 查看可用命令`,
+      )
     } catch (error) {
       await this.reply(bot.tokenRef, message, error instanceof Error ? error.message : '商家群绑定失败')
     }
