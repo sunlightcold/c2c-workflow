@@ -12,7 +12,6 @@ import { LogModule } from './log'
 import { StorageModule } from './storage'
 import { TutorialAdminModule } from './tutorial/tutorial-admin.module'
 import { CredentialModule } from './credential'
-import { AiModule } from './ai'
 import { BusinessModule } from '../business'
 import { C2cPlatformModule } from '../c2c-platform'
 import { PaymentModule } from '../payment'
@@ -21,7 +20,6 @@ import { TelegramModule } from '../telegram'
 
 const routedModules = [
   CredentialModule,
-  AiModule,
   MenuModule,
   RoleModule,
   UserModule,

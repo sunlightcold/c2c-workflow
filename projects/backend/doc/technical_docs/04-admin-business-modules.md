@@ -13,13 +13,13 @@
 
 - `system/task` 基于 BullMQ 管理计划任务和任务日志。
 - 服务端系统任务通过 `taskCode` 注册表声明；客户端不得提交 `Service.method` 作为执行目标。
-- `system/log`、`system/online` 和 `client-error` 提供后台审计、会话与客户端错误记录。
+- `system/log`、`system/online` 提供后台审计与会话管理。
 
 ## 平台能力
 
 - `system/params` 管理受控系统参数。
 - `system/storage` 管理对象存储渠道及用途绑定。
 - `system/credential` 统一加密可复用的外部凭据。
-- `system/ai` 与 `system/tutorial` 是模板保留的可选平台能力，后续可按产品范围独立裁剪。
+- `system/tutorial` 是模板保留的可选平台能力，后续可按产品范围独立裁剪。
 
 商家、支付、Telegram、代理商及交易平台接入应作为独立业务模块新增，并遵守根级 `tenantId`、`merchantId`、Secret、金额和状态机约束。

@@ -6,8 +6,6 @@
 | --- | --- | --- |
 | [system-iam-api.md](system-iam-api.md) | 认证、账号、用户、角色、菜单、参数 | `/v1/auth`、`/v1/sys` |
 | [system-ops-api.md](system-ops-api.md) | 日志、在线会话、任务、静态文件、OSS | `/v1/sys`、`/v1/static`、`/v1/oss` |
-| [system-ai-api.md](system-ai-api.md) | AI 渠道、模型、功能路由 | `/v1/sys/ai` |
-| [client-error-api.md](client-error-api.md) | 客户端错误采集与管理 | `/v1/client-errors`、`/v1/sys/client-errors` |
 | [c2c-business-config.md](c2c-business-config.md) | 所属单位、商家、支付账号、通道和方案 | `/v1/sys` |
 | [c2c-payment-orders.md](c2c-payment-orders.md) | 支付订单查询、创建、重新匹配和结果回查 | `/v1/sys/payment-orders` |
 | [c2c-payment-batches.md](c2c-payment-batches.md) | 支付批次查询、创建、提交与结果回查 | `/v1/sys/payment-batches` |

@@ -45,7 +45,6 @@ import { Test } from '@nestjs/testing'
 import { getRepositoryToken } from '@nestjs/typeorm'
 import { TaskQueue } from './constant'
 import {
-  CLIENT_ERROR_CLEANUP_CRON,
   EXPIRED_ADMIN_TOKEN_CLEANUP_CRON,
   SYSTEM_TASKS,
   SYSTEM_TASK_SERVICES,
@@ -158,9 +157,6 @@ describe('TaskService', () => {
     expect(taskInvoker.checkService).toHaveBeenCalledWith(
       'SystemMaintenanceJob.clearExpiredAdminTokenSessions',
     )
-    expect(taskInvoker.checkService).toHaveBeenCalledWith(
-      'SystemMaintenanceJob.clearExpiredClientErrors',
-    )
     expect(taskInvoker.checkService).toHaveBeenCalledWith('C2cAutomationJob.syncDueOrders')
     expect(taskInvoker.checkService).toHaveBeenCalledWith(
       'C2cAutomationJob.processAutomaticPayments',
@@ -178,16 +174,6 @@ describe('TaskService', () => {
       cron: EXPIRED_ADMIN_TOKEN_CLEANUP_CRON,
     })
     expect(EXPIRED_ADMIN_TOKEN_CLEANUP_CRON).toBe('0 0 */12 * * *')
-  })
-
-  it('registers client error cleanup to run every day', () => {
-    expect(SYSTEM_TASKS[1]).toMatchObject({
-      name: '清理过期客户端错误',
-      service: 'SystemMaintenanceJob.clearExpiredClientErrors',
-      type: SysTaskTypeEnum.Cron,
-      cron: CLIENT_ERROR_CLEANUP_CRON,
-    })
-    expect(CLIENT_ERROR_CLEANUP_CRON).toBe('0 15 3 * * *')
   })
 
   it('does not remove locked active jobs when stopping an existing schedule', async () => {

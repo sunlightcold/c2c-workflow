@@ -3,7 +3,6 @@ import { Injectable, Logger } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { In, LessThanOrEqual, Repository } from 'typeorm'
 import { ScheduleTask } from '../task.decorator'
-import { CLIENT_ERROR_RETENTION_DAYS, ClientErrorService } from '../../../client-error'
 
 @ScheduleTask()
 @Injectable()
@@ -15,7 +14,6 @@ export class SystemMaintenanceJob {
     private readonly accessTokenRepository: Repository<SysAccessTokenEntity>,
     @InjectRepository(SysOnlineUserEntity)
     private readonly onlineUserRepository: Repository<SysOnlineUserEntity>,
-    private readonly clientErrorService: ClientErrorService,
   ) {}
 
   async clearExpiredAdminTokenSessions() {
@@ -49,12 +47,5 @@ export class SystemMaintenanceJob {
       deletedOnlineUsers: onlineResult.affected ?? 0,
       taskSource: SysTaskSource.System,
     }
-  }
-
-  async clearExpiredClientErrors() {
-    const cutoff = new Date(Date.now() - CLIENT_ERROR_RETENTION_DAYS * 24 * 60 * 60 * 1000)
-    const deletedClientErrors = await this.clientErrorService.deleteCreatedBefore(cutoff)
-    this.logger.log(`清理过期客户端错误 ${deletedClientErrors} 条`)
-    return { deletedClientErrors, taskSource: SysTaskSource.System }
   }
 }

@@ -1,6 +1,5 @@
 import { BullModule } from '@nestjs/bullmq'
 import { Module, Provider } from '@nestjs/common'
-import { ClientErrorModule } from '../../client-error'
 import { C2cOrderModule } from '../../c2c-order'
 import { PaymentModule } from '../../payment'
 import { LogModule } from '../log'
@@ -29,7 +28,6 @@ function getAliasProvider() {
 @Module({
   imports: [
     LogModule,
-    ClientErrorModule,
     C2cOrderModule,
     PaymentModule,
     BullModule.registerQueue({

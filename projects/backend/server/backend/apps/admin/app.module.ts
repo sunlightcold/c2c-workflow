@@ -16,12 +16,10 @@ import { SystemModule } from './modules/system'
 import { TutorialPublicModule } from './modules/system/tutorial/tutorial-public.module'
 import { AuthModule } from './modules/system/auth'
 import { IThrottlerModule } from './modules/throttler'
-import { ClientErrorModule } from './modules/client-error'
 
 @Module({
   imports: [
     IThrottlerModule,
-    ClientErrorModule,
     CacheModule,
     BullMqModule,
     ScheduleModule.forRoot(),

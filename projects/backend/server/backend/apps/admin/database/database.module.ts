@@ -16,11 +16,6 @@ import {
   SysUserEntity,
   SysUserFileEntity,
   TutorialEntity,
-  SysAiChannelEntity,
-  SysAiFeatureRouteEntity,
-  SysAiModelEntity,
-  SysAiCallLogEntity,
-  SysClientErrorEventEntity,
 } from './system'
 import {
   MerchantEntity,
@@ -63,11 +58,6 @@ const sysEntities = [
   SysStorageChannelEntity,
   SysStorageBindingEntity,
   TutorialEntity,
-  SysAiChannelEntity,
-  SysAiFeatureRouteEntity,
-  SysAiModelEntity,
-  SysAiCallLogEntity,
-  SysClientErrorEventEntity,
 ]
 
 const entities = [

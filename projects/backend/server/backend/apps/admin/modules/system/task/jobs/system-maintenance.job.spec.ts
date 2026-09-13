@@ -9,16 +9,10 @@ jest.mock('@/apps/admin/database', () => ({
   },
 }))
 
-jest.mock('../../../client-error', () => ({
-  CLIENT_ERROR_RETENTION_DAYS: 30,
-  ClientErrorService: class ClientErrorService {},
-}))
-
 import { SysAccessTokenEntity, SysOnlineUserEntity } from '@/apps/admin/database'
 import { Test } from '@nestjs/testing'
 import { getRepositoryToken } from '@nestjs/typeorm'
 import { SystemMaintenanceJob } from './system-maintenance.job'
-import { ClientErrorService } from '../../../client-error'
 
 describe('SystemMaintenanceJob', () => {
   let accessTokenRepository: {
@@ -29,7 +23,6 @@ describe('SystemMaintenanceJob', () => {
     createQueryBuilder: jest.Mock
   }
   let job: SystemMaintenanceJob
-  const clientErrorService = { deleteCreatedBefore: jest.fn() }
 
   beforeEach(async () => {
     accessTokenRepository = {
@@ -47,7 +40,6 @@ describe('SystemMaintenanceJob', () => {
           provide: getRepositoryToken(SysAccessTokenEntity),
           useValue: accessTokenRepository,
         },
-        { provide: ClientErrorService, useValue: clientErrorService },
         {
           provide: getRepositoryToken(SysOnlineUserEntity),
           useValue: onlineUserRepository,
@@ -56,17 +48,6 @@ describe('SystemMaintenanceJob', () => {
     }).compile()
 
     job = module.get(SystemMaintenanceJob)
-  })
-
-  it('deletes client errors older than the retention window', async () => {
-    clientErrorService.deleteCreatedBefore.mockResolvedValue(7)
-
-    await expect(job.clearExpiredClientErrors()).resolves.toEqual({
-      deletedClientErrors: 7,
-      taskSource: 'system',
-    })
-
-    expect(clientErrorService.deleteCreatedBefore).toHaveBeenCalledWith(expect.any(Date))
   })
 
   it('skips cleanup when no expired tokens exist', async () => {

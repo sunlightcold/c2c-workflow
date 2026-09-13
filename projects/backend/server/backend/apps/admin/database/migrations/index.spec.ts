@@ -26,6 +26,7 @@ describe('admin migration registry', () => {
       'C2cTelegramBatchInteractions1789011000000',
       'PaymentAccountCredentials1789012000000',
       'C2cAutomaticPayments1789013000000',
+      'RemoveAiAndClientError1789014000000',
     ])
   })
 })
