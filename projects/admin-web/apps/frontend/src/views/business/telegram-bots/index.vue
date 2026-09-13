@@ -8,14 +8,12 @@ import { onMounted, onUnmounted, ref } from 'vue';
 import { Page } from '@vben/common-ui';
 
 import {
-  checkTelegramBotRuntimeApi,
   createTelegramBotApi,
   deleteTelegramBotApi,
   getTelegramBotsApi,
   restartTelegramBotRuntimeApi,
   setTelegramBotStatusApi,
   startTelegramBotRuntimeApi,
-  stopTelegramBotRuntimeApi,
   updateTelegramBotApi,
 } from '#/api';
 import {
@@ -133,7 +131,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.TelegramBot> = {
       fixed: 'right',
       slots: { default: 'actions' },
       title: '操作',
-      width: 330,
+      width: 240,
     },
   ],
 };
@@ -339,31 +337,15 @@ function getRuntimeState(row: BusinessApi.TelegramBot) {
   return row.runtime?.state ?? 'NOT_STARTED';
 }
 
-function checkRuntime(row: BusinessApi.TelegramBot) {
-  return runResourceAction({
-    action: () => checkTelegramBotRuntimeApi(row.id, selectedTenantId.value),
-    onSuccess: async () => gridApi.query(),
-    successMessage: '连接检测完成',
-  });
-}
-
-function toggleRuntime(row: BusinessApi.TelegramBot) {
+function runRuntimeAction(row: BusinessApi.TelegramBot) {
   const running = row.runtime?.runtimeRunning;
   return runResourceAction({
     action: () =>
       running
-        ? stopTelegramBotRuntimeApi(row.id, selectedTenantId.value)
+        ? restartTelegramBotRuntimeApi(row.id, selectedTenantId.value)
         : startTelegramBotRuntimeApi(row.id, selectedTenantId.value),
     onSuccess: async () => gridApi.query(),
-    successMessage: running ? '机器人已停止' : '机器人启动请求已提交',
-  });
-}
-
-function restartRuntime(row: BusinessApi.TelegramBot) {
-  return runResourceAction({
-    action: () => restartTelegramBotRuntimeApi(row.id, selectedTenantId.value),
-    onSuccess: async () => gridApi.query(),
-    successMessage: '机器人重启请求已提交',
+    successMessage: running ? '机器人重启请求已提交' : '机器人启动请求已提交',
   });
 }
 
@@ -434,25 +416,12 @@ onUnmounted(() => {
             编辑
           </AButton>
           <AButton
-            v-access:code="['telegram:bot:read']"
-            size="small"
-            @click="checkRuntime(row)"
-          >
-            检测
-          </AButton>
-          <AButton
+            v-if="row.status === 'active'"
             v-access:code="['telegram:bot:update']"
             size="small"
-            @click="toggleRuntime(row)"
+            @click="runRuntimeAction(row)"
           >
-            {{ row.runtime?.runtimeRunning ? '停止运行' : '启动运行' }}
-          </AButton>
-          <AButton
-            v-access:code="['telegram:bot:update']"
-            size="small"
-            @click="restartRuntime(row)"
-          >
-            重启
+            {{ row.runtime?.runtimeRunning ? '重启' : '启动' }}
           </AButton>
           <AButton
             v-access:code="['telegram:bot:update']"

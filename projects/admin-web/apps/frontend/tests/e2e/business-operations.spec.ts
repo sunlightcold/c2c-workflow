@@ -1059,42 +1059,44 @@ test('provides complete Telegram administration actions', async ({ page }) => {
   await expect(
     page.getByText('Telegram 连接正常，机器人正在运行'),
   ).toBeVisible();
-  await expect(page.getByRole('button', { name: /检\s*测/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: '停止运行' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /检\s*测/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '停止运行' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /重\s*启/ })).toBeVisible();
-
-  const checkRequest = page.waitForRequest(
-    (request) =>
-      request.method() === 'POST' && request.url().includes('/runtime/check'),
-  );
-  await page.getByRole('button', { name: /检\s*测/ }).click();
-  const checkedRequest = await checkRequest;
-  expect(new URL(checkedRequest.url()).searchParams.get('tenantId')).toBe(
-    tenantId,
-  );
-
-  const stopRequest = page.waitForRequest(
-    (request) =>
-      request.method() === 'POST' && request.url().includes('/runtime/stop'),
-  );
-  await page.getByRole('button', { name: '停止运行' }).click();
-  await stopRequest;
-  await expect(page.getByRole('button', { name: '启动运行' })).toBeVisible();
-
-  const startRequest = page.waitForRequest(
-    (request) =>
-      request.method() === 'POST' && request.url().includes('/runtime/start'),
-  );
-  await page.getByRole('button', { name: '启动运行' }).click();
-  await startRequest;
-  await expect(page.getByRole('button', { name: '停止运行' })).toBeVisible();
 
   const restartRequest = page.waitForRequest(
     (request) =>
       request.method() === 'POST' && request.url().includes('/runtime/restart'),
   );
   await page.getByRole('button', { name: /重\s*启/ }).click();
-  await restartRequest;
+  const restartedRequest = await restartRequest;
+  expect(new URL(restartedRequest.url()).searchParams.get('tenantId')).toBe(
+    tenantId,
+  );
+
+  await page.evaluate(
+    async ({ botId, currentTenantId }) => {
+      await fetch(
+        `/v1/sys/tg/bots/${botId}/runtime/stop?tenantId=${currentTenantId}`,
+        { method: 'POST' },
+      );
+    },
+    {
+      botId: '00000000-0000-4000-8000-000000000201',
+      currentTenantId: tenantId,
+    },
+  );
+  await page.reload();
+  await selectHeadquartersTenant(page);
+  await expect(page.getByRole('button', { name: /启\s*动/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /重\s*启/ })).toHaveCount(0);
+
+  const startRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' && request.url().includes('/runtime/start'),
+  );
+  await page.getByRole('button', { name: /启\s*动/ }).click();
+  await startRequest;
+  await expect(page.getByRole('button', { name: /重\s*启/ })).toBeVisible();
 });
 
 test('creates a Telegram bot with a Bot Token instead of an internal reference', async ({
