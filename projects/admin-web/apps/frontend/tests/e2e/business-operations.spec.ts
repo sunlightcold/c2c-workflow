@@ -222,7 +222,15 @@ test.beforeEach(async ({ page }) => {
     const request = route.request();
     const url = new URL(request.url());
     const path = url.pathname.replace('/v1', '');
-    if (tenantScopedPaths.has(path) && !url.searchParams.get('tenantId')) {
+    const requestBody = request.postDataJSON() as null | Record<
+      string,
+      unknown
+    >;
+    if (
+      tenantScopedPaths.has(path) &&
+      !url.searchParams.get('tenantId') &&
+      !requestBody?.tenantId
+    ) {
       errors.push(`租户业务接口缺少经营单位：${path}`);
     }
     const paymentPlanMatch = path.match(
@@ -1002,6 +1010,41 @@ test('provides complete Telegram administration actions', async ({ page }) => {
   await selectHeadquartersTenant(page);
   await expect(page.getByRole('button', { name: /停\s*用/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /移\s*除/ })).toBeVisible();
+});
+
+test('creates a Telegram bot with a Bot Token instead of an internal reference', async ({
+  page,
+}) => {
+  await page.goto('/business/telegram-bots');
+  await selectHeadquartersTenant(page);
+  await page.getByRole('button', { name: '新增机器人' }).click();
+
+  const dialog = page.getByRole('dialog', { name: '新增支付机器人' });
+  await expect(dialog).toBeVisible();
+  await dialog
+    .getByRole('textbox', { name: /机器人名称/ })
+    .fill('新增测试机器人');
+  await dialog.getByRole('combobox').click();
+  await page.getByTitle('支付机器人', { exact: true }).click();
+  await dialog
+    .getByRole('textbox', { name: /Bot Token/ })
+    .fill('1234567890:AAabcdefghijklmnopQRST_uvwx');
+  await dialog.getByRole('checkbox').first().check();
+
+  const requestPromise = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' && request.url().includes('/v1/sys/tg/bots'),
+  );
+  await dialog.getByRole('button', { name: /确\s*定/ }).click();
+  const request = await requestPromise;
+
+  expect(request.postDataJSON()).toMatchObject({
+    name: '新增测试机器人',
+    tenantId,
+    token: '1234567890:AAabcdefghijklmnopQRST_uvwx',
+  });
+  expect(request.postDataJSON()).not.toHaveProperty('code');
+  expect(request.postDataJSON()).not.toHaveProperty('tokenRef');
 });
 
 test('keeps internal business codes out of create forms', async ({

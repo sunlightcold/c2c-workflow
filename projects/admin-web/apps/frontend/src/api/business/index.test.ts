@@ -405,7 +405,7 @@ describe('business api', () => {
       capabilities: ['MANUAL_PAYMENT'],
       name: '支付机器人',
       tenantId: 'tenant-1',
-      tokenRef: 'env://PAY_MAIN_TOKEN',
+      token: '1234567890:AAabcdefghijklmnopQRST_uvwx',
     });
     await updateTelegramBotApi('bot-1', {
       name: '支付机器人一号',
@@ -437,7 +437,7 @@ describe('business api', () => {
       capabilities: ['MANUAL_PAYMENT'],
       name: '支付机器人',
       tenantId: 'tenant-1',
-      tokenRef: 'env://PAY_MAIN_TOKEN',
+      token: '1234567890:AAabcdefghijklmnopQRST_uvwx',
     });
     expect(requestMocks.put).toHaveBeenNthCalledWith(1, '/sys/tg/bots/bot-1', {
       name: '支付机器人一号',

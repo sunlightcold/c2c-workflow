@@ -72,7 +72,7 @@ describe('Telegram administration API contract (e2e)', () => {
   beforeEach(() => jest.clearAllMocks())
   afterAll(async () => app.close())
 
-  it('creates a bot with a Secret reference and never exposes it', async () => {
+  it('accepts a Bot Token when creating a bot and never exposes it', async () => {
     bots.create.mockResolvedValue({ id: 'bot-1', code: 'PAY_MAIN', tokenConfigured: true })
     const response = await request(app.getHttpServer())
       .post('/v1/sys/tg/bots')
@@ -80,17 +80,18 @@ describe('Telegram administration API contract (e2e)', () => {
         tenantId: '00000000-0000-4000-8000-000000000010',
         name: '主支付机器人',
         botType: 'PAYMENT',
-        tokenRef: 'env://TELEGRAM_PAY_MAIN_TOKEN',
+        token: '1234567890:AAabcdefghijklmnopQRST_uvwx',
         capabilities: ['ORDER_QUERY', 'MANUAL_PAYMENT'],
         paymentOrderRequireConfirmation: true,
         batchSubmitRequireConfirmation: true,
       })
       .expect(201)
     expectWrappedSuccess(response.body)
+    expect(response.body.data).not.toHaveProperty('token')
     expect(response.body.data).not.toHaveProperty('tokenRef')
     expect(bots.create).toHaveBeenCalledWith(
       'tenant-1',
-      expect.objectContaining({ tokenRef: 'env://TELEGRAM_PAY_MAIN_TOKEN' }),
+      expect.objectContaining({ token: '1234567890:AAabcdefghijklmnopQRST_uvwx' }),
     )
     expect(bots.create.mock.calls[0][1]).not.toHaveProperty('code')
   })
