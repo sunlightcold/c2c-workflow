@@ -14,6 +14,7 @@ import {
   stopTaskApi,
   updateTaskApi,
 } from '#/api';
+import { AsyncStatusSwitch } from '#/components';
 import { CommonStatusOptions } from '#/constants';
 import {
   confirmResourceAction,
@@ -85,12 +86,12 @@ const gridOptions: VxeTableGridOptions<RowType> = {
   columns: [
     { type: 'seq', width: 70 },
     { field: 'name', title: '任务名称', width: 200 },
-    VxeUtils.tag.getColumn({
-      column: { field: 'status', title: '状态' },
-      cellValueMap: { 0: '停止', 1: '运行' },
-      colorMap: { 0: 'red', 1: 'blue' },
-      props: { color: 'blue' },
-    }),
+    {
+      field: 'status',
+      slots: { default: 'status' },
+      title: '状态',
+      width: 110,
+    },
     VxeUtils.tag.getColumn({
       column: { field: 'type', title: '类型', width: 200 },
       colorMap: { Cron: 'blue', Interval: 'green' },
@@ -120,7 +121,7 @@ const gridOptions: VxeTableGridOptions<RowType> = {
       title: '操作',
       align: 'center',
       fixed: 'right',
-      width: 350,
+      width: 260,
       slots: { default: 'action' },
     },
   ],
@@ -188,21 +189,11 @@ function onOnce(row: RowType) {
   });
 }
 
-function onStart(row: RowType) {
-  confirmResourceAction({
-    action: () => startTaskApi(row.id),
+function changeStatus(row: RowType, checked: boolean) {
+  return runResourceAction({
+    action: () => (checked ? startTaskApi(row.id) : stopTaskApi(row.id)),
     onSuccess: () => gApi.query(),
-    successMessage: '启动成功',
-    title: '确认启动吗?',
-  });
-}
-
-function onStop(row: RowType) {
-  confirmResourceAction({
-    action: () => stopTaskApi(row.id),
-    onSuccess: () => gApi.query(),
-    successMessage: '停止成功',
-    title: '确认停止吗?',
+    successMessage: checked ? '启动成功' : '停止成功',
   });
 }
 </script>
@@ -220,6 +211,19 @@ function onStop(row: RowType) {
           新增
         </AButton>
       </template>
+      <template #status="{ row }">
+        <AsyncStatusSwitch
+          v-access:code="[
+            row.status === 1 ? 'monitor:task:stop' : 'monitor:task:start',
+          ]"
+          :checked="row.status === 1"
+          checked-label="运行"
+          :disabled="row.source === 'system'"
+          :label="`${row.name}运行状态`"
+          :request="(checked) => changeStatus(row, checked)"
+          unchecked-label="停止"
+        />
+      </template>
       <template #action="{ row }">
         <ASpace>
           <AButton
@@ -230,24 +234,6 @@ function onStop(row: RowType) {
             @click="onOnce(row)"
           >
             立即执行
-          </AButton>
-          <AButton
-            v-access:code="['monitor:task:start']"
-            size="small"
-            type="primary"
-            :disabled="row.status === 1 || row.source === 'system'"
-            @click="onStart(row)"
-          >
-            启动
-          </AButton>
-          <AButton
-            v-access:code="['monitor:task:stop']"
-            size="small"
-            danger
-            :disabled="row.status === 0 || row.source === 'system'"
-            @click="onStop(row)"
-          >
-            停止
           </AButton>
           <AButton
             v-access:code="['monitor:task:update']"

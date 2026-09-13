@@ -16,6 +16,7 @@ import {
   setTelegramMemberStatusApi,
   updateTelegramMemberApi,
 } from '#/api';
+import { AsyncStatusSwitch } from '#/components';
 import {
   confirmResourceAction,
   runResourceAction,
@@ -29,11 +30,7 @@ import {
   layoutBusinessFormRules,
 } from '../shared/business-form-layout';
 import { createEmptyBusinessPage } from '../shared/business-grid';
-import {
-  businessStatusColor,
-  businessStatusOptions,
-  businessStatusText,
-} from '../shared/business-ui';
+import { businessStatusOptions } from '../shared/business-ui';
 import {
   telegramCapabilityOptions,
   telegramGroupRoleOptions,
@@ -142,7 +139,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.TelegramMember> = {
       field: 'userId',
       formatter: ({ cellValue }) =>
         userOptions().find(({ value }) => value === cellValue)?.label ??
-        String(cellValue),
+        '未知后台用户',
       minWidth: 170,
       title: '后台用户',
     },
@@ -150,7 +147,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.TelegramMember> = {
       field: 'groupId',
       formatter: ({ cellValue }) =>
         groupOptions().find(({ value }) => value === cellValue)?.label ??
-        String(cellValue),
+        '未知群组',
       minWidth: 160,
       title: '群组',
     },
@@ -167,13 +164,18 @@ const gridOptions: VxeTableGridOptions<BusinessApi.TelegramMember> = {
       title: '成员权限',
       width: 110,
     },
-    { field: 'status', slots: { default: 'status' }, title: '状态', width: 90 },
+    {
+      field: 'status',
+      slots: { default: 'status' },
+      title: '状态',
+      width: 110,
+    },
     {
       field: 'actions',
       fixed: 'right',
       slots: { default: 'actions' },
       title: '操作',
-      width: 230,
+      width: 170,
     },
   ],
 };
@@ -346,8 +348,8 @@ async function openEdit(row: BusinessApi.TelegramMember) {
   });
 }
 
-function toggle(row: BusinessApi.TelegramMember) {
-  const status = row.status === 'active' ? 'disabled' : 'active';
+function changeStatus(row: BusinessApi.TelegramMember, checked: boolean) {
+  const status = checked ? 'active' : 'disabled';
   return runResourceAction({
     action: () =>
       setTelegramMemberStatusApi(row.id, status, selectedTenantId.value),
@@ -394,9 +396,12 @@ onMounted(async () => {
         </AButton>
       </template>
       <template #status="{ row }">
-        <ATag :color="businessStatusColor(row.status)">
-          {{ businessStatusText(row.status) }}
-        </ATag>
+        <AsyncStatusSwitch
+          v-access:code="['telegram:member:update']"
+          :checked="row.status === 'active'"
+          :label="`${row.displayName ?? row.telegramUserId}状态`"
+          :request="(checked) => changeStatus(row, checked)"
+        />
       </template>
       <template #actions="{ row }">
         <ASpace :size="4">
@@ -406,13 +411,6 @@ onMounted(async () => {
             @click="openEdit(row)"
           >
             编辑
-          </AButton>
-          <AButton
-            v-access:code="['telegram:member:update']"
-            size="small"
-            @click="toggle(row)"
-          >
-            {{ row.status === 'active' ? '停用' : '启用' }}
           </AButton>
           <AButton
             v-access:code="['telegram:member:delete']"

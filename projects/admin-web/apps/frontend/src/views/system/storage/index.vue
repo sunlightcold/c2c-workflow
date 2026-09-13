@@ -17,6 +17,7 @@ import {
   updateStorageChannelApi,
   updateStoragePurposeBindingApi,
 } from '#/api';
+import { AsyncStatusSwitch } from '#/components';
 import { confirmResourceAction, runResourceAction } from '#/hooks';
 
 type EditorMode = 'create' | 'edit';
@@ -170,14 +171,17 @@ async function testChannel(channel: StorageApi.Channel) {
   });
 }
 
-async function toggleChannel(channel: StorageApi.Channel) {
+async function changeChannelStatus(
+  channel: StorageApi.Channel,
+  checked: boolean,
+) {
   await runResourceAction({
     action: () =>
-      channel.status === 'active'
-        ? disableStorageChannelApi(channel.id)
-        : enableStorageChannelApi(channel.id),
+      checked
+        ? enableStorageChannelApi(channel.id)
+        : disableStorageChannelApi(channel.id),
     onSuccess: refresh,
-    successMessage: channel.status === 'active' ? '渠道已停用' : '渠道已启用',
+    successMessage: checked ? '渠道已启用' : '渠道已停用',
   });
 }
 
@@ -209,14 +213,6 @@ async function submitBinding() {
     },
     successMessage: '用途绑定已更新',
   });
-}
-
-function statusColor(status: StorageApi.ChannelStatus) {
-  return { active: 'success', disabled: 'default', error: 'error' }[status];
-}
-
-function statusText(status: StorageApi.ChannelStatus) {
-  return { active: '已启用', disabled: '已停用', error: '异常' }[status];
 }
 
 function formatDateTime(value: string) {
@@ -259,11 +255,19 @@ onMounted(refresh);
           </ATableColumn>
           <ATableColumn data-index="bucket" title="Bucket" :width="160" />
           <ATableColumn data-index="endpoint" title="Endpoint" ellipsis />
-          <ATableColumn data-index="status" title="状态" :width="100">
+          <ATableColumn data-index="status" title="状态" :width="150">
             <template #default="{ record }">
-              <ATag :color="statusColor(record.status)">
-                {{ statusText(record.status) }}
-              </ATag>
+              <ASpace :size="6">
+                <AsyncStatusSwitch
+                  v-access:code="['system:storage:update']"
+                  :checked="record.status === 'active'"
+                  :label="`${record.name}状态`"
+                  :request="(checked) => changeChannelStatus(record, checked)"
+                />
+                <ATag v-if="record.status === 'error'" color="error">
+                  异常
+                </ATag>
+              </ASpace>
             </template>
           </ATableColumn>
           <ATableColumn
@@ -279,7 +283,7 @@ onMounted(refresh);
               }}
             </template>
           </ATableColumn>
-          <ATableColumn key="action" fixed="right" title="操作" :width="270">
+          <ATableColumn key="action" fixed="right" title="操作" :width="210">
             <template #default="{ record }">
               <ASpace :size="4">
                 <AButton
@@ -288,13 +292,6 @@ onMounted(refresh);
                   @click="testChannel(record)"
                 >
                   测试
-                </AButton>
-                <AButton
-                  v-access:code="['system:storage:update']"
-                  size="small"
-                  @click="toggleChannel(record)"
-                >
-                  {{ record.status === 'active' ? '停用' : '启用' }}
                 </AButton>
                 <AButton
                   v-access:code="['system:storage:update']"

@@ -6,6 +6,7 @@ import type { FormModalOptions } from '#/hooks';
 import { Page } from '@vben/common-ui';
 
 import { createTenantApi, getTenantsApi, setTenantStatusApi } from '#/api';
+import { AsyncStatusSwitch } from '#/components';
 import { runResourceAction, useFormModal, useResourceGrid } from '#/hooks';
 
 import {
@@ -13,22 +14,17 @@ import {
   businessModalProps,
   layoutBusinessFormRules,
 } from '../shared/business-form-layout';
-import {
-  businessStatusText,
-  formatBusinessTime,
-  toBusinessGridData,
-} from '../shared/business-ui';
+import { formatBusinessTime, toBusinessGridData } from '../shared/business-ui';
 
 const gridOptions: VxeTableGridOptions<BusinessApi.Tenant> = {
   columns: [
     { type: 'seq', width: 70 },
     { field: 'name', title: '单位名称', minWidth: 180 },
-    { field: 'code', title: '单位编码', width: 160 },
     { field: 'type', title: '类型', width: 130, slots: { default: 'type' } },
     {
       field: 'status',
       title: '状态',
-      width: 100,
+      width: 150,
       slots: { default: 'status' },
     },
     {
@@ -36,14 +32,6 @@ const gridOptions: VxeTableGridOptions<BusinessApi.Tenant> = {
       title: '创建时间',
       width: 190,
       formatter: ({ cellValue }) => formatBusinessTime(cellValue as string),
-    },
-    {
-      field: 'active',
-      title: '操作',
-      align: 'center',
-      fixed: 'right',
-      width: 120,
-      slots: { default: 'action' },
     },
   ],
   pagerConfig: { enabled: false },
@@ -95,8 +83,8 @@ function onCreateClick() {
   });
 }
 
-async function toggleStatus(tenant: BusinessApi.Tenant) {
-  const status = tenant.status === 'active' ? 'disabled' : 'active';
+async function changeStatus(tenant: BusinessApi.Tenant, checked: boolean) {
+  const status = checked ? 'active' : 'disabled';
   await runResourceAction({
     action: () => setTenantStatusApi(tenant.id, status),
     onSuccess: () => gApi.query(),
@@ -122,21 +110,18 @@ async function toggleStatus(tenant: BusinessApi.Tenant) {
         {{ row.type === 'HEADQUARTERS_SELF' ? '总部自营' : '代理商' }}
       </template>
       <template #status="{ row }">
-        <ATag :color="row.status === 'active' ? 'success' : 'default'">
-          {{ businessStatusText(row.status) }}
-        </ATag>
-      </template>
-      <template #action="{ row }">
-        <AButton
-          v-if="!row.systemLocked"
-          v-access:code="['agency:tenant:update']"
-          size="small"
-          type="default"
-          @click="toggleStatus(row)"
-        >
-          {{ row.status === 'active' ? '停用' : '启用' }}
-        </AButton>
-        <span v-else class="text-muted-foreground">系统固定</span>
+        <ASpace :size="8">
+          <AsyncStatusSwitch
+            v-access:code="['agency:tenant:update']"
+            :checked="row.status === 'active'"
+            :disabled="row.systemLocked"
+            :label="`${row.name}状态`"
+            :request="(checked) => changeStatus(row, checked)"
+          />
+          <span v-if="row.systemLocked" class="text-muted-foreground text-xs">
+            系统固定
+          </span>
+        </ASpace>
       </template>
     </Grid>
     <FormModalRender />

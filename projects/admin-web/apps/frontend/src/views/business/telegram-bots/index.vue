@@ -14,8 +14,10 @@ import {
   restartTelegramBotRuntimeApi,
   setTelegramBotStatusApi,
   startTelegramBotRuntimeApi,
+  stopTelegramBotRuntimeApi,
   updateTelegramBotApi,
 } from '#/api';
+import { AsyncStatusSwitch } from '#/components';
 import {
   confirmResourceAction,
   runResourceAction,
@@ -29,15 +31,8 @@ import {
   layoutBusinessFormRules,
 } from '../shared/business-form-layout';
 import { createEmptyBusinessPage } from '../shared/business-grid';
-import {
-  businessStatusColor,
-  businessStatusOptions,
-  businessStatusText,
-} from '../shared/business-ui';
-import {
-  telegramBotTypeText,
-  telegramCapabilityOptions,
-} from '../shared/telegram-ui';
+import { businessStatusOptions } from '../shared/business-ui';
+import { telegramCapabilityOptions } from '../shared/telegram-ui';
 import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 
 const { fixedTenantId, loadTenantOptions, tenantOptions } =
@@ -69,12 +64,6 @@ const formOptions: VbenFormProps = {
     },
     {
       component: 'Input',
-      componentProps: { placeholder: '请输入编码' },
-      fieldName: 'code',
-      label: '机器人编码',
-    },
-    {
-      component: 'Input',
       componentProps: { placeholder: '请输入名称' },
       fieldName: 'name',
       label: '机器人名称',
@@ -92,15 +81,7 @@ const formOptions: VbenFormProps = {
 const gridOptions: VxeTableGridOptions<BusinessApi.TelegramBot> = {
   columns: [
     { align: 'center', type: 'seq', width: 60 },
-    { field: 'code', title: '机器人编码', width: 160 },
     { field: 'name', minWidth: 180, title: '机器人名称' },
-    {
-      field: 'botType',
-      formatter: ({ cellValue }) =>
-        telegramBotTypeText(cellValue as BusinessApi.TelegramBotType),
-      title: '机器人类型',
-      width: 120,
-    },
     {
       field: 'capabilities',
       formatter: ({ cellValue }) => `${(cellValue as string[]).length} 项`,
@@ -113,7 +94,12 @@ const gridOptions: VxeTableGridOptions<BusinessApi.TelegramBot> = {
       title: '密钥配置',
       width: 120,
     },
-    { field: 'status', slots: { default: 'status' }, title: '状态', width: 90 },
+    {
+      field: 'status',
+      slots: { default: 'status' },
+      title: '状态',
+      width: 110,
+    },
     {
       field: 'runtime',
       slots: { default: 'runtime' },
@@ -124,14 +110,14 @@ const gridOptions: VxeTableGridOptions<BusinessApi.TelegramBot> = {
       field: 'runtimeRunning',
       slots: { default: 'runtimeRunning' },
       title: '运行状态',
-      width: 100,
+      width: 110,
     },
     {
       field: 'actions',
       fixed: 'right',
       slots: { default: 'actions' },
       title: '操作',
-      width: 240,
+      width: 180,
     },
   ],
 };
@@ -290,8 +276,8 @@ async function openEdit(row: BusinessApi.TelegramBot) {
   });
 }
 
-function toggle(row: BusinessApi.TelegramBot) {
-  const status = row.status === 'active' ? 'disabled' : 'active';
+function changeStatus(row: BusinessApi.TelegramBot, checked: boolean) {
+  const status = checked ? 'active' : 'disabled';
   return runResourceAction({
     action: () =>
       setTelegramBotStatusApi(row.id, status, selectedTenantId.value),
@@ -337,15 +323,22 @@ function getRuntimeState(row: BusinessApi.TelegramBot) {
   return row.runtime?.state ?? 'NOT_STARTED';
 }
 
-function runRuntimeAction(row: BusinessApi.TelegramBot) {
-  const running = row.runtime?.runtimeRunning;
+function changeRuntimeStatus(row: BusinessApi.TelegramBot, checked: boolean) {
   return runResourceAction({
     action: () =>
-      running
-        ? restartTelegramBotRuntimeApi(row.id, selectedTenantId.value)
-        : startTelegramBotRuntimeApi(row.id, selectedTenantId.value),
+      checked
+        ? startTelegramBotRuntimeApi(row.id, selectedTenantId.value)
+        : stopTelegramBotRuntimeApi(row.id, selectedTenantId.value),
     onSuccess: async () => gridApi.query(),
-    successMessage: running ? '机器人重启请求已提交' : '机器人启动请求已提交',
+    successMessage: checked ? '机器人启动请求已提交' : '机器人停止请求已提交',
+  });
+}
+
+function restartRuntime(row: BusinessApi.TelegramBot) {
+  return runResourceAction({
+    action: () => restartTelegramBotRuntimeApi(row.id, selectedTenantId.value),
+    onSuccess: async () => gridApi.query(),
+    successMessage: '机器人重启请求已提交',
   });
 }
 
@@ -378,9 +371,12 @@ onMounted(async () => {
         </ATag>
       </template>
       <template #status="{ row }">
-        <ATag :color="businessStatusColor(row.status)">
-          {{ businessStatusText(row.status) }}
-        </ATag>
+        <AsyncStatusSwitch
+          v-access:code="['telegram:bot:update']"
+          :checked="row.status === 'active'"
+          :label="`${row.name}账号状态`"
+          :request="(checked) => changeStatus(row, checked)"
+        />
       </template>
       <template #runtime="{ row }">
         <ASpace :size="4">
@@ -393,9 +389,17 @@ onMounted(async () => {
         </ASpace>
       </template>
       <template #runtimeRunning="{ row }">
-        <ATag :color="row.runtime?.runtimeRunning ? 'success' : 'default'">
-          {{ row.runtime?.runtimeRunning ? '运行中' : '已停止' }}
-        </ATag>
+        <AsyncStatusSwitch
+          v-access:code="['telegram:bot:update']"
+          :checked="Boolean(row.runtime?.runtimeRunning)"
+          checked-label="运行"
+          :disabled="
+            row.status !== 'active' || getRuntimeState(row) === 'CONNECTING'
+          "
+          :label="`${row.name}运行状态`"
+          :request="(checked) => changeRuntimeStatus(row, checked)"
+          unchecked-label="停止"
+        />
       </template>
       <template #actions="{ row }">
         <ASpace :size="4">
@@ -407,19 +411,12 @@ onMounted(async () => {
             编辑
           </AButton>
           <AButton
-            v-if="row.status === 'active'"
+            v-if="row.status === 'active' && row.runtime?.runtimeRunning"
             v-access:code="['telegram:bot:update']"
             size="small"
-            @click="runRuntimeAction(row)"
+            @click="restartRuntime(row)"
           >
-            {{ row.runtime?.runtimeRunning ? '重启' : '启动' }}
-          </AButton>
-          <AButton
-            v-access:code="['telegram:bot:update']"
-            size="small"
-            @click="toggle(row)"
-          >
-            {{ row.status === 'active' ? '停用' : '启用' }}
+            重启
           </AButton>
           <AButton
             v-access:code="['telegram:bot:delete']"

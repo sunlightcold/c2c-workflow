@@ -16,6 +16,7 @@ import {
   setTelegramSuperAdminStatusApi,
   updateTelegramSuperAdminApi,
 } from '#/api';
+import { AsyncStatusSwitch } from '#/components';
 import {
   confirmResourceAction,
   runResourceAction,
@@ -29,11 +30,7 @@ import {
   layoutBusinessFormRules,
 } from '../shared/business-form-layout';
 import { createEmptyBusinessPage } from '../shared/business-grid';
-import {
-  businessStatusColor,
-  businessStatusOptions,
-  businessStatusText,
-} from '../shared/business-ui';
+import { businessStatusOptions } from '../shared/business-ui';
 import {
   telegramScopeOptions,
   telegramScopeText,
@@ -126,7 +123,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.TelegramSuperAdmin> = {
       field: 'userId',
       formatter: ({ cellValue }) =>
         userOptions().find(({ value }) => value === cellValue)?.label ??
-        String(cellValue),
+        '未知后台用户',
       minWidth: 180,
       title: '后台用户',
     },
@@ -143,13 +140,18 @@ const gridOptions: VxeTableGridOptions<BusinessApi.TelegramSuperAdmin> = {
       title: '指定群组',
       width: 120,
     },
-    { field: 'status', slots: { default: 'status' }, title: '状态', width: 90 },
+    {
+      field: 'status',
+      slots: { default: 'status' },
+      title: '状态',
+      width: 110,
+    },
     {
       field: 'actions',
       fixed: 'right',
       slots: { default: 'actions' },
       title: '操作',
-      width: 230,
+      width: 170,
     },
   ],
 };
@@ -322,8 +324,8 @@ async function openEdit(row: BusinessApi.TelegramSuperAdmin) {
   });
 }
 
-function toggle(row: BusinessApi.TelegramSuperAdmin) {
-  const status = row.status === 'active' ? 'disabled' : 'active';
+function changeStatus(row: BusinessApi.TelegramSuperAdmin, checked: boolean) {
+  const status = checked ? 'active' : 'disabled';
   return runResourceAction({
     action: () =>
       setTelegramSuperAdminStatusApi(row.id, status, selectedTenantId.value),
@@ -349,7 +351,9 @@ function groupNames(groupIds: string[]) {
   if (groupIds.length === 0) return '-';
   return groupIds
     .map(
-      (id) => groupOptions().find((option) => option.value === id)?.label ?? id,
+      (id) =>
+        groupOptions().find((option) => option.value === id)?.label ??
+        '未知群组',
     )
     .join('、');
 }
@@ -383,9 +387,12 @@ onMounted(async () => {
         </ATooltip>
       </template>
       <template #status="{ row }">
-        <ATag :color="businessStatusColor(row.status)">
-          {{ businessStatusText(row.status) }}
-        </ATag>
+        <AsyncStatusSwitch
+          v-access:code="['telegram:superAdmin:update']"
+          :checked="row.status === 'active'"
+          :label="`${row.telegramUsername ?? row.telegramUserId}状态`"
+          :request="(checked) => changeStatus(row, checked)"
+        />
       </template>
       <template #actions="{ row }">
         <ASpace :size="4">
@@ -395,13 +402,6 @@ onMounted(async () => {
             @click="openEdit(row)"
           >
             编辑
-          </AButton>
-          <AButton
-            v-access:code="['telegram:superAdmin:update']"
-            size="small"
-            @click="toggle(row)"
-          >
-            {{ row.status === 'active' ? '停用' : '启用' }}
           </AButton>
           <AButton
             v-access:code="['telegram:superAdmin:delete']"
