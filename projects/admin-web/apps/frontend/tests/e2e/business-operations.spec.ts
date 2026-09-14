@@ -873,6 +873,17 @@ test.afterEach(async ({ page }) => {
 });
 
 test('loads payment orders and batches on first visit', async ({ page }) => {
+  let paymentOrderListRequests = 0;
+  let paymentBatchListRequests = 0;
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === '/v1/sys/payment-orders') {
+      paymentOrderListRequests += 1;
+    }
+    if (url.pathname === '/v1/sys/payment-batches') {
+      paymentBatchListRequests += 1;
+    }
+  });
   const paymentOrdersRequest = page.waitForRequest(
     (request) => {
       const url = new URL(request.url());
@@ -888,6 +899,7 @@ test('loads payment orders and batches on first visit', async ({ page }) => {
   await expect(
     page.getByText('PAY202609140001', { exact: true }),
   ).toBeVisible();
+  expect(paymentOrderListRequests).toBe(1);
 
   const paymentBatchesRequest = page.waitForRequest(
     (request) => {
@@ -904,6 +916,7 @@ test('loads payment orders and batches on first visit', async ({ page }) => {
   await expect(
     page.getByText('BATCH202609140001', { exact: true }),
   ).toBeVisible();
+  expect(paymentBatchListRequests).toBe(1);
 });
 
 test('shows payment, system, and platform order numbers together', async ({
