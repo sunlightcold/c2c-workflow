@@ -215,6 +215,7 @@ const { FormModalRender, formModalClose, formModalShow } = useFormModal();
 
 async function selectTenant(tenantId: string, refresh: boolean) {
   selectedTenantId.value = tenantId;
+  await gApi.formApi.setFieldValue('tenantId', tenantId);
   [merchants.value, paymentAccounts.value] = tenantId
     ? await Promise.all([
         getMerchantsApi({ tenantId }),
@@ -231,6 +232,9 @@ async function selectTenant(tenantId: string, refresh: boolean) {
     })),
   );
   await gApi.formApi.setFieldValue('merchantId', undefined);
+  gApi.formApi.setLatestSubmissionValues(
+    (await gApi.formApi.getValues()) as SearchValues,
+  );
   if (refresh) await gApi.query();
 }
 
@@ -294,7 +298,6 @@ async function runOrderAction(order: BusinessApi.PaymentOrder) {
 onMounted(async () => {
   selectedTenantId.value = await loadTenantOptions();
   if (!selectedTenantId.value) return;
-  await gApi.formApi.setFieldValue('tenantId', selectedTenantId.value);
   await selectTenant(selectedTenantId.value, false);
   await gApi.query();
 });

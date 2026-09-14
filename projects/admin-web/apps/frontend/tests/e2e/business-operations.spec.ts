@@ -872,6 +872,40 @@ test.afterEach(async ({ page }) => {
   expect(pageErrors.get(page) ?? []).toEqual([]);
 });
 
+test('loads payment orders and batches on first visit', async ({ page }) => {
+  const paymentOrdersRequest = page.waitForRequest(
+    (request) => {
+      const url = new URL(request.url());
+      return (
+        url.pathname === '/v1/sys/payment-orders' &&
+        url.searchParams.get('tenantId') === tenantId
+      );
+    },
+    { timeout: 8000 },
+  );
+  await page.goto('/business/payment-orders');
+  await paymentOrdersRequest;
+  await expect(
+    page.getByText('PAY202609140001', { exact: true }),
+  ).toBeVisible();
+
+  const paymentBatchesRequest = page.waitForRequest(
+    (request) => {
+      const url = new URL(request.url());
+      return (
+        url.pathname === '/v1/sys/payment-batches' &&
+        url.searchParams.get('tenantId') === tenantId
+      );
+    },
+    { timeout: 8000 },
+  );
+  await page.goto('/business/payment-batches');
+  await paymentBatchesRequest;
+  await expect(
+    page.getByText('BATCH202609140001', { exact: true }),
+  ).toBeVisible();
+});
+
 test('shows payment, system, and platform order numbers together', async ({
   page,
 }, testInfo) => {
