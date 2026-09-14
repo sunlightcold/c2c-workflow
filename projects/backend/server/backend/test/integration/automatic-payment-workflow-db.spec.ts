@@ -89,6 +89,8 @@ const paymentAccountChannelIds = {
   instant: '33000000-0000-4000-8000-000000000001',
   batch: '33000000-0000-4000-8000-000000000002',
 } as const
+const batchPolicyId = '34000000-0000-4000-8000-000000000001'
+const batchPolicyRuleId = '35000000-0000-4000-8000-000000000001'
 
 interface WorkflowHarness {
   dataSource: DataSource
@@ -552,6 +554,8 @@ async function resetDatabase(dataSource: DataSource): Promise<void> {
     'merchant_order',
     'merchant_order_sync_checkpoint',
     'merchant_payment_plan',
+    'payment_batch_policy_rule',
+    'payment_batch_policy',
     'payment_account_channel',
     'payment_account',
     'merchant_platform_credential',
@@ -644,12 +648,32 @@ async function seedPaymentRoute(
     ON CONFLICT (id) DO NOTHING`,
     [bindingId, accountId, channelId],
   )
+  if (mode === PaymentExecutionMode.BATCH) {
+    await dataSource.query(
+      `INSERT INTO payment_batch_policy (
+        id, "tenantId", "scopeType", "merchantId", code, name, status
+      ) VALUES ($1, $2, 'MERCHANT', $3, 'BATCH_E2E', 'Batch E2E', 'active')`,
+      [batchPolicyId, tenantId, merchantId],
+    )
+    await dataSource.query(
+      `INSERT INTO payment_batch_policy_rule (
+        id, "tenantId", "policyId", "ruleType", "orderCount", status
+      ) VALUES ($1, $2, $3, 'ORDER_COUNT', 2, 'active')`,
+      [batchPolicyRuleId, tenantId, batchPolicyId],
+    )
+  }
   await dataSource.query(
     `INSERT INTO merchant_payment_plan (
       "tenantId", "merchantId", scene, currency, "paymentAccountId",
-      "paymentAccountChannelId", priority, weight, status
-    ) VALUES ($1, $2, 'C2C_BUY', 'CNY', $3, $4, 100, 100, 'active')`,
-    [tenantId, merchantId, accountId, bindingId],
+      "paymentAccountChannelId", "batchPolicyId", priority, weight, status
+    ) VALUES ($1, $2, 'C2C_BUY', 'CNY', $3, $4, $5, 100, 100, 'active')`,
+    [
+      tenantId,
+      merchantId,
+      accountId,
+      bindingId,
+      mode === PaymentExecutionMode.BATCH ? batchPolicyId : null,
+    ],
   )
 }
 
