@@ -606,9 +606,40 @@ test.beforeEach(async ({ page }) => {
         }
         break;
       }
-      case '/sys/payment-batches':
-      case '/sys/payment-orders': {
+      case '/sys/payment-batches': {
         data = { items: [], page: 1, pageSize: 20, total: 0 };
+        break;
+      }
+      case '/sys/payment-orders': {
+        data = {
+          items: [
+            {
+              amount: '70.00',
+              createdAt: '2026-09-14T09:01:00.000Z',
+              currency: 'CNY',
+              executionMode: 'BATCH',
+              id: '00000000-0000-4000-8000-000000000303',
+              lastError: null,
+              merchantId: '00000000-0000-4000-8000-000000000020',
+              payeeIdentity: 'buyer@example.com',
+              payeeName: '测试用户',
+              paymentAccountChannelId: '00000000-0000-4000-8000-000000000111',
+              paymentAccountId: '00000000-0000-4000-8000-000000000110',
+              paymentMethod: 'ALIPAY',
+              paymentNo: 'PAY202609140001',
+              paymentPlanId: '00000000-0000-4000-8000-000000000120',
+              sourceBusinessNo: 'BINANCE202609140001',
+              sourceType: 'C2C_BUY',
+              status: 'COMPLETED',
+              tenantId,
+              updatedAt: '2026-09-14T09:05:00.000Z',
+              upstreamId: 'ALIPAY202609140001',
+            },
+          ],
+          page: 1,
+          pageSize: 20,
+          total: 1,
+        };
         break;
       }
       case '/sys/payment-plans': {
@@ -819,6 +850,35 @@ test.beforeEach(async ({ page }) => {
 
 test.afterEach(async ({ page }) => {
   expect(pageErrors.get(page) ?? []).toEqual([]);
+});
+
+test('shows payment, system, and platform order numbers together', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/business/payment-orders');
+  await selectHeadquartersTenant(page);
+  await page.getByRole('button', { name: /搜\s*索/ }).click();
+
+  await expect(page.getByText('订单号', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('支付单号', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('来源业务号', { exact: true })).toHaveCount(0);
+  const row = page.locator('.vxe-body--row').filter({
+    hasText: 'PAY202609140001',
+  });
+  await expect(row).toBeVisible();
+  const orderNumberCell = row.locator('.vxe-body--column').nth(1);
+  await expect(orderNumberCell.locator('.ant-tag')).toHaveText([
+    '支付',
+    '系统',
+    '平台',
+  ]);
+  await expect(orderNumberCell).toContainText('ALIPAY202609140001');
+  await expect(orderNumberCell).toContainText('PAY202609140001');
+  await expect(orderNumberCell).toContainText('BINANCE202609140001');
+  await page.screenshot({
+    fullPage: true,
+    path: `node_modules/.e2e/screenshots/payment-order-numbers-${testInfo.project.name}.png`,
+  });
 });
 
 test('loads all second-level business pages under one menu', async ({

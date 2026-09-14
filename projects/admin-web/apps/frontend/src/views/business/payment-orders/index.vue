@@ -121,17 +121,21 @@ const formOptions: VbenFormProps = {
 };
 
 const gridOptions: VxeTableGridOptions<BusinessApi.PaymentOrder> = {
-  cellConfig: { height: 75 },
+  cellConfig: { height: 96 },
   columns: [
     { type: 'seq', width: 70 },
-    { field: 'paymentNo', title: '支付单号', minWidth: 200 },
+    {
+      field: 'orderNumbers',
+      title: '订单号',
+      minWidth: 280,
+      slots: { default: 'orderNumbers' },
+    },
     {
       field: 'sourceType',
       title: '来源',
       width: 140,
       formatter: ({ cellValue }) => businessEnumText(cellValue as string),
     },
-    { field: 'sourceBusinessNo', title: '来源业务号', width: 180 },
     {
       field: 'amount',
       title: '支付金额',
@@ -309,6 +313,24 @@ onMounted(async () => {
         </AButton>
       </template>
       <template #amount="{ row }">{{ row.amount }} {{ row.currency }}</template>
+      <template #orderNumbers="{ row }">
+        <div
+          class="grid min-h-[88px] grid-cols-[48px_minmax(0,1fr)] content-center items-center gap-x-2 gap-y-1 text-left"
+        >
+          <ATag class="m-0 text-center" color="green">支付</ATag>
+          <span class="truncate" :title="row.upstreamId || '-'">
+            {{ row.upstreamId || '-' }}
+          </span>
+          <ATag class="m-0 text-center" color="blue">系统</ATag>
+          <span class="truncate" :title="row.paymentNo">
+            {{ row.paymentNo }}
+          </span>
+          <ATag class="m-0 text-center" color="orange">平台</ATag>
+          <span class="truncate" :title="row.sourceBusinessNo">
+            {{ row.sourceBusinessNo }}
+          </span>
+        </div>
+      </template>
       <template #payee="{ row }">
         <div
           class="grid min-h-[68px] grid-cols-[48px_minmax(0,1fr)] content-center items-center gap-x-2 gap-y-1 text-left"
@@ -370,10 +392,13 @@ onMounted(async () => {
     >
       <template v-if="detail">
         <ADescriptions bordered :column="1" size="small">
-          <ADescriptionsItem label="支付单号">
+          <ADescriptionsItem label="支付订单号">
+            {{ detail.upstreamId || '-' }}
+          </ADescriptionsItem>
+          <ADescriptionsItem label="系统订单号">
             {{ detail.paymentNo }}
           </ADescriptionsItem>
-          <ADescriptionsItem label="来源业务号">
+          <ADescriptionsItem label="平台订单号">
             {{ detail.sourceBusinessNo }}
           </ADescriptionsItem>
           <ADescriptionsItem label="金额">
@@ -392,9 +417,6 @@ onMounted(async () => {
           </ADescriptionsItem>
           <ADescriptionsItem label="状态">
             {{ businessEnumText(detail.status) }}
-          </ADescriptionsItem>
-          <ADescriptionsItem v-if="detail.upstreamId" label="支付宝流水号">
-            {{ detail.upstreamId }}
           </ADescriptionsItem>
           <ADescriptionsItem v-if="detail.lastError" label="异常原因">
             {{ detail.lastError }}
