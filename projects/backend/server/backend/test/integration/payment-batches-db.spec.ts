@@ -9,6 +9,8 @@ import {
   PaymentAccountEntity,
   PaymentBatchEntity,
   PaymentBatchItemEntity,
+  PaymentBatchPolicyEntity,
+  PaymentBatchPolicyRuleEntity,
   PaymentBatchStatus,
   PaymentBatchStatusHistoryEntity,
   PaymentChannelEntity,
@@ -25,6 +27,7 @@ import { migrateC2cMerchantPlatformCredentials } from '@/apps/admin/database/mig
 import { migrateC2cMerchantOrders } from '@/apps/admin/database/migrations/c2c-merchant-orders.migration'
 import { migrateC2cMerchantOrderAppeals } from '@/apps/admin/database/migrations/c2c-merchant-order-appeals.migration'
 import { migrateC2cPaymentBatches } from '@/apps/admin/database/migrations/c2c-payment-batches.migration'
+import { migrateC2cPaymentBatchPolicies } from '@/apps/admin/database/migrations/c2c-payment-batch-policies.migration'
 import { migrateC2cPaymentOrders } from '@/apps/admin/database/migrations/c2c-payment-orders.migration'
 import { migrateC2cPaymentRouting } from '@/apps/admin/database/migrations/c2c-payment-routing.migration'
 import { migratePaymentAccountCredentials } from '@/apps/admin/database/migrations/payment-account-credentials.migration'
@@ -43,6 +46,8 @@ describe('Payment batch migration database integration', () => {
   const accountChannelId = '00000000-0000-4000-8000-000000000203'
   const planId = '00000000-0000-4000-8000-000000000204'
   const orderId = '00000000-0000-4000-8000-000000000205'
+  const batchPolicyId = '00000000-0000-4000-8000-000000000206'
+  const batchPolicyRuleId = '00000000-0000-4000-8000-000000000207'
   let adminDataSource: DataSource
   let dataSource: DataSource
   let service: PaymentBatchService
@@ -85,6 +90,8 @@ describe('Payment batch migration database integration', () => {
         PaymentBatchEntity,
         PaymentBatchItemEntity,
         PaymentBatchStatusHistoryEntity,
+        PaymentBatchPolicyEntity,
+        PaymentBatchPolicyRuleEntity,
       ],
       extra: { options: `-c search_path=${schema},public` },
     })
@@ -98,10 +105,23 @@ describe('Payment batch migration database integration', () => {
       await migrateC2cMerchantOrders(manager)
       await migrateC2cMerchantOrderAppeals(manager)
       await migrateC2cPaymentBatches(manager)
+      await migrateC2cPaymentBatchPolicies(manager)
       await manager.query(
         `INSERT INTO merchant (id, "tenantId", code, name, platform)
          VALUES ($1, $2, 'merchant-1', 'Merchant 1', 'BINANCE')`,
         [merchantId, tenantId],
+      )
+      await manager.query(
+        `INSERT INTO payment_batch_policy
+           (id, "tenantId", "scopeType", "merchantId", code, name)
+         VALUES ($1, $2, 'MERCHANT', $3, 'merchant-manual', 'Merchant manual policy')`,
+        [batchPolicyId, tenantId, merchantId],
+      )
+      await manager.query(
+        `INSERT INTO payment_batch_policy_rule
+           (id, "tenantId", "policyId", "ruleType")
+         VALUES ($1, $2, $3, 'MANUAL')`,
+        [batchPolicyRuleId, tenantId, batchPolicyId],
       )
       await manager.query(
         `INSERT INTO payment_account
@@ -117,18 +137,19 @@ describe('Payment batch migration database integration', () => {
       )
       await manager.query(
         `INSERT INTO merchant_payment_plan
-           (id, "tenantId", "merchantId", scene, currency, "paymentAccountId", "paymentAccountChannelId")
-         VALUES ($1, $2, $3, 'BOT_MANUAL', 'CNY', $4, $5)`,
-        [planId, tenantId, merchantId, accountId, accountChannelId],
+           (id, "tenantId", "merchantId", scene, currency, "paymentAccountId",
+            "paymentAccountChannelId", "batchPolicyId")
+         VALUES ($1, $2, $3, 'BOT_MANUAL', 'CNY', $4, $5, $6)`,
+        [planId, tenantId, merchantId, accountId, accountChannelId, batchPolicyId],
       )
       await manager.query(
         `INSERT INTO payment_order
            (id, "tenantId", "merchantId", "sourceType", "sourceBusinessNo", "paymentNo", amount,
             currency, "paymentMethod", "executionMode", "payeeIdentity", "payeeName",
-            "paymentPlanId", "paymentAccountId", "paymentAccountChannelId", status)
+            "paymentPlanId", "paymentAccountId", "paymentAccountChannelId", "batchPolicyId", status)
          VALUES ($1, $2, $3, 'BOT_MANUAL', 'source-1', 'PAY-1', 100.00, 'CNY', 'ALIPAY', 'BATCH',
-                 'payee@example.com', 'Payee', $4, $5, $6, 'READY')`,
-        [orderId, tenantId, merchantId, planId, accountId, accountChannelId],
+                 'payee@example.com', 'Payee', $4, $5, $6, $7, 'READY')`,
+        [orderId, tenantId, merchantId, planId, accountId, accountChannelId, batchPolicyId],
       )
     })
     service = new PaymentBatchService(dataSource)
@@ -221,7 +242,13 @@ describe('Payment batch migration database integration', () => {
   it('offers only unbatched ready orders to automatic batch submission', async () => {
     await expect(
       service.findReadyGroups(tenantId, merchantId, PaymentSourceType.BOT_MANUAL),
-    ).resolves.toEqual([{ paymentOrderIds: [orderId], totalAmount: '100.00' }])
+    ).resolves.toEqual([
+      expect.objectContaining({
+        batchPolicyId,
+        paymentOrderIds: [orderId],
+        totalAmount: '100.00',
+      }),
+    ])
     const created = await service.create(tenantId, [orderId])
 
     await expect(
@@ -232,7 +259,13 @@ describe('Payment batch migration database integration', () => {
     ])
     await expect(
       service.findReadyGroups(tenantId, merchantId, PaymentSourceType.BOT_MANUAL),
-    ).resolves.toEqual([{ paymentOrderIds: [orderId], totalAmount: '100.00' }])
+    ).resolves.toEqual([
+      expect.objectContaining({
+        batchPolicyId,
+        paymentOrderIds: [orderId],
+        totalAmount: '100.00',
+      }),
+    ])
   })
 
   it('lists and reads only payment batches from the requested tenant', async () => {
@@ -568,10 +601,20 @@ describe('Payment batch migration database integration', () => {
       `INSERT INTO payment_order
          (id, "tenantId", "merchantId", "sourceType", "sourceBusinessNo", "paymentNo", amount,
           currency, "paymentMethod", "executionMode", "payeeIdentity", "payeeName",
-          "paymentPlanId", "paymentAccountId", "paymentAccountChannelId", status)
+          "paymentPlanId", "paymentAccountId", "paymentAccountChannelId", "batchPolicyId", status)
        VALUES ($1, $2, $3, 'BOT_MANUAL', $4, $5, 100.00, 'CNY', 'ALIPAY', 'BATCH',
-               'payee@example.com', 'Payee', $6, $7, $8, 'READY')`,
-      [id, tenantId, merchantId, sourceBusinessNo, paymentNo, planId, accountId, accountChannelId],
+               'payee@example.com', 'Payee', $6, $7, $8, $9, 'READY')`,
+      [
+        id,
+        tenantId,
+        merchantId,
+        sourceBusinessNo,
+        paymentNo,
+        planId,
+        accountId,
+        accountChannelId,
+        batchPolicyId,
+      ],
     )
   }
 
@@ -579,9 +622,10 @@ describe('Payment batch migration database integration', () => {
     const [{ id }] = (await dataSource.query(
       `INSERT INTO payment_batch
          ("tenantId", "merchantId", "batchNo", "paymentAccountId", "paymentAccountChannelId",
-          currency, "totalCount", "totalAmount", status)
-       VALUES ($1, $2, $3, $4, $5, 'CNY', 1, 100.00, 'READY') RETURNING id`,
-      [tenantId, merchantId, batchNo, accountId, accountChannelId],
+          "batchPolicyId", currency, "totalCount", "totalAmount", status,
+          "triggerRuleIds", "triggerSource")
+       VALUES ($1, $2, $3, $4, $5, $6, 'CNY', 1, 100.00, 'READY', $7, 'MANUAL') RETURNING id`,
+      [tenantId, merchantId, batchNo, accountId, accountChannelId, batchPolicyId, []],
     )) as Array<{ id: string }>
     return id
   }

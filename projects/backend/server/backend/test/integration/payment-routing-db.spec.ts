@@ -46,6 +46,8 @@ describe('Payment routing database integration', () => {
   const batchAccountId = '00000000-0000-4000-8000-000000000203'
   const instantAccountChannelId = '00000000-0000-4000-8000-000000000204'
   const batchAccountChannelId = '00000000-0000-4000-8000-000000000205'
+  const batchPolicyId = '00000000-0000-4000-8000-000000000206'
+  const batchPolicyRuleId = '00000000-0000-4000-8000-000000000207'
   let adminDataSource: DataSource
   let dataSource: DataSource
   let resolver: PaymentPlanResolver
@@ -409,12 +411,24 @@ describe('Payment routing database integration', () => {
         ],
       )
       await manager.query(
+        `INSERT INTO payment_batch_policy
+           (id, "tenantId", "scopeType", "merchantId", code, name)
+         VALUES ($1, $2, 'MERCHANT', $3, 'merchant-routing', 'Merchant routing policy')`,
+        [batchPolicyId, tenantId, merchantId],
+      )
+      await manager.query(
+        `INSERT INTO payment_batch_policy_rule
+           (id, "tenantId", "policyId", "ruleType")
+         VALUES ($1, $2, $3, 'MANUAL')`,
+        [batchPolicyRuleId, tenantId, batchPolicyId],
+      )
+      await manager.query(
         `INSERT INTO merchant_payment_plan
            ("tenantId", "merchantId", scene, currency, "paymentAccountId",
-            "paymentAccountChannelId", priority, weight)
+            "paymentAccountChannelId", "batchPolicyId", priority, weight)
          VALUES
-           ($1, $2, 'C2C_BUY', 'CNY', $3, $5, 10, 100),
-           ($1, $2, 'BOT_MANUAL', 'CNY', $4, $6, 10, 100)`,
+           ($1, $2, 'C2C_BUY', 'CNY', $3, $5, NULL, 10, 100),
+           ($1, $2, 'BOT_MANUAL', 'CNY', $4, $6, $7, 10, 100)`,
         [
           tenantId,
           merchantId,
@@ -422,6 +436,7 @@ describe('Payment routing database integration', () => {
           batchAccountId,
           instantAccountChannelId,
           batchAccountChannelId,
+          batchPolicyId,
         ],
       )
     })

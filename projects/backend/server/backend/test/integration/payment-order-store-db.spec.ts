@@ -25,6 +25,7 @@ import { migrateC2cMerchantAccountOperations } from '@/apps/admin/database/migra
 import { migrateC2cMerchantOrders } from '@/apps/admin/database/migrations/c2c-merchant-orders.migration'
 import { migrateC2cMerchantOrderAppeals } from '@/apps/admin/database/migrations/c2c-merchant-order-appeals.migration'
 import { migrateC2cAutomaticPayments } from '@/apps/admin/database/migrations/c2c-automatic-payments.migration'
+import { migrateC2cPaymentBatchPolicies } from '@/apps/admin/database/migrations/c2c-payment-batch-policies.migration'
 import { PaymentOrderState } from '@/apps/admin/modules/payment/payment-order-state-machine'
 import { PaymentOrderService } from '@/apps/admin/modules/payment/payment-order.service'
 import { C2cPaymentCancellationService } from '@/apps/admin/modules/payment/c2c-payment-cancellation.service'
@@ -94,6 +95,7 @@ describe('Payment order store database integration', () => {
       await migrateC2cMerchantOrderAppeals(manager)
       await migrateC2cPaymentBatches(manager)
       await migrateC2cAutomaticPayments(manager)
+      await migrateC2cPaymentBatchPolicies(manager)
       await manager.query(
         `INSERT INTO merchant (id, "tenantId", code, name, platform, "apiBaseUrl")
          VALUES ($1, $2, 'merchant-1', 'Merchant 1', 'BINANCE', 'http://127.0.0.1:13002')`,

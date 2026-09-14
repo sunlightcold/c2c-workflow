@@ -2,6 +2,7 @@
 
 import { migrateC2cBusinessFoundation } from '@/apps/admin/database/migrations/c2c-business-foundation.migration'
 import { migrateC2cPaymentBatches } from '@/apps/admin/database/migrations/c2c-payment-batches.migration'
+import { migrateC2cMerchantPlatformCredentials } from '@/apps/admin/database/migrations/c2c-merchant-platform-credentials.migration'
 import { migrateC2cPaymentBatchPolicies } from '@/apps/admin/database/migrations/c2c-payment-batch-policies.migration'
 import { migrateC2cPaymentOrders } from '@/apps/admin/database/migrations/c2c-payment-orders.migration'
 import { migrateC2cPaymentRouting } from '@/apps/admin/database/migrations/c2c-payment-routing.migration'
@@ -47,6 +48,7 @@ describe('C2C payment batch policies migration database integration', () => {
     await migrateC2cBusinessFoundation(queryRunner.manager)
     await migrateC2cPaymentOrders(queryRunner.manager)
     await migrateC2cPaymentRouting(queryRunner.manager)
+    await migrateC2cMerchantPlatformCredentials(queryRunner.manager)
     await migrateC2cPaymentBatches(queryRunner.manager)
     await migrateC2cPaymentBatchPolicies(queryRunner.manager)
     await migrateC2cPaymentBatchPolicies(queryRunner.manager)
@@ -136,9 +138,8 @@ describe('C2C payment batch policies migration database integration', () => {
     const merchantId = '00000000-0000-4000-8000-000000000011'
     await queryRunner.query(
       `INSERT INTO tenant (id, type, code, name)
-       VALUES ($1, 'HEADQUARTERS_SELF', 'HQ', '总部'),
-              ($2, 'AGENT', 'AGENT_1', '代理商')`,
-      [tenantId, otherTenantId],
+       VALUES ($1, 'AGENT', 'AGENT_1', '代理商')`,
+      [otherTenantId],
     )
     await queryRunner.query(
       `INSERT INTO merchant (id, "tenantId", code, name, platform)

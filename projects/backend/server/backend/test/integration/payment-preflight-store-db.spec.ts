@@ -23,6 +23,8 @@ import { migrateC2cMerchantPlatformCredentials } from '@/apps/admin/database/mig
 import { migrateC2cMerchantAccountOperations } from '@/apps/admin/database/migrations/c2c-merchant-account-operations.migration'
 import { migrateC2cPaymentOrders } from '@/apps/admin/database/migrations/c2c-payment-orders.migration'
 import { migrateC2cPaymentRouting } from '@/apps/admin/database/migrations/c2c-payment-routing.migration'
+import { migrateC2cPaymentBatches } from '@/apps/admin/database/migrations/c2c-payment-batches.migration'
+import { migrateC2cPaymentBatchPolicies } from '@/apps/admin/database/migrations/c2c-payment-batch-policies.migration'
 import { migratePaymentAccountCredentials } from '@/apps/admin/database/migrations/payment-account-credentials.migration'
 import { migrateC2cAutomaticPayments } from '@/apps/admin/database/migrations/c2c-automatic-payments.migration'
 import { PaymentNotSubmittedError } from '@/apps/admin/modules/payment/payment-execution-coordinator'
@@ -92,7 +94,9 @@ describe('Payment preflight store database integration', () => {
       await migrateC2cMerchantAccountOperations(manager)
       await migrateC2cMerchantOrders(manager)
       await migrateC2cMerchantOrderAppeals(manager)
+      await migrateC2cPaymentBatches(manager)
       await migrateC2cAutomaticPayments(manager)
+      await migrateC2cPaymentBatchPolicies(manager)
       await manager.query(
         `INSERT INTO merchant (id, "tenantId", code, name, platform, "apiBaseUrl")
          VALUES ($1, $2, 'preflight-merchant', 'Preflight Merchant', 'BINANCE',
