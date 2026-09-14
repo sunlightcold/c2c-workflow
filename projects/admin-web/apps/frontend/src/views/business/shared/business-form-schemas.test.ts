@@ -69,12 +69,15 @@ describe('merchant order operation forms', () => {
       'authMode',
       'gateway',
     ]);
-    for (const field of ['externalAccountId', 'appId', 'authMode', 'gateway']) {
+    for (const field of ['externalAccountId', 'appId', 'authMode']) {
       expect(rules.find((rule) => rule.field === field)?.col).toEqual({
         md: 12,
         xs: 24,
       });
     }
+    expect(rules.find((rule) => rule.field === 'gateway')?.col).toEqual({
+      span: 24,
+    });
   });
 
   it('offers only the two implemented Alipay execution modes', () => {

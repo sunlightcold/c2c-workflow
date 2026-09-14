@@ -91,7 +91,7 @@ describe('merchant account form schemas', () => {
     );
     expect(group).toMatchObject({
       options: groupOptions,
-      title: '机器人群组',
+      title: '机器人群组（只读）',
       type: 'select',
     });
     expect(group?.props).toMatchObject({
