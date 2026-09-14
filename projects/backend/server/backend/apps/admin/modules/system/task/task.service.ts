@@ -33,11 +33,30 @@ export class TaskService {
 
   async update(id: string, dto: TaskUpdateDto) {
     const currentTask = await this.findOne(id)
-    this.assertCustomTask(currentTask)
-    if (dto.service) {
-      this.assertCustomTaskService(dto.service)
+    if (currentTask.source === SysTaskSource.System) {
+      if (dto.service && dto.service !== currentTask.service) {
+        throw new BadRequestException(ErrorEnum.TASK_SYSTEM_LOCKED)
+      }
+      const systemTaskUpdates = Object.fromEntries(
+        Object.entries({
+          name: dto.name,
+          type: dto.type,
+          status: dto.status,
+          startedAt: dto.startedAt,
+          endedAt: dto.endedAt,
+          limit: dto.limit,
+          cron: dto.cron,
+          every: dto.every,
+          description: dto.description,
+        }).filter(([, value]) => value !== undefined),
+      ) as Partial<TaskUpdateDto>
+      await this.taskRepository.update(id, systemTaskUpdates)
+    } else {
+      if (dto.service) {
+        this.assertCustomTaskService(dto.service)
+      }
+      await this.taskRepository.update(id, dto)
     }
-    await this.taskRepository.update(id, dto)
     const task = (await this.taskRepository.findOneBy({ id }))!
     if (task.status === SysTaskStatus.Activated) {
       await this.start(task)
@@ -81,7 +100,6 @@ export class TaskService {
   }
 
   async start(task: SysTaskEntity) {
-    this.assertCustomTask(task)
     await this.startInternal(task)
   }
 
@@ -90,7 +108,6 @@ export class TaskService {
    */
   async once(task?: SysTaskEntity): Promise<void> {
     if (task) {
-      this.assertCustomTask(task)
       await this.taskQueue.add(
         TaskQueue.Task,
         { id: task.id, service: task.service, data: task.data },
@@ -105,7 +122,6 @@ export class TaskService {
    * 停止任务
    */
   async stop(task: SysTaskEntity) {
-    this.assertCustomTask(task)
     await this.stopInternal(task)
   }
 
@@ -225,8 +241,20 @@ export class TaskService {
       data: definition.data ?? '',
       source: SysTaskSource.System,
     }
-    await this.taskRepository.save(systemTask)
-    return (await this.taskRepository.findOneBy({ id: definition.id }))!
+    const existing = await this.taskRepository.findOneBy({ id: definition.id })
+    if (!existing) {
+      return (await this.taskRepository.save(systemTask)) as SysTaskEntity
+    }
+
+    // Keep operator-managed scheduling fields and only repair immutable registry metadata.
+    await this.taskRepository.update(definition.id, {
+      service: definition.service,
+      source: SysTaskSource.System,
+    })
+    return Object.assign(existing, {
+      service: definition.service,
+      source: SysTaskSource.System,
+    })
   }
 
   private async stopInternal(task: SysTaskEntity) {

@@ -26,4 +26,17 @@ describe('TaskController', () => {
   it('uses a SystemModule-relative route prefix', () => {
     expect(Reflect.getMetadata(PATH_METADATA, TaskController)).toBe('tasks')
   })
+
+  it('updates a task without requiring a service payload', async () => {
+    const taskService = {
+      checkServiceMeta: jest.fn(),
+      update: jest.fn().mockResolvedValue(undefined),
+    }
+    const controller = new TaskController(taskService as any)
+
+    await controller.update('task-1', { status: 1 } as any)
+
+    expect(taskService.checkServiceMeta).not.toHaveBeenCalled()
+    expect(taskService.update).toHaveBeenCalledWith('task-1', { status: 1 })
+  })
 })

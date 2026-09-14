@@ -40,7 +40,7 @@ export namespace TaskApi {
   /**
    * 更新定时任务参数
    */
-  export type UpdateTaskParams = TaskData;
+  export type UpdateTaskParams = Partial<Omit<TaskData, 'id'>>;
 }
 
 export function createTaskApi(data: TaskApi.CreateTaskParams) {

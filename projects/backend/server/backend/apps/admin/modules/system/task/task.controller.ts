@@ -36,8 +36,10 @@ export class TaskController {
   @ApiBody({ type: TaskUpdateDto })
   @Permission(Permissions.UPDATE)
   async update(@Param('id') id: string, @Body() dto: TaskUpdateDto) {
-    const serviceCall = dto.service!.split('.')
-    this.taskService.checkServiceMeta(serviceCall?.[0], serviceCall?.[1])
+    if (dto.service) {
+      const serviceCall = dto.service.split('.')
+      this.taskService.checkServiceMeta(serviceCall[0], serviceCall[1])
+    }
     return this.taskService.update(id, dto)
   }
 

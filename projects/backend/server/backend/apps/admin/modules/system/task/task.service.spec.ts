@@ -144,13 +144,130 @@ describe('TaskService', () => {
     await expect(service.create(dto)).rejects.toThrow('1303:系统任务不允许手动配置')
   })
 
-  it('syncs system tasks into the task repository', async () => {
-    taskRepository.save.mockResolvedValueOnce({ id: SYSTEM_TASKS[0].id, status: 1 })
-    taskRepository.findOneBy.mockResolvedValueOnce({
+  it('allows a system task to run once', async () => {
+    const task = {
       id: SYSTEM_TASKS[0].id,
       source: 'system',
-      status: 1,
+      service: SYSTEM_TASKS[0].service,
+      data: '',
+    }
+
+    await expect(service.once(task as SysTaskEntity)).resolves.toBeUndefined()
+
+    expect(taskQueue.add).toHaveBeenCalledWith(
+      TaskQueue.Task,
+      expect.objectContaining({ id: task.id, service: task.service }),
+      expect.objectContaining({ jobId: task.id }),
+    )
+  })
+
+  it('allows starting and stopping a system task', async () => {
+    const task = {
+      id: SYSTEM_TASKS[0].id,
+      source: 'system',
+      service: SYSTEM_TASKS[0].service,
+      type: SysTaskTypeEnum.Cron,
+      status: SysTaskStatus.Disabled,
+      cron: SYSTEM_TASKS[0].cron,
+      limit: -1,
+    }
+    taskQueue.getJobSchedulers.mockResolvedValue([])
+
+    await expect(service.start(task as SysTaskEntity)).resolves.toBeUndefined()
+    taskQueue.getJobSchedulers.mockResolvedValue([{ key: task.id }])
+    const stoppedTask = Object.assign(new SysTaskEntity(), task, {
+      status: SysTaskStatus.Activated,
     })
+    await expect(service.stop(stoppedTask)).resolves.toBeUndefined()
+
+    expect(taskQueue.add).toHaveBeenCalled()
+    expect(taskRepository.update).toHaveBeenCalledWith(
+      task.id,
+      expect.objectContaining({ status: SysTaskStatus.Disabled }),
+    )
+  })
+
+  it('updates system task scheduling fields but never changes its service', async () => {
+    const task = {
+      id: SYSTEM_TASKS[0].id,
+      source: 'system',
+      service: SYSTEM_TASKS[0].service,
+      status: SysTaskStatus.Disabled,
+      type: SysTaskTypeEnum.Cron,
+      cron: SYSTEM_TASKS[0].cron,
+      limit: -1,
+    }
+    taskRepository.findOneBy
+      .mockResolvedValueOnce(task)
+      .mockResolvedValueOnce({ ...task, name: '自定义清理', cron: '0 1 * * * *' })
+
+    await service.update(task.id, {
+      name: '自定义清理',
+      cron: '0 1 * * * *',
+      service: SYSTEM_TASKS[0].service,
+      status: SysTaskStatus.Disabled,
+    })
+
+    expect(taskRepository.update).toHaveBeenCalledWith(
+      task.id,
+      expect.objectContaining({ name: '自定义清理', cron: '0 1 * * * *' }),
+    )
+    expect(taskRepository.update).not.toHaveBeenCalledWith(
+      task.id,
+      expect.objectContaining({ service: 'OtherJob.handle' }),
+    )
+  })
+
+  it('rejects changing a system task service', async () => {
+    const task = {
+      id: SYSTEM_TASKS[0].id,
+      source: 'system',
+      service: SYSTEM_TASKS[0].service,
+      status: SysTaskStatus.Disabled,
+    }
+    taskRepository.findOneBy.mockResolvedValue(task)
+
+    await expect(service.update(task.id, { service: 'OtherJob.handle' })).rejects.toThrow(
+      '1303:系统任务不允许手动配置',
+    )
+  })
+
+  it('does not delete a system task', async () => {
+    taskRepository.findOneBy.mockResolvedValue({
+      id: SYSTEM_TASKS[0].id,
+      source: 'system',
+      status: SysTaskStatus.Disabled,
+    })
+
+    await expect(service.delete(SYSTEM_TASKS[0].id)).rejects.toThrow('1303:系统任务不允许手动配置')
+    expect(taskRepository.delete).not.toHaveBeenCalled()
+  })
+
+  it('preserves an existing system task schedule when syncing definitions', async () => {
+    const task = {
+      ...SYSTEM_TASKS[0],
+      source: 'system',
+      name: '运营调整后的名称',
+      cron: '0 1 * * * *',
+      status: SysTaskStatus.Disabled,
+    }
+    taskRepository.findOneBy.mockResolvedValue(task)
+
+    await service.syncSystemTasks()
+
+    expect(taskRepository.save).not.toHaveBeenCalled()
+    expect(taskRepository.update).toHaveBeenCalledWith(
+      task.id,
+      expect.objectContaining({
+        service: SYSTEM_TASKS[0].service,
+        source: 'system',
+      }),
+    )
+  })
+
+  it('syncs system tasks into the task repository', async () => {
+    taskRepository.findOneBy.mockResolvedValue(null)
+    taskRepository.save.mockImplementation(async (task) => task)
 
     await service.syncSystemTasks()
 

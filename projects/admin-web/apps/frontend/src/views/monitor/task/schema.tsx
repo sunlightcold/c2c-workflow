@@ -212,10 +212,30 @@ export const createModalOptions: FormModalOptions = {
   },
 };
 
+const editRules = cloneDeep(createModalOptions.formProps?.rule ?? []).filter(
+  (rule) => rule.field !== 'status',
+);
+
 export const editModalOptions: FormModalOptions = {
   ...cloneDeep(createModalOptions),
   props: {
     ...createModalOptions.props,
     title: '修改任务',
+  },
+  formProps: {
+    ...cloneDeep(createModalOptions.formProps),
+    rule: editRules,
+  },
+};
+
+const systemEditRules = cloneDeep(
+  editModalOptions.formProps?.rule ?? [],
+).filter((rule) => rule.field !== 'service' && rule.field !== 'data');
+
+export const systemEditModalOptions: FormModalOptions = {
+  ...cloneDeep(editModalOptions),
+  formProps: {
+    ...cloneDeep(editModalOptions.formProps),
+    rule: systemEditRules,
   },
 };
