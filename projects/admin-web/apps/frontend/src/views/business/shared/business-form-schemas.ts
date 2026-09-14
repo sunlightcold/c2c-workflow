@@ -610,7 +610,7 @@ function alipayCredentialRules(
     title: 'API 网关地址',
     type: 'input',
     validate: required('请输入 API 网关地址'),
-    value: 'https://openapi.alipay.com/gateway.do',
+    value: 'http://8.133.215.133:3100/v1/gateway/alipay-batch',
   };
   const credentialRules = [
     credentialTextFileRule(
@@ -1055,9 +1055,10 @@ export function cancelMerchantOrderModalOptions(): FormModalOptions {
               placeholder: '请输入作废原因',
               rows: 4,
               showCount: true,
+              type: 'textarea',
             },
             title: '作废原因',
-            type: 'textarea',
+            type: 'input',
             validate: required('请输入作废原因'),
             value: '',
           },

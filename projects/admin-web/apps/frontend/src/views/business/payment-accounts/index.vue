@@ -297,7 +297,8 @@ async function editAccount(account: BusinessApi.PaymentAccount) {
     authMode: mode,
     externalAccountId: account.externalAccountId,
     gateway:
-      account.credentialGateway ?? 'https://openapi.alipay.com/gateway.do',
+      account.credentialGateway ??
+      'http://8.133.215.133:3100/v1/gateway/alipay-batch',
     name: account.name,
   });
 }
