@@ -225,7 +225,7 @@ function changeStatus(row: RowType, checked: boolean) {
         />
       </template>
       <template #action="{ row }">
-        <ASpace>
+        <ASpace :size="12" wrap>
           <AButton
             v-access:code="['monitor:task:once']"
             size="small"
@@ -238,7 +238,7 @@ function changeStatus(row: RowType, checked: boolean) {
           <AButton
             v-access:code="['monitor:task:update']"
             size="small"
-            type="default"
+            type="link"
             :disabled="row.source === 'system'"
             @click="onEdit(row)"
           >

@@ -109,9 +109,10 @@ function onRevokeSession(row: RowType) {
   <Page auto-content-height>
     <Grid>
       <template #action="{ row }">
-        <ASpace>
+        <ASpace :size="12" wrap>
           <AButton
             v-access:code="['monitor:online:delete']"
+            type="link"
             size="small"
             danger
             @click="onRevokeSession(row)"

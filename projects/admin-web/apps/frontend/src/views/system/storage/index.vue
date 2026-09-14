@@ -291,10 +291,11 @@ onMounted(refresh);
             :width="210"
           >
             <template #default="{ record }">
-              <ASpace :size="4">
+              <ASpace :size="12" wrap>
                 <AButton
                   v-access:code="['system:storage:test']"
                   size="small"
+                  type="link"
                   @click="testChannel(record)"
                 >
                   测试
@@ -302,6 +303,7 @@ onMounted(refresh);
                 <AButton
                   v-access:code="['system:storage:update']"
                   size="small"
+                  type="link"
                   @click="openEdit(record)"
                 >
                   编辑
@@ -311,6 +313,7 @@ onMounted(refresh);
                   danger
                   :disabled="record.status === 'active'"
                   size="small"
+                  type="link"
                   @click="removeChannel(record)"
                 >
                   删除
@@ -363,6 +366,7 @@ onMounted(refresh);
               <AButton
                 v-access:code="['system:storage:bind']"
                 size="small"
+                type="link"
                 @click="openBinding(record)"
               >
                 配置

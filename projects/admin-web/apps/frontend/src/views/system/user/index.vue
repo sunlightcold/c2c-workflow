@@ -196,11 +196,11 @@ function onRemove(row: RowType) {
         </AButton>
       </template>
       <template #action="{ row }">
-        <ASpace>
+        <ASpace :size="12" wrap>
           <AButton
             v-access:code="['system:user:update']"
             size="small"
-            type="default"
+            type="link"
             @click="onEdit(row)"
           >
             编辑
@@ -208,6 +208,7 @@ function onRemove(row: RowType) {
           <AButton
             v-access:code="['system:user:delete']"
             size="small"
+            type="link"
             danger
             @click="onRemove(row)"
           >

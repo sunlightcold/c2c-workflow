@@ -233,11 +233,11 @@ function excludeFullTreeParentIds(
         </AButton>
       </template>
       <template #action="{ row }">
-        <ASpace>
+        <ASpace :size="12" wrap>
           <AButton
             v-access:code="['system:role:update']"
             size="small"
-            type="default"
+            type="link"
             @click="onEdit(row)"
           >
             编辑
@@ -245,6 +245,7 @@ function excludeFullTreeParentIds(
           <AButton
             v-access:code="['system:role:delete']"
             size="small"
+            type="link"
             danger
             @click="onRemove(row)"
           >
