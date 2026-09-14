@@ -4,7 +4,7 @@ import {
   PaymentOrderStatus,
   PaymentSourceType,
 } from '@admin/database'
-import { BadRequestException } from '@nestjs/common'
+import { BadRequestException, ConflictException } from '@nestjs/common'
 import type { C2cOrderService } from '../c2c-order/c2c-order.service'
 import { C2cMerchantPaymentService } from './c2c-merchant-payment.service'
 import type { C2cPaymentCancellationService } from './c2c-payment-cancellation.service'
@@ -99,6 +99,19 @@ describe('C2cMerchantPaymentService', () => {
       service.create('tenant-1', 'merchant-1', 'order-1', PaymentExecutionMode.INSTANT),
     ).rejects.toBeInstanceOf(BadRequestException)
     expect(paymentOrders.create).not.toHaveBeenCalled()
+  })
+
+  it('rejects creating another payment when the merchant order already has a failed payment', async () => {
+    merchantOrders.detail.mockResolvedValue({
+      ...order,
+      paymentOrder: { id: 'payment-1', status: PaymentOrderStatus.FAILED },
+    })
+
+    await expect(
+      service.create('tenant-1', 'merchant-1', 'order-1', PaymentExecutionMode.BATCH),
+    ).rejects.toThrow(new ConflictException('商家订单已存在支付订单，请在支付订单中处理'))
+    expect(paymentOrders.create).not.toHaveBeenCalled()
+    expect(execution.submit).not.toHaveBeenCalled()
   })
 
   it('retries only platform confirmation without submitting payment again', async () => {

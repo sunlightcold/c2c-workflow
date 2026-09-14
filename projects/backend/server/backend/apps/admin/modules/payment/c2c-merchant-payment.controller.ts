@@ -1,7 +1,14 @@
 import { definePermission, Permission, User } from '@/common/decorators'
 import type { AuthUser } from '@/common/interfaces'
 import { Body, Controller, Param, ParseUUIDPipe, Post } from '@nestjs/common'
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger'
+import {
+  ApiBadRequestResponse,
+  ApiBearerAuth,
+  ApiConflictResponse,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger'
 import { BusinessScopeService } from '../business/business-scope.service'
 import {
   CancelC2cMerchantOrderDto,
@@ -29,6 +36,8 @@ export class C2cMerchantPaymentController {
   @Permission(MerchantOrderPermissions.PAY)
   @ApiOperation({ summary: '从商家订单创建支付；商家转账立即提交，批量有密等待组批' })
   @ApiParam({ name: 'id', description: '商家订单 ID', type: String })
+  @ApiBadRequestResponse({ description: '商家订单当前不可支付或缺少完整收款资料' })
+  @ApiConflictResponse({ description: '商家订单已存在支付订单，禁止重复创建' })
   create(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateC2cMerchantPaymentDto,

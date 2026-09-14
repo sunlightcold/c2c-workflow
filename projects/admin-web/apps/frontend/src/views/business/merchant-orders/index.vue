@@ -412,7 +412,8 @@ function canPay(order: BusinessApi.MerchantOrder) {
     order.status === 'PENDING_PAYMENT' &&
     order.payable &&
     order.identityMatched &&
-    order.paymentMethod === 'ALIPAY'
+    order.paymentMethod === 'ALIPAY' &&
+    !order.paymentOrder
   );
 }
 

@@ -1245,6 +1245,33 @@ test('keeps merchant order actions aligned across order states', async ({
       platformStatus: 'PAID',
       status: 'PENDING_RELEASE',
     },
+    {
+      ...baseOrder,
+      id: '00000000-0000-4000-8000-000000000304',
+      payable: true,
+      paymentOrder: {
+        amount: '70.00',
+        createdAt: '2026-09-14T09:01:00.000Z',
+        currency: 'CNY',
+        executionMode: 'BATCH',
+        id: '00000000-0000-4000-8000-000000000305',
+        lastError: '支付宝拒绝付款',
+        merchantId: '00000000-0000-4000-8000-000000000020',
+        payeeIdentity: 'buyer@example.com',
+        payeeName: '测试用户',
+        paymentAccountChannelId: '00000000-0000-4000-8000-000000000111',
+        paymentAccountId: '00000000-0000-4000-8000-000000000110',
+        paymentNo: 'PAY-FAILED',
+        sourceBusinessNo: 'ORDER-PAYMENT-FAILED',
+        sourceType: 'C2C_BUY',
+        status: 'FAILED',
+        tenantId,
+        updatedAt: '2026-09-14T09:05:00.000Z',
+        upstreamId: null,
+      },
+      platformOrderId: 'ORDER-PAYMENT-FAILED',
+      status: 'PENDING_PAYMENT',
+    },
   ]);
 
   await page.goto('/business/merchant-orders');
@@ -1261,7 +1288,7 @@ test('keeps merchant order actions aligned across order states', async ({
   await orderResponse;
 
   const rows = page.locator('.vxe-table--fixed-right-wrapper .vxe-body--row');
-  await expect(rows).toHaveCount(2);
+  await expect(rows).toHaveCount(3);
   for (const row of await rows.all()) {
     await expect(row.getByRole('button')).toHaveCount(5);
     await expect(row.locator('.flex-nowrap')).toHaveCount(1);
@@ -1272,6 +1299,9 @@ test('keeps merchant order actions aligned across order states', async ({
   ).toBeEnabled();
   await expect(
     rows.nth(1).getByRole('button', { name: /支\s*付/ }),
+  ).toBeDisabled();
+  await expect(
+    rows.nth(2).getByRole('button', { name: /支\s*付/ }),
   ).toBeDisabled();
   await expect(
     rows.nth(0).getByRole('button', { name: /申\s*诉/ }),

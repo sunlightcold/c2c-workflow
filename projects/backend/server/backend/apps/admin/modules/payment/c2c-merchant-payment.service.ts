@@ -4,7 +4,7 @@ import {
   PaymentOrderStatus,
   PaymentSourceType,
 } from '@admin/database'
-import { BadRequestException, Injectable } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common'
 import { C2cOrderService } from '../c2c-order/c2c-order.service'
 import { PaymentExecutionCoordinator } from './payment-execution-coordinator'
 import { PaymentOrderService } from './payment-order.service'
@@ -86,11 +86,15 @@ export class C2cMerchantPaymentService {
     payable: boolean
     identityMatched: boolean
     paymentMethod: string | null
+    paymentOrder?: { status: PaymentOrderStatus } | null
     payeeIdentity: string | null
     payeeName: string | null
   }): void {
     if (order.status !== MerchantOrderStatus.PENDING_PAYMENT || !order.payable) {
       throw new BadRequestException('商家订单当前不可支付')
+    }
+    if (order.paymentOrder) {
+      throw new ConflictException('商家订单已存在支付订单，请在支付订单中处理')
     }
     if (!order.identityMatched) throw new BadRequestException('收款人与平台实名不一致')
     if (order.paymentMethod !== 'ALIPAY' || !order.payeeIdentity || !order.payeeName) {
