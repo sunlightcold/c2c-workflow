@@ -57,6 +57,21 @@ export function matchesPaymentRoute(
   return paymentRouteKey(order) === routeKey;
 }
 
+export function resolvePaymentRoute(
+  accounts: readonly BusinessApi.PaymentAccount[],
+  paymentAccountId?: null | string,
+  paymentAccountChannelId?: null | string,
+) {
+  const account = accounts.find(({ id }) => id === paymentAccountId);
+  const channel = account?.channels.find(
+    ({ id }) => id === paymentAccountChannelId,
+  );
+  return {
+    accountName: account?.name ?? '-',
+    channelName: channel?.channelName ?? '-',
+  };
+}
+
 const statusLabels: Record<string, string> = {
   BOT_MANUAL: '机器人手工支付',
   BATCH: '批量有密',

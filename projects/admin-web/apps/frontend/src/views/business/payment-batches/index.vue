@@ -33,6 +33,7 @@ import {
   matchesPaymentRoute,
   merchantPlatformText,
   paymentRouteKey,
+  resolvePaymentRoute,
 } from '../shared/business-ui';
 import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 
@@ -127,9 +128,9 @@ const gridOptions: VxeTableGridOptions<BusinessApi.PaymentBatch> = {
     { field: 'batchNo', title: '批次号', minWidth: 200 },
     {
       field: 'paymentAccountId',
-      title: '支付账号',
-      width: 170,
-      formatter: ({ cellValue }) => accountName(cellValue as string),
+      title: '转账账号 / 通道',
+      minWidth: 230,
+      slots: { default: 'paymentRoute' },
     },
     {
       field: 'totalAmount',
@@ -327,10 +328,8 @@ async function reconcileBatch(batch: BusinessApi.PaymentBatch) {
   });
 }
 
-function accountName(id: string) {
-  return (
-    accounts.value.find((account) => account.id === id)?.name ?? '未知支付账号'
-  );
+function paymentRoute(accountId: string, channelId: string) {
+  return resolvePaymentRoute(accounts.value, accountId, channelId);
 }
 
 onMounted(async () => {
@@ -359,6 +358,26 @@ onMounted(async () => {
       <template #total="{ row }">
         {{ row.totalCount }} 笔 · {{ row.totalAmount }}
         {{ row.currency }}
+      </template>
+      <template #paymentRoute="{ row }">
+        <div
+          class="grid min-h-14 grid-cols-[48px_minmax(0,1fr)] content-center items-center gap-x-2 gap-y-1 text-left"
+        >
+          <ATag class="m-0 text-center" color="blue">账号</ATag>
+          <span class="truncate">
+            {{
+              paymentRoute(row.paymentAccountId, row.paymentAccountChannelId)
+                .accountName
+            }}
+          </span>
+          <ATag class="m-0 text-center" color="green">通道</ATag>
+          <span class="truncate">
+            {{
+              paymentRoute(row.paymentAccountId, row.paymentAccountChannelId)
+                .channelName
+            }}
+          </span>
+        </div>
       </template>
       <template #progress="{ row }">
         成功 {{ row.successCount }} / 失败 {{ row.failedCount }} / 未知
@@ -408,7 +427,19 @@ onMounted(async () => {
             {{ detail.batch.batchNo }}
           </ADescriptionsItem>
           <ADescriptionsItem label="支付账号">
-            {{ accountName(detail.batch.paymentAccountId) }}
+            {{
+              paymentRoute(
+                detail.batch.paymentAccountId,
+                detail.batch.paymentAccountChannelId,
+              ).accountName
+            }}
+            ·
+            {{
+              paymentRoute(
+                detail.batch.paymentAccountId,
+                detail.batch.paymentAccountChannelId,
+              ).channelName
+            }}
           </ADescriptionsItem>
           <ADescriptionsItem label="批次金额">
             {{ detail.batch.totalAmount }}
@@ -435,10 +466,22 @@ onMounted(async () => {
           :scroll="{ x: 680 }"
         >
           <ATableColumn
-            data-index="paymentOrderId"
-            title="支付订单"
-            :width="260"
-          />
+            key="paymentOrder"
+            title="支付订单 / 收款账号"
+            :width="300"
+          >
+            <template #default="{ record }">
+              <div>{{ record.paymentNo }}</div>
+              <div
+                class="mt-1 grid grid-cols-[48px_minmax(0,1fr)] items-center gap-x-2 gap-y-1 text-left"
+              >
+                <ATag class="m-0 text-center" color="blue">姓名</ATag>
+                <span class="truncate">{{ record.payeeName }}</span>
+                <ATag class="m-0 text-center" color="cyan">账号</ATag>
+                <span class="truncate">{{ record.payeeIdentity }}</span>
+              </div>
+            </template>
+          </ATableColumn>
           <ATableColumn data-index="amount" title="金额" :width="100" />
           <ATableColumn key="status" title="状态" :width="120">
             <template #default="{ record }">

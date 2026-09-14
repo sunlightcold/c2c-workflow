@@ -2,6 +2,45 @@ import { PaymentExecutionMode, PaymentOrderStatus, PaymentSourceType } from '@ad
 import { PaymentBatchService } from './payment-batch.service'
 
 describe('PaymentBatchService ready groups', () => {
+  it('returns payment and recipient information with batch detail items', async () => {
+    const batch = { id: 'batch-1', tenantId: 'tenant-1', merchantId: 'merchant-1' }
+    const item = {
+      id: 'item-1',
+      batchId: 'batch-1',
+      tenantId: 'tenant-1',
+      merchantId: 'merchant-1',
+      paymentOrderId: 'order-1',
+    }
+    const dataSource = {
+      getRepository: jest
+        .fn()
+        .mockReturnValueOnce({ findOne: jest.fn().mockResolvedValue(batch) })
+        .mockReturnValueOnce({ find: jest.fn().mockResolvedValue([item]) })
+        .mockReturnValueOnce({
+          find: jest.fn().mockResolvedValue([
+            {
+              id: 'order-1',
+              paymentNo: 'PAY20260914001',
+              payeeName: '张三',
+              payeeIdentity: 'account@example.com',
+            },
+          ]),
+        }),
+    }
+    const service = new PaymentBatchService(dataSource as never)
+
+    await expect(service.detail('tenant-1', 'batch-1')).resolves.toEqual({
+      batch,
+      items: [
+        expect.objectContaining({
+          paymentNo: 'PAY20260914001',
+          payeeName: '张三',
+          payeeIdentity: 'account@example.com',
+        }),
+      ],
+    })
+  })
+
   it('excludes active batch items and groups by locked payment dimensions', async () => {
     const query = {
       where: jest.fn().mockReturnThis(),

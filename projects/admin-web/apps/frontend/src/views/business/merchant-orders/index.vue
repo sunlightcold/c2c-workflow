@@ -15,6 +15,7 @@ import {
   getMerchantOrderAppealReasonsApi,
   getMerchantOrdersApi,
   getMerchantsApi,
+  getPaymentAccountsApi,
   submitMerchantOrderAppealApi,
   syncMerchantOrdersApi,
 } from '#/api';
@@ -36,6 +37,7 @@ import {
   businessStateColor,
   formatBusinessTime,
   merchantPlatformText,
+  resolvePaymentRoute,
 } from '../shared/business-ui';
 import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 
@@ -64,6 +66,7 @@ const merchantOptions = reactive<
   }>
 >([]);
 const merchants = ref<BusinessApi.Merchant[]>([]);
+const paymentAccounts = ref<BusinessApi.PaymentAccount[]>([]);
 const selectedTenantId = ref('');
 const detailOpen = ref(false);
 const detailLoading = ref(false);
@@ -178,6 +181,12 @@ const gridOptions: VxeTableGridOptions<BusinessApi.MerchantOrder> = {
       title: '收款信息',
     },
     {
+      field: 'paymentRoute',
+      minWidth: 220,
+      slots: { default: 'paymentRoute' },
+      title: '转账账号 / 通道',
+    },
+    {
       field: 'status',
       slots: { default: 'status' },
       title: '订单状态',
@@ -239,7 +248,12 @@ const { FormModalRender, formModalClose, formModalShow } = useFormModal();
 
 async function selectTenant(tenantId: string, refresh: boolean) {
   selectedTenantId.value = tenantId;
-  merchants.value = tenantId ? await getMerchantsApi({ tenantId }) : [];
+  [merchants.value, paymentAccounts.value] = tenantId
+    ? await Promise.all([
+        getMerchantsApi({ tenantId }),
+        getPaymentAccountsApi({ tenantId }),
+      ])
+    : [[], []];
   merchantOptions.splice(
     0,
     merchantOptions.length,
@@ -425,6 +439,15 @@ function canAppeal(order: BusinessApi.MerchantOrder) {
   );
 }
 
+function paymentRoute(order: BusinessApi.MerchantOrder) {
+  const payment = order.paymentOrder;
+  return resolvePaymentRoute(
+    paymentAccounts.value,
+    payment?.paymentAccountId,
+    payment?.paymentAccountChannelId,
+  );
+}
+
 onMounted(async () => {
   selectedTenantId.value = await loadTenantOptions();
   if (!selectedTenantId.value) return;
@@ -454,11 +477,23 @@ onMounted(async () => {
         {{ row.fiatCurrency }}
       </template>
       <template #payee="{ row }">
-        <div class="text-sm leading-6">
-          <div>{{ row.payeeName || '-' }}</div>
-          <div class="text-muted-foreground truncate">
-            {{ row.payeeIdentity || '-' }}
-          </div>
+        <div
+          class="grid min-h-14 grid-cols-[48px_minmax(0,1fr)] content-center items-center gap-x-2 gap-y-1 text-left"
+        >
+          <ATag class="m-0 text-center" color="blue">姓名</ATag>
+          <span class="truncate">{{ row.payeeName || '-' }}</span>
+          <ATag class="m-0 text-center" color="cyan">账号</ATag>
+          <span class="truncate">{{ row.payeeIdentity || '-' }}</span>
+        </div>
+      </template>
+      <template #paymentRoute="{ row }">
+        <div
+          class="grid min-h-14 grid-cols-[48px_minmax(0,1fr)] content-center items-center gap-x-2 gap-y-1 text-left"
+        >
+          <ATag class="m-0 text-center" color="blue">账号</ATag>
+          <span class="truncate">{{ paymentRoute(row).accountName }}</span>
+          <ATag class="m-0 text-center" color="green">通道</ATag>
+          <span class="truncate">{{ paymentRoute(row).channelName }}</span>
         </div>
       </template>
       <template #status="{ row }">
@@ -547,6 +582,10 @@ onMounted(async () => {
             </ADescriptionsItem>
             <ADescriptionsItem label="支付宝账号">
               {{ detail.payeeIdentity || '-' }}
+            </ADescriptionsItem>
+            <ADescriptionsItem label="转账账号 / 通道">
+              {{ paymentRoute(detail).accountName }} ·
+              {{ paymentRoute(detail).channelName }}
             </ADescriptionsItem>
             <ADescriptionsItem label="订单状态">
               {{ businessEnumText(detail.status) }}

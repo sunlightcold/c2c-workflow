@@ -30,7 +30,13 @@ import type { PaymentBatchListDto } from './payment-batch.dto'
 
 export interface PaymentBatchView {
   batch: PaymentBatchEntity
-  items: PaymentBatchItemEntity[]
+  items: Array<
+    PaymentBatchItemEntity & {
+      payeeIdentity?: string
+      payeeName?: string
+      paymentNo?: string
+    }
+  >
 }
 
 export interface ReadyPaymentBatchGroup {
@@ -143,7 +149,27 @@ export class PaymentBatchService {
       where: { batchId: batch.id, tenantId, merchantId: batch.merchantId },
       order: { createdAt: 'ASC' },
     })
-    return { batch, items }
+    const orders = items.length
+      ? await this.dataSource.getRepository(PaymentOrderEntity).find({
+          where: {
+            id: In(items.map(({ paymentOrderId }) => paymentOrderId)),
+            tenantId,
+            merchantId: batch.merchantId,
+          },
+        })
+      : []
+    const orderById = new Map(orders.map((order) => [order.id, order]))
+    return {
+      batch,
+      items: items.map((item) => {
+        const order = orderById.get(item.paymentOrderId)
+        return Object.assign(item, {
+          paymentNo: order?.paymentNo ?? item.paymentOrderId,
+          payeeName: order?.payeeName ?? '-',
+          payeeIdentity: order?.payeeIdentity ?? '-',
+        })
+      }),
+    }
   }
 
   async create(

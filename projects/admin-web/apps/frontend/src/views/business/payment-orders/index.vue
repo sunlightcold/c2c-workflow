@@ -10,6 +10,7 @@ import { Page } from '@vben/common-ui';
 import {
   createManualPaymentOrderApi,
   getMerchantsApi,
+  getPaymentAccountsApi,
   getPaymentOrderApi,
   getPaymentOrdersApi,
   reconcilePaymentOrderApi,
@@ -24,6 +25,7 @@ import {
   businessStateColor,
   formatBusinessTime,
   merchantPlatformText,
+  resolvePaymentRoute,
 } from '../shared/business-ui';
 import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 
@@ -43,6 +45,7 @@ const { fixedTenantId, loadTenantOptions, tenantOptions } =
   useBusinessTenantFilter();
 const selectedTenantId = ref('');
 const merchants = ref<BusinessApi.Merchant[]>([]);
+const paymentAccounts = ref<BusinessApi.PaymentAccount[]>([]);
 const merchantOptions = reactive<Array<{ label: string; value: string }>>([]);
 const detailOpen = ref(false);
 const detail = ref<PaymentOrderDetail>();
@@ -136,11 +139,22 @@ const gridOptions: VxeTableGridOptions<BusinessApi.PaymentOrder> = {
     },
     {
       field: 'executionMode',
-      title: '支付通道',
+      title: '付款模式',
       width: 120,
       formatter: ({ cellValue }) => businessEnumText(cellValue as string),
     },
-    { field: 'payeeName', title: '收款人', width: 130 },
+    {
+      field: 'paymentRoute',
+      title: '转账账号 / 通道',
+      minWidth: 230,
+      slots: { default: 'paymentRoute' },
+    },
+    {
+      field: 'payee',
+      title: '收款信息',
+      minWidth: 210,
+      slots: { default: 'payee' },
+    },
     {
       field: 'status',
       title: '状态',
@@ -194,7 +208,12 @@ const { FormModalRender, formModalClose, formModalShow } = useFormModal();
 
 async function selectTenant(tenantId: string, refresh: boolean) {
   selectedTenantId.value = tenantId;
-  merchants.value = tenantId ? await getMerchantsApi({ tenantId }) : [];
+  [merchants.value, paymentAccounts.value] = tenantId
+    ? await Promise.all([
+        getMerchantsApi({ tenantId }),
+        getPaymentAccountsApi({ tenantId }),
+      ])
+    : [[], []];
   merchantOptions.splice(
     0,
     merchantOptions.length,
@@ -241,6 +260,14 @@ async function openDetail(order: BusinessApi.PaymentOrder) {
   detailOpen.value = true;
 }
 
+function paymentRoute(order: BusinessApi.PaymentOrder) {
+  return resolvePaymentRoute(
+    paymentAccounts.value,
+    order.paymentAccountId,
+    order.paymentAccountChannelId,
+  );
+}
+
 async function runOrderAction(order: BusinessApi.PaymentOrder) {
   const reconcile = ['PROCESSING', 'UNKNOWN'].includes(order.status);
   await runResourceAction({
@@ -281,6 +308,26 @@ onMounted(async () => {
         </AButton>
       </template>
       <template #amount="{ row }">{{ row.amount }} {{ row.currency }}</template>
+      <template #payee="{ row }">
+        <div
+          class="grid min-h-14 grid-cols-[48px_minmax(0,1fr)] content-center items-center gap-x-2 gap-y-1 text-left"
+        >
+          <ATag class="m-0 text-center" color="blue">姓名</ATag>
+          <span class="truncate">{{ row.payeeName }}</span>
+          <ATag class="m-0 text-center" color="cyan">账号</ATag>
+          <span class="truncate">{{ row.payeeIdentity }}</span>
+        </div>
+      </template>
+      <template #paymentRoute="{ row }">
+        <div
+          class="grid min-h-14 grid-cols-[48px_minmax(0,1fr)] content-center items-center gap-x-2 gap-y-1 text-left"
+        >
+          <ATag class="m-0 text-center" color="blue">账号</ATag>
+          <span class="truncate">{{ paymentRoute(row).accountName }}</span>
+          <ATag class="m-0 text-center" color="green">通道</ATag>
+          <span class="truncate">{{ paymentRoute(row).channelName }}</span>
+        </div>
+      </template>
       <template #status="{ row }">
         <ATag :color="businessStateColor(row.status)">
           {{ businessEnumText(row.status) }}
@@ -326,6 +373,10 @@ onMounted(async () => {
           <ADescriptionsItem label="收款信息">
             {{ detail.payeeName }} ·
             {{ detail.payeeIdentity }}
+          </ADescriptionsItem>
+          <ADescriptionsItem label="转账账号 / 通道">
+            {{ paymentRoute(detail).accountName }} ·
+            {{ paymentRoute(detail).channelName }}
           </ADescriptionsItem>
           <ADescriptionsItem label="执行方式">
             {{ businessEnumText(detail.executionMode) }}

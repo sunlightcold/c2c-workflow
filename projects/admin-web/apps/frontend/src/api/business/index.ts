@@ -294,6 +294,9 @@ export namespace BusinessApi {
     errorMessage: null | string;
     id: string;
     paymentOrderId: string;
+    paymentNo?: string;
+    payeeIdentity?: string;
+    payeeName?: string;
     status: string;
     upstreamId: null | string;
   }
