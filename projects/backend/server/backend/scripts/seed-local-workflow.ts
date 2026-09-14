@@ -156,7 +156,7 @@ async function seed(
      VALUES
        ($1, $4, 'MCH_HQ_BN', '总部币安自动付款商家', 'BINANCE', 'mock-hq-binance', $6, 'active', true, 'INSTANT'),
        ($2, $4, 'MCH_HQ_OKX', '总部欧易批次付款商家', 'OKX', 'mock-hq-okx', $7, 'active', true, 'BATCH'),
-       ($3, $5, 'MCH_AG_BN', '代理商币安自动付款商家', 'BINANCE', 'mock-agent-binance', $6, 'active', true, 'INSTANT')
+       ($3, $5, 'MCH_AG_BN', '代理商币安测试商家', 'BINANCE', 'mock-agent-binance', $6, 'active', false, 'INSTANT')
      ON CONFLICT (id) DO UPDATE SET
        name = EXCLUDED.name, "externalMerchantId" = EXCLUDED."externalMerchantId",
        "apiBaseUrl" = EXCLUDED."apiBaseUrl", status = EXCLUDED.status,
