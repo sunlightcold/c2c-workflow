@@ -155,7 +155,7 @@ const formOptions: VbenFormProps = {
 };
 
 const gridOptions: VxeTableGridOptions<BusinessApi.MerchantOrder> = {
-  cellConfig: { height: 64 },
+  cellConfig: { height: 75 },
   columnConfig: { resizable: true },
   columns: [
     { type: 'seq', width: 60 },
@@ -176,13 +176,13 @@ const gridOptions: VxeTableGridOptions<BusinessApi.MerchantOrder> = {
     },
     {
       field: 'payee',
-      minWidth: 210,
+      minWidth: 215,
       slots: { default: 'payee' },
       title: '收款信息',
     },
     {
       field: 'paymentRoute',
-      minWidth: 220,
+      minWidth: 230,
       slots: { default: 'paymentRoute' },
       title: '转账账号 / 通道',
     },
@@ -478,7 +478,7 @@ onMounted(async () => {
       </template>
       <template #payee="{ row }">
         <div
-          class="grid min-h-14 grid-cols-[48px_minmax(0,1fr)] content-center items-center gap-x-2 gap-y-1 text-left"
+          class="grid min-h-[68px] grid-cols-[48px_minmax(0,1fr)] content-center items-center gap-x-2 gap-y-1 text-left"
         >
           <ATag class="m-0 text-center" color="blue">姓名</ATag>
           <span class="truncate">{{ row.payeeName || '-' }}</span>
@@ -488,7 +488,7 @@ onMounted(async () => {
       </template>
       <template #paymentRoute="{ row }">
         <div
-          class="grid min-h-14 grid-cols-[48px_minmax(0,1fr)] content-center items-center gap-x-2 gap-y-1 text-left"
+          class="grid min-h-[68px] grid-cols-[48px_minmax(0,1fr)] content-center items-center gap-x-2 gap-y-1 text-left"
         >
           <ATag class="m-0 text-center" color="blue">账号</ATag>
           <span class="truncate">{{ paymentRoute(row).accountName }}</span>

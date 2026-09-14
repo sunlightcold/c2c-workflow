@@ -123,6 +123,7 @@ const formOptions: VbenFormProps = {
 };
 
 const gridOptions: VxeTableGridOptions<BusinessApi.PaymentBatch> = {
+  cellConfig: { height: 75 },
   columns: [
     { type: 'seq', width: 70 },
     { field: 'batchNo', title: '批次号', minWidth: 200 },
@@ -361,7 +362,7 @@ onMounted(async () => {
       </template>
       <template #paymentRoute="{ row }">
         <div
-          class="grid min-h-14 grid-cols-[48px_minmax(0,1fr)] content-center items-center gap-x-2 gap-y-1 text-left"
+          class="grid min-h-[68px] grid-cols-[48px_minmax(0,1fr)] content-center items-center gap-x-2 gap-y-1 text-left"
         >
           <ATag class="m-0 text-center" color="blue">账号</ATag>
           <span class="truncate">
