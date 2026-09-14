@@ -33,10 +33,7 @@ describe('merchant order operation forms', () => {
     });
     expect(
       accountRules.find(({ field }) => field === 'privateKey')?.col,
-    ).toEqual({
-      md: 12,
-      xs: 24,
-    });
+    ).toEqual({ span: 24 });
     expect(
       batchRules?.find(({ field }) => field === 'paymentOrderIds')?.col,
     ).toEqual({ span: 24 });
@@ -147,7 +144,7 @@ describe('merchant order operation forms', () => {
     const rules = options.formProps?.rule ?? [];
     expect(fields.some((field) => String(field).endsWith('File'))).toBe(false);
     expect(rules.find(({ field }) => field === 'privateKey')).toMatchObject({
-      col: { md: 12, xs: 24 },
+      col: { span: 24 },
       type: 'credentialTextFileInput',
     });
     expect(

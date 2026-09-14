@@ -67,6 +67,10 @@ const scopeTypeOptions = [
   { label: '指定商家', value: 'MERCHANT' },
 ];
 
+function getModalPopupContainer() {
+  return window.document.body;
+}
+
 const formOptions: VbenFormProps = {
   commonConfig: { labelWidth: 86 },
   schema: [
@@ -496,6 +500,7 @@ onMounted(async () => {
                 v-model:value="policyScopeType"
                 aria-label="策略范围"
                 :disabled="Boolean(editing)"
+                :get-popup-container="getModalPopupContainer"
                 :options="scopeTypeOptions"
                 placeholder="请选择策略范围"
                 @change="changePolicyScope"
@@ -508,6 +513,7 @@ onMounted(async () => {
                 v-model:value="policyMerchantId"
                 aria-label="商家账号"
                 :disabled="Boolean(editing)"
+                :get-popup-container="getModalPopupContainer"
                 :options="merchantOptions"
                 placeholder="请选择商家账号"
                 show-search
@@ -543,6 +549,7 @@ onMounted(async () => {
             <ASelect
               v-model:value="rule.ruleType"
               :aria-label="`规则 ${index + 1} 提交模式`"
+              :get-popup-container="getModalPopupContainer"
               :options="ruleTypeOptions"
               class="w-full"
               @change="changeRuleType(rule)"

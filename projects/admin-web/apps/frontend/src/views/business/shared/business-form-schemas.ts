@@ -489,7 +489,7 @@ export function createPaymentAccountModalOptions(
           },
           ...alipayCredentialRules('KEY', 'account-create'),
         ],
-        ['gateway'],
+        ['gateway', 'privateKey'],
       ),
     },
   };
@@ -525,7 +525,7 @@ export function editPaymentAccountModalOptions(
           },
           ...alipayCredentialRules(initialMode, 'account-edit'),
         ],
-        ['gateway'],
+        ['gateway', 'privateKey'],
       ),
     },
   };

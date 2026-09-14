@@ -1177,16 +1177,14 @@ test('manages parallel payment batch policy rules without horizontal overflow', 
     .fill('120');
 
   await createDialog.getByRole('button', { name: '添加规则' }).click();
-  await createDialog
+  const secondRuleType = createDialog
     .getByTestId('payment-batch-policy-rule')
     .nth(1)
-    .locator('.ant-select-selector')
-    .click({ force: true });
-  await page
-    .locator('.ant-select-dropdown:visible .ant-select-item-option')
-    .filter({ hasText: '按订单数' })
-    .last()
-    .click();
+    .getByRole('combobox');
+  await secondRuleType.click({ force: true });
+  await secondRuleType.press('ArrowDown');
+  await secondRuleType.press('ArrowDown');
+  await secondRuleType.press('Enter');
   await createDialog
     .getByRole('spinbutton', { name: '规则 2 订单数' })
     .fill('20');
