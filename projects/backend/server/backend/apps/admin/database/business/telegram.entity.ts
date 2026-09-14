@@ -123,7 +123,6 @@ export class TelegramGroupEntity extends CommonUuidEntity {
 
 @Entity('telegram_group_member')
 @Index('uq_telegram_group_member_tg', ['groupId', 'telegramUserId'], { unique: true })
-@Index('uq_telegram_group_member_user', ['groupId', 'userId'], { unique: true })
 @Index('idx_telegram_group_member_tenant', ['tenantId'])
 export class TelegramGroupMemberEntity extends CommonUuidEntity {
   @Column({ type: 'uuid', update: false })
@@ -131,9 +130,6 @@ export class TelegramGroupMemberEntity extends CommonUuidEntity {
 
   @Column({ type: 'uuid', update: false })
   groupId: string
-
-  @Column({ type: 'integer', update: false })
-  userId: number
 
   @Column({ type: 'varchar', length: 32 })
   telegramUserId: string
@@ -156,13 +152,9 @@ export class TelegramGroupMemberEntity extends CommonUuidEntity {
 
 @Entity('telegram_super_admin')
 @Index('uq_telegram_super_admin_tenant_tg', ['tenantId', 'telegramUserId'], { unique: true })
-@Index('uq_telegram_super_admin_tenant_user', ['tenantId', 'userId'], { unique: true })
 export class TelegramSuperAdminEntity extends CommonUuidEntity {
   @Column({ type: 'uuid', update: false })
   tenantId: string
-
-  @Column({ type: 'integer', update: false })
-  userId: number
 
   @Column({ type: 'varchar', length: 32 })
   telegramUserId: string

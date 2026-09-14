@@ -27,7 +27,6 @@ import {
   SetTelegramStatusDto,
   TelegramBotRuntimeStatusDto,
   TelegramBotListDto,
-  TelegramEligibleUserDto,
   TelegramGroupListDto,
   TelegramMemberListDto,
   TelegramSuperAdminListDto,
@@ -41,7 +40,6 @@ import { TelegramGroupService } from './telegram-group.service'
 import { TelegramMemberService } from './telegram-member.service'
 import { getTelegramCapabilityPolicy } from './telegram-policy'
 import { TelegramSuperAdminService } from './telegram-super-admin.service'
-import { TelegramUserDirectoryService } from './telegram-user-directory.service'
 import { TelegramBotRuntimeService } from './telegram-bot-runtime.service'
 
 const BotPermissions = definePermission('telegram:bot', [
@@ -80,7 +78,6 @@ export class TelegramController {
     private readonly groups: TelegramGroupService,
     private readonly members: TelegramMemberService,
     private readonly superAdmins: TelegramSuperAdminService,
-    private readonly userDirectory: TelegramUserDirectoryService,
     private readonly runtime: TelegramBotRuntimeService,
   ) {}
 
@@ -286,17 +283,9 @@ export class TelegramController {
     return this.members.list(this.scope.resolveTenantId(actor, dto.tenantId), dto)
   }
 
-  @Get('members/eligible-users')
-  @Permission(MemberPermissions.READ)
-  @ApiOperation({ summary: '查询当前所属单位可绑定的后台用户' })
-  @ApiOkResponse({ type: [TelegramEligibleUserDto] })
-  listMemberEligibleUsers(@Query() dto: TelegramTenantContextDto, @User() actor: AuthUser) {
-    return this.userDirectory.listEligible(this.scope.resolveTenantId(actor, dto.tenantId))
-  }
-
   @Post('members')
   @Permission(MemberPermissions.CREATE)
-  @ApiOperation({ summary: '新增群组成员并映射后台用户' })
+  @ApiOperation({ summary: '新增 Telegram 群组成员' })
   createMember(@Body() dto: CreateTelegramMemberDto, @User() actor: AuthUser) {
     const { tenantId, ...input } = dto
     return this.members.create(this.scope.resolveTenantId(actor, tenantId), input)
@@ -349,14 +338,6 @@ export class TelegramController {
   @ApiOperation({ summary: '分页查询本所属单位 Telegram 超级管理员' })
   listSuperAdmins(@Query() dto: TelegramSuperAdminListDto, @User() actor: AuthUser) {
     return this.superAdmins.list(this.scope.resolveTenantId(actor, dto.tenantId), dto)
-  }
-
-  @Get('super-admins/eligible-users')
-  @Permission(SuperAdminPermissions.READ)
-  @ApiOperation({ summary: '查询当前所属单位可设为超级管理员的后台用户' })
-  @ApiOkResponse({ type: [TelegramEligibleUserDto] })
-  listSuperAdminEligibleUsers(@Query() dto: TelegramTenantContextDto, @User() actor: AuthUser) {
-    return this.userDirectory.listEligible(this.scope.resolveTenantId(actor, dto.tenantId))
   }
 
   @Post('super-admins')

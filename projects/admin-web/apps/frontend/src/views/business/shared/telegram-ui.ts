@@ -65,12 +65,3 @@ export function telegramScopeText(
     telegramScopeOptions.find(({ value }) => value === scope)?.label ?? scope
   );
 }
-
-export function telegramUserOptions(
-  users: readonly BusinessApi.TelegramEligibleUser[],
-) {
-  return users.map((user) => ({
-    label: `${user.nickname}（${user.username}）`,
-    value: user.id,
-  }));
-}

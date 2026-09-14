@@ -22,10 +22,9 @@ import {
   filterMerchantsApi,
   filterPaymentAccountsApi,
   getMerchantOrderAppealReasonsApi,
+  getMerchantOrdersApi,
   getPaymentBatchPoliciesApi,
   getPaymentOrdersApi,
-  getTelegramMemberEligibleUsersApi,
-  getTelegramSuperAdminEligibleUsersApi,
   restartTelegramBotRuntimeApi,
   rotateMerchantCredentialApi,
   setMerchantStatusApi,
@@ -71,6 +70,30 @@ describe('business api', () => {
     requestMocks.patch.mockReset();
     requestMocks.put.mockReset();
     requestMocks.request.mockReset();
+  });
+
+  it('omits an empty merchant filter when listing merchant orders', async () => {
+    requestMocks.get.mockResolvedValue({
+      items: [],
+      page: 1,
+      pageSize: 20,
+      total: 0,
+    });
+
+    await getMerchantOrdersApi({
+      merchantId: '',
+      page: 1,
+      pageSize: 20,
+      tenantId: 'tenant-1',
+    });
+
+    expect(requestMocks.get).toHaveBeenCalledWith('/sys/merchant-orders', {
+      params: {
+        page: 1,
+        pageSize: 20,
+        tenantId: 'tenant-1',
+      },
+    });
   });
 
   it('uses tenant-scoped batch policy endpoints and preserves parallel rules', async () => {
@@ -425,26 +448,6 @@ describe('business api', () => {
     );
   });
 
-  it('loads tenant-scoped users for Telegram member mappings', async () => {
-    requestMocks.get.mockResolvedValue([
-      { id: 8, nickname: '值班员', username: 'operator' },
-    ]);
-
-    await getTelegramMemberEligibleUsersApi('tenant-1');
-    await getTelegramSuperAdminEligibleUsersApi('tenant-1');
-
-    expect(requestMocks.get).toHaveBeenNthCalledWith(
-      1,
-      '/sys/tg/members/eligible-users',
-      { params: { tenantId: 'tenant-1' } },
-    );
-    expect(requestMocks.get).toHaveBeenNthCalledWith(
-      2,
-      '/sys/tg/super-admins/eligible-users',
-      { params: { tenantId: 'tenant-1' } },
-    );
-  });
-
   it('uses the Telegram bot and group management endpoints', async () => {
     requestMocks.post.mockResolvedValue({ id: 'resource-1' });
     requestMocks.put.mockResolvedValue({ id: 'resource-1' });
@@ -570,7 +573,6 @@ describe('business api', () => {
       role: 'OPERATOR',
       telegramUserId: '123456789',
       tenantId: 'tenant-1',
-      userId: 8,
     });
     await updateTelegramMemberApi('member-1', {
       role: 'VIEWER',
@@ -583,7 +585,6 @@ describe('business api', () => {
       scopeType: 'ALL_GROUPS',
       telegramUserId: '987654321',
       tenantId: 'tenant-1',
-      userId: 9,
     });
     await updateTelegramSuperAdminApi('super-1', {
       groupIds: ['group-1'],
@@ -599,7 +600,6 @@ describe('business api', () => {
       role: 'OPERATOR',
       telegramUserId: '123456789',
       tenantId: 'tenant-1',
-      userId: 8,
     });
     expect(requestMocks.put).toHaveBeenNthCalledWith(
       1,
@@ -623,7 +623,6 @@ describe('business api', () => {
         scopeType: 'ALL_GROUPS',
         telegramUserId: '987654321',
         tenantId: 'tenant-1',
-        userId: 9,
       },
     );
     expect(requestMocks.put).toHaveBeenNthCalledWith(
@@ -650,22 +649,17 @@ describe('business api', () => {
     );
   });
 
-  it('loads live appeal reasons and uploads one receipt as multipart data', async () => {
+  it('loads live appeal reasons and requests automatic receipt handling as JSON', async () => {
     requestMocks.get.mockResolvedValue({ orderNo: 'BIN-1', reasons: [] });
     requestMocks.post.mockResolvedValue({ complaintNo: '30006788' });
-    const receipt = new File(['receipt'], 'receipt.png', {
-      type: 'image/png',
-    });
 
     await getMerchantOrderAppealReasonsApi('order-1', {
       merchantId: 'merchant-1',
       tenantId: 'tenant-1',
     });
     await submitMerchantOrderAppealApi('order-1', {
-      description: '我已付款给卖家，卖家未放行',
       merchantId: 'merchant-1',
       reasonCode: 6,
-      receipt,
       tenantId: 'tenant-1',
     });
 
@@ -673,13 +667,9 @@ describe('business api', () => {
       '/sys/merchant-orders/order-1/appeal-reasons',
       { params: { merchantId: 'merchant-1', tenantId: 'tenant-1' } },
     );
-    const [url, body] = requestMocks.post.mock.calls.at(0) ?? [];
-    expect(url).toBe('/sys/merchant-orders/order-1/appeal');
-    expect(body).toBeInstanceOf(FormData);
-    expect(body.get('merchantId')).toBe('merchant-1');
-    expect(body.get('tenantId')).toBe('tenant-1');
-    expect(body.get('reasonCode')).toBe('6');
-    expect(body.get('description')).toBe('我已付款给卖家，卖家未放行');
-    expect(body.get('receipt')).toBe(receipt);
+    expect(requestMocks.post).toHaveBeenCalledWith(
+      '/sys/merchant-orders/order-1/appeal',
+      { merchantId: 'merchant-1', reasonCode: 6, tenantId: 'tenant-1' },
+    );
   });
 });

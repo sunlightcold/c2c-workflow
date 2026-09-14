@@ -11,7 +11,6 @@ import {
   createTelegramMemberApi,
   deleteTelegramMemberApi,
   getTelegramGroupsApi,
-  getTelegramMemberEligibleUsersApi,
   getTelegramMembersApi,
   setTelegramMemberStatusApi,
   updateTelegramMemberApi,
@@ -35,7 +34,6 @@ import {
   telegramCapabilityOptions,
   telegramGroupRoleOptions,
   telegramRoleText,
-  telegramUserOptions,
 } from '../shared/telegram-ui';
 import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 
@@ -43,7 +41,6 @@ const { fixedTenantId, loadTenantOptions, tenantOptions } =
   useBusinessTenantFilter();
 const selectedTenantId = ref('');
 const groups = ref<BusinessApi.TelegramGroup[]>([]);
-const users = ref<BusinessApi.TelegramEligibleUser[]>([]);
 
 type MemberQueryParams = Omit<
   Parameters<typeof getTelegramMembersApi>[0],
@@ -60,15 +57,12 @@ const groupOptions = () =>
     label: group.name,
     value: group.id,
   }));
-const userOptions = () => telegramUserOptions(users.value);
-
 async function loadTenantReferences(tenantId: string) {
-  [groups.value, users.value] = await Promise.all([
-    getTelegramGroupsApi({ page: 1, pageSize: 100, tenantId }).then(
-      ({ items }) => items,
-    ),
-    getTelegramMemberEligibleUsersApi(tenantId),
-  ]);
+  groups.value = await getTelegramGroupsApi({
+    page: 1,
+    pageSize: 100,
+    tenantId,
+  }).then(({ items }) => items);
 }
 
 async function changeTenant(value: string) {
@@ -135,14 +129,6 @@ const gridOptions: VxeTableGridOptions<BusinessApi.TelegramMember> = {
     { field: 'telegramUserId', title: 'TG用户ID', width: 180 },
     { field: 'telegramUsername', minWidth: 140, title: 'Telegram 用户名' },
     { field: 'displayName', minWidth: 130, title: '显示名称' },
-    {
-      field: 'userId',
-      formatter: ({ cellValue }) =>
-        userOptions().find(({ value }) => value === cellValue)?.label ??
-        '未知后台用户',
-      minWidth: 170,
-      title: '后台用户',
-    },
     {
       field: 'groupId',
       formatter: ({ cellValue }) =>
@@ -220,15 +206,6 @@ function memberRules(editing = false) {
                 required: true,
                 trigger: 'change',
               },
-            ],
-          },
-          {
-            field: 'userId',
-            props: { options: userOptions(), showSearch: true },
-            title: '后台用户',
-            type: 'select',
-            validate: [
-              { message: '请选择后台用户', required: true, trigger: 'change' },
             ],
           },
         ]),
@@ -386,9 +363,7 @@ onMounted(async () => {
       <template #toolbar-actions>
         <AButton
           v-access:code="['telegram:member:create']"
-          :disabled="
-            !selectedTenantId || groups.length === 0 || users.length === 0
-          "
+          :disabled="!selectedTenantId || groups.length === 0"
           size="small"
           type="primary"
           @click="openCreate"

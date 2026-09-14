@@ -224,6 +224,16 @@ export namespace BusinessApi {
     upstreamId: null | string;
   }
 
+  export interface PaymentOrderUpstreamQueryResult {
+    order: PaymentOrder;
+    upstream: {
+      errorMessage?: string;
+      raw: unknown;
+      status: string;
+      upstreamId?: string;
+    };
+  }
+
   export interface MerchantOrder {
     appealComplaintNo: null | string;
     appealLastError: null | string;
@@ -287,6 +297,16 @@ export namespace BusinessApi {
     upstreamId: null | string;
     triggerRuleIds: string[];
     triggerSource: 'AUTOMATIC' | 'MANUAL';
+  }
+
+  export interface PaymentBatchUpstreamQueryResult {
+    batch: PaymentBatch;
+    upstream: {
+      errorMessage?: string;
+      raw: unknown;
+      status: string;
+      upstreamId?: string;
+    };
   }
 
   export interface PaymentBatchItem {
@@ -366,7 +386,7 @@ export namespace BusinessApi {
 
   export interface MerchantOrderQuery extends PageQuery {
     endTime?: string;
-    merchantId: string;
+    merchantId?: string;
     paymentMethod?: 'ALIPAY';
     platformOrderId?: string;
     startTime?: string;
@@ -496,7 +516,6 @@ export namespace BusinessApi {
     status: BusinessStatus;
     telegramUserId: string;
     telegramUsername: null | string;
-    userId: number;
   }
   export interface TelegramSuperAdmin {
     groupIds: string[];
@@ -505,12 +524,6 @@ export namespace BusinessApi {
     status: BusinessStatus;
     telegramUserId: string;
     telegramUsername: null | string;
-    userId: number;
-  }
-  export interface TelegramEligibleUser {
-    id: number;
-    nickname: string;
-    username: string;
   }
 }
 
@@ -797,8 +810,14 @@ export const submitPaymentBatchPolicyApi = (
 export async function getMerchantOrdersApi(
   params: BusinessApi.MerchantOrderQuery,
 ) {
+  const { merchantId, ...query } = params;
   return toPagination<BusinessApi.MerchantOrder>(
-    await requestClient.get('/sys/merchant-orders', { params }),
+    await requestClient.get('/sys/merchant-orders', {
+      params: {
+        ...query,
+        ...(merchantId ? { merchantId } : {}),
+      },
+    }),
   );
 }
 export const getMerchantOrderApi = (
@@ -852,25 +871,16 @@ export const getMerchantOrderAppealReasonsApi = (
 export const submitMerchantOrderAppealApi = (
   id: string,
   data: BusinessApi.TenantContext & {
-    description: string;
     merchantId: string;
     reasonCode: number;
-    receipt: Blob;
   },
-) => {
-  const body = new FormData();
-  if (data.tenantId) body.append('tenantId', data.tenantId);
-  body.append('merchantId', data.merchantId);
-  body.append('reasonCode', String(data.reasonCode));
-  body.append('description', data.description);
-  body.append('receipt', data.receipt);
-  return requestClient.post<{
+) =>
+  requestClient.post<{
     complaintNo: string;
     orderNo: string;
     reason: string;
     reasonCode: number;
-  }>(`/sys/merchant-orders/${id}/appeal`, body);
-};
+  }>(`/sys/merchant-orders/${id}/appeal`, data);
 
 export async function getPaymentOrdersApi(
   params: BusinessApi.PaymentOrderQuery,
@@ -908,6 +918,14 @@ export const reconcilePaymentOrderApi = (
     `/sys/payment-orders/${id}/reconcile`,
     data,
   );
+export const queryPaymentOrderUpstreamApi = (
+  id: string,
+  data: BusinessApi.TenantContext,
+) =>
+  requestClient.post<BusinessApi.PaymentOrderUpstreamQueryResult>(
+    `/sys/payment-orders/${id}/upstream-query`,
+    data,
+  );
 
 export async function getPaymentBatchesApi(
   params: BusinessApi.PaymentBatchQuery,
@@ -935,6 +953,14 @@ export const reconcilePaymentBatchApi = (
   id: string,
   data: BusinessApi.TenantContext,
 ) => requestClient.post(`/sys/payment-batches/${id}/reconcile`, data);
+export const queryPaymentBatchUpstreamApi = (
+  id: string,
+  data: BusinessApi.TenantContext,
+) =>
+  requestClient.post<BusinessApi.PaymentBatchUpstreamQueryResult>(
+    `/sys/payment-batches/${id}/upstream-query`,
+    data,
+  );
 
 export interface TelegramPageQuery extends BusinessApi.TenantContext {
   page: number;
@@ -1081,7 +1107,6 @@ export const createTelegramMemberApi = (
     role: BusinessApi.TelegramGroupRole;
     telegramUserId: string;
     telegramUsername?: string;
-    userId: number;
   },
 ) => requestClient.post<BusinessApi.TelegramMember>('/sys/tg/members', data);
 export const updateTelegramMemberApi = (
@@ -1108,11 +1133,6 @@ export const setTelegramMemberStatusApi = (
   });
 export const deleteTelegramMemberApi = (id: string, tenantId?: string) =>
   requestClient.delete(`/sys/tg/members/${id}`, { params: { tenantId } });
-export const getTelegramMemberEligibleUsersApi = (tenantId?: string) =>
-  requestClient.get<BusinessApi.TelegramEligibleUser[]>(
-    '/sys/tg/members/eligible-users',
-    { params: { tenantId } },
-  );
 export async function getTelegramSuperAdminsApi(
   params: TelegramPageQuery & {
     scopeType?: BusinessApi.TelegramSuperAdminScopeType;
@@ -1130,7 +1150,6 @@ export const createTelegramSuperAdminApi = (
     scopeType: BusinessApi.TelegramSuperAdminScopeType;
     telegramUserId: string;
     telegramUsername?: string;
-    userId: number;
   },
 ) =>
   requestClient.post<BusinessApi.TelegramSuperAdmin>(
@@ -1163,8 +1182,3 @@ export const setTelegramSuperAdminStatusApi = (
   });
 export const deleteTelegramSuperAdminApi = (id: string, tenantId?: string) =>
   requestClient.delete(`/sys/tg/super-admins/${id}`, { params: { tenantId } });
-export const getTelegramSuperAdminEligibleUsersApi = (tenantId?: string) =>
-  requestClient.get<BusinessApi.TelegramEligibleUser[]>(
-    '/sys/tg/super-admins/eligible-users',
-    { params: { tenantId } },
-  );

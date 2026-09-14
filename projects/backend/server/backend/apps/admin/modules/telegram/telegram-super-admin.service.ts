@@ -1,12 +1,10 @@
 import {
   BusinessStatus,
-  SysUserEntity,
   TelegramGroupBindingState,
   TelegramGroupEntity,
   TelegramSuperAdminEntity,
   TelegramSuperAdminScopeType,
 } from '@admin/database'
-import { ActorType, StatusEnum } from '@/common/interfaces'
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { In, Repository } from 'typeorm'
@@ -23,8 +21,6 @@ export class TelegramSuperAdminService {
     private readonly superAdmins: Repository<TelegramSuperAdminEntity>,
     @InjectRepository(TelegramGroupEntity)
     private readonly groups: Repository<TelegramGroupEntity>,
-    @InjectRepository(SysUserEntity)
-    private readonly users: Repository<SysUserEntity>,
   ) {}
 
   async list(tenantId: string, input: TelegramSuperAdminListDto) {
@@ -43,10 +39,7 @@ export class TelegramSuperAdminService {
   }
 
   async create(tenantId: string, input: Omit<CreateTelegramSuperAdminDto, 'tenantId'>) {
-    await Promise.all([
-      this.requireActiveUser(tenantId, input.userId),
-      this.assertScope(tenantId, input.scopeType, input.groupIds),
-    ])
+    await this.assertScope(tenantId, input.scopeType, input.groupIds)
     return this.superAdmins.save(
       this.superAdmins.create({
         ...input,
@@ -70,7 +63,6 @@ export class TelegramSuperAdminService {
   async setStatus(tenantId: string, id: string, status: BusinessStatus) {
     const admin = await this.superAdmins.findOne({ where: { id, tenantId } })
     if (!admin) throw new NotFoundException('Telegram 超级管理员不存在')
-    if (status === BusinessStatus.ACTIVE) await this.requireActiveUser(tenantId, admin.userId)
     admin.status = status
     return this.superAdmins.save(admin)
   }
@@ -98,16 +90,5 @@ export class TelegramSuperAdminService {
     })
     if (count !== groupIds.length)
       throw new BadRequestException('存在未绑定群组或群组不属于当前所属单位')
-  }
-
-  private async requireActiveUser(tenantId: string, userId: number) {
-    const user = await this.users.findOne({ where: { id: userId, status: StatusEnum.ENABLED } })
-    if (
-      !user ||
-      (user.actorType === ActorType.TENANT && user.tenantId !== tenantId) ||
-      (user.actorType === ActorType.PLATFORM && user.tenantId !== null)
-    )
-      throw new BadRequestException('后台用户不可用或不属于当前所属单位')
-    return user
   }
 }

@@ -1,8 +1,6 @@
-import { ActorType, StatusEnum } from '@/common/interfaces'
 import {
   BusinessStatus,
   MerchantEntity,
-  SysUserEntity,
   TelegramBotEntity,
   TelegramGroupBindingState,
   TelegramGroupEntity,
@@ -12,7 +10,7 @@ import {
 } from '@admin/database'
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { IsNull, Repository } from 'typeorm'
+import { Repository } from 'typeorm'
 import type { TelegramCapability } from './telegram-policy'
 
 export type TelegramAuthorizationFailure =
@@ -26,7 +24,7 @@ export type TelegramAuthorizationResult =
       allowed: true
       capabilities: TelegramCapability[]
       group: TelegramGroupEntity
-      user: SysUserEntity
+      telegramUserId: string
     }
 
 type RuntimeBot = Pick<TelegramBotEntity, 'capabilities' | 'id' | 'tenantId'>
@@ -42,8 +40,6 @@ export class TelegramAuthorizationService {
     private readonly members: Repository<TelegramGroupMemberEntity>,
     @InjectRepository(TelegramSuperAdminEntity)
     private readonly superAdmins: Repository<TelegramSuperAdminEntity>,
-    @InjectRepository(SysUserEntity)
-    private readonly users: Repository<SysUserEntity>,
   ) {}
 
   async isActiveSuperAdmin(tenantId: string, telegramUserId: string): Promise<boolean> {
@@ -89,14 +85,11 @@ export class TelegramAuthorizationService {
       (superAdmin.scopeType === TelegramSuperAdminScopeType.ALL_GROUPS ||
         superAdmin.groupIds.includes(group.id))
     ) {
-      const user = await this.findActiveUser(bot.tenantId, superAdmin.userId)
-      if (user) {
-        return {
-          allowed: true,
-          capabilities: this.intersectCapabilities(bot.capabilities, group.capabilities),
-          group,
-          user,
-        }
+      return {
+        allowed: true,
+        capabilities: this.intersectCapabilities(bot.capabilities, group.capabilities),
+        group,
+        telegramUserId,
       }
     }
 
@@ -109,8 +102,6 @@ export class TelegramAuthorizationService {
       },
     })
     if (!member) return { allowed: false, reason: 'USER_NOT_AUTHORIZED' }
-    const user = await this.findActiveUser(bot.tenantId, member.userId)
-    if (!user) return { allowed: false, reason: 'USER_NOT_AUTHORIZED' }
     return {
       allowed: true,
       capabilities: this.intersectCapabilities(
@@ -119,27 +110,8 @@ export class TelegramAuthorizationService {
         member.capabilities,
       ),
       group,
-      user,
+      telegramUserId,
     }
-  }
-
-  private findActiveUser(tenantId: string, userId: number) {
-    return this.users.findOne({
-      where: [
-        {
-          id: userId,
-          actorType: ActorType.PLATFORM,
-          tenantId: IsNull(),
-          status: StatusEnum.ENABLED,
-        },
-        {
-          id: userId,
-          actorType: ActorType.TENANT,
-          tenantId,
-          status: StatusEnum.ENABLED,
-        },
-      ],
-    })
   }
 
   private intersectCapabilities(...sets: string[][]): TelegramCapability[] {

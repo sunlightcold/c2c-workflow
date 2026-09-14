@@ -1,11 +1,9 @@
 import {
   BusinessStatus,
-  SysUserEntity,
   TelegramGroupBindingState,
   TelegramGroupEntity,
   TelegramGroupMemberEntity,
 } from '@admin/database'
-import { ActorType, StatusEnum } from '@/common/interfaces'
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
@@ -23,8 +21,6 @@ export class TelegramMemberService {
     private readonly members: Repository<TelegramGroupMemberEntity>,
     @InjectRepository(TelegramGroupEntity)
     private readonly groups: Repository<TelegramGroupEntity>,
-    @InjectRepository(SysUserEntity)
-    private readonly users: Repository<SysUserEntity>,
   ) {}
 
   async list(tenantId: string, input: TelegramMemberListDto) {
@@ -45,7 +41,6 @@ export class TelegramMemberService {
 
   async create(tenantId: string, input: Omit<CreateTelegramMemberDto, 'tenantId'>) {
     const group = await this.requireActiveGroup(tenantId, input.groupId)
-    await this.requireActiveUser(tenantId, input.userId)
     assertMemberCapabilities(
       input.role,
       input.capabilities,
@@ -78,7 +73,6 @@ export class TelegramMemberService {
     if (!member) throw new NotFoundException('群组成员不存在')
     if (status === BusinessStatus.ACTIVE) {
       await this.requireActiveGroup(tenantId, member.groupId)
-      await this.requireActiveUser(tenantId, member.userId)
     }
     member.status = status
     return this.members.save(member)
@@ -96,16 +90,5 @@ export class TelegramMemberService {
     })
     if (!group) throw new BadRequestException('群组未完成绑定或不属于当前所属单位')
     return group
-  }
-
-  private async requireActiveUser(tenantId: string, userId: number) {
-    const user = await this.users.findOne({ where: { id: userId, status: StatusEnum.ENABLED } })
-    if (
-      !user ||
-      (user.actorType === ActorType.TENANT && user.tenantId !== tenantId) ||
-      (user.actorType === ActorType.PLATFORM && user.tenantId !== null)
-    )
-      throw new BadRequestException('后台用户不可用或不属于当前所属单位')
-    return user
   }
 }

@@ -11,7 +11,6 @@ import {
   createTelegramSuperAdminApi,
   deleteTelegramSuperAdminApi,
   getTelegramGroupsApi,
-  getTelegramSuperAdminEligibleUsersApi,
   getTelegramSuperAdminsApi,
   setTelegramSuperAdminStatusApi,
   updateTelegramSuperAdminApi,
@@ -31,18 +30,13 @@ import {
 } from '../shared/business-form-layout';
 import { createEmptyBusinessPage } from '../shared/business-grid';
 import { businessStatusOptions } from '../shared/business-ui';
-import {
-  telegramScopeOptions,
-  telegramScopeText,
-  telegramUserOptions,
-} from '../shared/telegram-ui';
+import { telegramScopeOptions, telegramScopeText } from '../shared/telegram-ui';
 import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 
 const { fixedTenantId, loadTenantOptions, tenantOptions } =
   useBusinessTenantFilter();
 const selectedTenantId = ref('');
 const groups = ref<BusinessApi.TelegramGroup[]>([]);
-const users = ref<BusinessApi.TelegramEligibleUser[]>([]);
 
 type SuperAdminQueryParams = Omit<
   Parameters<typeof getTelegramSuperAdminsApi>[0],
@@ -59,15 +53,12 @@ const groupOptions = () =>
     label: group.name,
     value: group.id,
   }));
-const userOptions = () => telegramUserOptions(users.value);
-
 async function loadTenantReferences(tenantId: string) {
-  [groups.value, users.value] = await Promise.all([
-    getTelegramGroupsApi({ page: 1, pageSize: 100, tenantId }).then(
-      ({ items }) => items,
-    ),
-    getTelegramSuperAdminEligibleUsersApi(tenantId),
-  ]);
+  groups.value = await getTelegramGroupsApi({
+    page: 1,
+    pageSize: 100,
+    tenantId,
+  }).then(({ items }) => items);
 }
 
 async function changeTenant(value: string) {
@@ -119,14 +110,6 @@ const gridOptions: VxeTableGridOptions<BusinessApi.TelegramSuperAdmin> = {
     { type: 'seq', width: 60 },
     { field: 'telegramUserId', title: 'TG用户ID', width: 180 },
     { field: 'telegramUsername', minWidth: 150, title: 'Telegram 用户名' },
-    {
-      field: 'userId',
-      formatter: ({ cellValue }) =>
-        userOptions().find(({ value }) => value === cellValue)?.label ??
-        '未知后台用户',
-      minWidth: 180,
-      title: '后台用户',
-    },
     {
       field: 'scopeType',
       formatter: ({ cellValue }) =>
@@ -180,21 +163,8 @@ const [Grid, gridApi] = useResourceGrid<
 
 const { FormModalRender, formModalClose, formModalShow } = useFormModal();
 
-function superAdminRules(editing = false) {
+function superAdminRules() {
   return [
-    ...(editing
-      ? []
-      : [
-          {
-            field: 'userId',
-            props: { options: userOptions(), showSearch: true },
-            title: '后台用户',
-            type: 'select',
-            validate: [
-              { message: '请选择后台用户', required: true, trigger: 'change' },
-            ],
-          },
-        ]),
     {
       field: 'telegramUserId',
       props: { maxlength: 32 },
@@ -253,11 +223,11 @@ function superAdminRules(editing = false) {
   ];
 }
 
-function superAdminModalOptions(title: string, editing = false) {
+function superAdminModalOptions(title: string) {
   return {
     formProps: {
       option: businessFormOption,
-      rule: layoutBusinessFormRules(superAdminRules(editing), ['scopeType']),
+      rule: layoutBusinessFormRules(superAdminRules(), ['scopeType']),
     },
     props: businessModalProps(title),
   };
@@ -295,7 +265,7 @@ function openCreate() {
 
 async function openEdit(row: BusinessApi.TelegramSuperAdmin) {
   const [formApi] = await formModalShow(
-    superAdminModalOptions('编辑超级管理员', true),
+    superAdminModalOptions('编辑超级管理员'),
     {
       onOk: async (api) => {
         await api.validate();
@@ -374,7 +344,7 @@ onMounted(async () => {
       <template #toolbar-actions>
         <AButton
           v-access:code="['telegram:superAdmin:create']"
-          :disabled="!selectedTenantId || users.length === 0"
+          :disabled="!selectedTenantId"
           size="small"
           type="primary"
           @click="openCreate"

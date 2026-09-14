@@ -214,9 +214,7 @@ test.beforeEach(async ({ page }) => {
     '/sys/tg/bots',
     '/sys/tg/groups',
     '/sys/tg/members',
-    '/sys/tg/members/eligible-users',
     '/sys/tg/super-admins',
-    '/sys/tg/super-admins/eligible-users',
   ]);
   let paymentPlans = [
     {
@@ -814,18 +812,12 @@ test.beforeEach(async ({ page }) => {
               status: 'active',
               telegramUserId: '123456789',
               telegramUsername: 'operator',
-              userId: 2,
             },
           ],
           page: 1,
           pageSize: 20,
           total: 1,
         };
-        break;
-      }
-      case '/sys/tg/members/eligible-users':
-      case '/sys/tg/super-admins/eligible-users': {
-        data = [{ id: 2, nickname: '平台运营', username: 'operator' }];
         break;
       }
       case '/sys/tg/super-admins': {
@@ -838,7 +830,6 @@ test.beforeEach(async ({ page }) => {
               status: 'active',
               telegramUserId: '987654321',
               telegramUsername: 'supervisor',
-              userId: 3,
             },
           ],
           page: 1,
@@ -1740,32 +1731,57 @@ test('provides complete Telegram administration actions', async ({ page }) => {
     await expect(editDialog).toBeVisible();
     await expectResponsiveTwoColumnForm(page, editDialog);
 
-    if (assertion.path === '/business/telegram-groups') {
-      const capabilityField = editDialog
-        .locator('.ant-form-item')
-        .filter({ hasText: '群组能力' });
-      await expect(capabilityField.getByRole('checkbox')).toHaveCount(13);
-      await expect(capabilityField.getByRole('combobox')).toHaveCount(0);
-      await expect(
-        capabilityField.getByRole('checkbox', { name: '手工支付' }),
-      ).toBeChecked();
-      await capabilityField.getByRole('checkbox', { name: '订单查询' }).check();
-      const updateRequest = page.waitForRequest(
-        (request) =>
-          request.method() === 'PUT' &&
-          request
-            .url()
-            .endsWith('/v1/sys/tg/groups/00000000-0000-4000-8000-000000000202'),
-      );
-      await editDialog.getByRole('button', { name: /确\s*定/ }).click();
-      const request = await updateRequest;
-      expect(request.postDataJSON()).toMatchObject({ tenantId });
-      expect(request.postDataJSON().capabilities).toEqual(
-        expect.arrayContaining(['MANUAL_PAYMENT', 'ORDER_QUERY']),
-      );
-      expect(request.postDataJSON().capabilities).toHaveLength(2);
-    } else {
-      await editDialog.getByRole('button', { name: /取\s*消/ }).click();
+    switch (assertion.path) {
+      case '/business/telegram-groups': {
+        const capabilityField = editDialog
+          .locator('.ant-form-item')
+          .filter({ hasText: '群组能力' });
+        await expect(capabilityField.getByRole('checkbox')).toHaveCount(13);
+        await expect(capabilityField.getByRole('combobox')).toHaveCount(0);
+        await expect(
+          capabilityField.getByRole('checkbox', { name: '手工支付' }),
+        ).toBeChecked();
+        await capabilityField
+          .getByRole('checkbox', { name: '订单查询' })
+          .check();
+        const updateRequest = page.waitForRequest(
+          (request) =>
+            request.method() === 'PUT' &&
+            request
+              .url()
+              .endsWith(
+                '/v1/sys/tg/groups/00000000-0000-4000-8000-000000000202',
+              ),
+        );
+        await editDialog.getByRole('button', { name: /确\s*定/ }).click();
+        const request = await updateRequest;
+        expect(request.postDataJSON()).toMatchObject({ tenantId });
+        expect(request.postDataJSON().capabilities).toEqual(
+          expect.arrayContaining(['MANUAL_PAYMENT', 'ORDER_QUERY']),
+        );
+        expect(request.postDataJSON().capabilities).toHaveLength(2);
+
+        break;
+      }
+      case '/business/telegram-members': {
+        await expect(
+          editDialog.getByText('后台用户', { exact: true }),
+        ).toHaveCount(0);
+        await editDialog.getByRole('button', { name: /取\s*消/ }).click();
+
+        break;
+      }
+      case '/business/telegram-super-admins': {
+        await expect(
+          editDialog.getByText('后台用户', { exact: true }),
+        ).toHaveCount(0);
+        await editDialog.getByRole('button', { name: /取\s*消/ }).click();
+
+        break;
+      }
+      default: {
+        await editDialog.getByRole('button', { name: /取\s*消/ }).click();
+      }
     }
     await expect(editDialog).toBeHidden();
     expect(

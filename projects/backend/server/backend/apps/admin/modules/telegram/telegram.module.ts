@@ -2,8 +2,8 @@ import {
   MerchantEntity,
   MerchantOrderEntity,
   PaymentBatchEntity,
+  PaymentBatchItemEntity,
   PaymentOrderEntity,
-  SysUserEntity,
   TelegramBotEntity,
   TelegramGroupEntity,
   TelegramGroupMemberEntity,
@@ -14,6 +14,7 @@ import {
 import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { BusinessModule } from '../business'
+import { C2cOrderModule } from '../c2c-order'
 import { PaymentModule } from '../payment'
 import { CredentialModule } from '../system/credential'
 import { TelegramBotService } from './telegram-bot.service'
@@ -25,7 +26,6 @@ import { TelegramMemberService } from './telegram-member.service'
 import { TelegramSuperAdminService } from './telegram-super-admin.service'
 import { TelegramUpdateInboxService } from './telegram-update-inbox.service'
 import { TelegramUpdateProcessorService } from './telegram-update-processor.service'
-import { TelegramUserDirectoryService } from './telegram-user-directory.service'
 import { TelegramWebhookController } from './telegram-webhook.controller'
 import { TelegramRuntimeService } from './telegram-runtime.service'
 import { TelegramInteractionService } from './telegram-interaction.service'
@@ -34,18 +34,21 @@ import { TelegramBatchPaymentService } from './telegram-batch-payment.service'
 import { TelegramQueryService } from './telegram-query.service'
 import { TelegramNotificationService } from './telegram-notification.service'
 import { TelegramBotRuntimeService } from './telegram-bot-runtime.service'
+import { TelegramC2cOrderActionService } from './telegram-c2c-order-action.service'
+import { TelegramC2cAppealService } from './telegram-c2c-appeal.service'
 
 @Module({
   imports: [
     BusinessModule,
+    C2cOrderModule,
     PaymentModule,
     CredentialModule,
     TypeOrmModule.forFeature([
       MerchantEntity,
       MerchantOrderEntity,
       PaymentBatchEntity,
+      PaymentBatchItemEntity,
       PaymentOrderEntity,
-      SysUserEntity,
       TelegramBotEntity,
       TelegramGroupEntity,
       TelegramGroupMemberEntity,
@@ -64,7 +67,6 @@ import { TelegramBotRuntimeService } from './telegram-bot-runtime.service'
     TelegramSuperAdminService,
     TelegramUpdateInboxService,
     TelegramUpdateProcessorService,
-    TelegramUserDirectoryService,
     TelegramRuntimeService,
     TelegramInteractionService,
     TelegramManualPaymentService,
@@ -72,6 +74,8 @@ import { TelegramBotRuntimeService } from './telegram-bot-runtime.service'
     TelegramQueryService,
     TelegramNotificationService,
     TelegramBotRuntimeService,
+    TelegramC2cOrderActionService,
+    TelegramC2cAppealService,
   ],
   exports: [
     TelegramBotService,

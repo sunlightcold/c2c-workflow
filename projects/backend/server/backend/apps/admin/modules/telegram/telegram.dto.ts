@@ -35,17 +35,6 @@ export class TelegramTenantContextDto {
   tenantId?: string
 }
 
-export class TelegramEligibleUserDto {
-  @ApiProperty()
-  id: number
-
-  @ApiProperty()
-  username: string
-
-  @ApiProperty()
-  nickname: string
-}
-
 export class TelegramBotRuntimeStatusDto {
   @ApiProperty({ enum: ['ONLINE', 'CONNECTING', 'NOT_STARTED', 'DISABLED', 'ERROR'] })
   state: 'ONLINE' | 'CONNECTING' | 'NOT_STARTED' | 'DISABLED' | 'ERROR'
@@ -258,11 +247,6 @@ export class CreateTelegramMemberDto extends TelegramTenantContextDto {
   groupId: string
 
   @ApiProperty()
-  @IsInt()
-  @Min(1)
-  userId: number
-
-  @ApiProperty()
   @Matches(/^[0-9]{1,32}$/)
   telegramUserId: string
 
@@ -292,7 +276,7 @@ export class CreateTelegramMemberDto extends TelegramTenantContextDto {
 }
 
 export class UpdateTelegramMemberDto extends PartialType(
-  OmitType(CreateTelegramMemberDto, ['groupId', 'userId'] as const),
+  OmitType(CreateTelegramMemberDto, ['groupId'] as const),
 ) {}
 
 export class TelegramMemberListDto extends TelegramPageDto {
@@ -320,11 +304,6 @@ export class TelegramMemberListDto extends TelegramPageDto {
 
 export class CreateTelegramSuperAdminDto extends TelegramTenantContextDto {
   @ApiProperty()
-  @IsInt()
-  @Min(1)
-  userId: number
-
-  @ApiProperty()
   @Matches(/^[0-9]{1,32}$/)
   telegramUserId: string
 
@@ -346,9 +325,7 @@ export class CreateTelegramSuperAdminDto extends TelegramTenantContextDto {
   groupIds: string[]
 }
 
-export class UpdateTelegramSuperAdminDto extends PartialType(
-  OmitType(CreateTelegramSuperAdminDto, ['userId'] as const),
-) {}
+export class UpdateTelegramSuperAdminDto extends PartialType(CreateTelegramSuperAdminDto) {}
 
 export class TelegramSuperAdminListDto extends TelegramPageDto {
   @ApiPropertyOptional()
