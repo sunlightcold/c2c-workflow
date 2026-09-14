@@ -37,6 +37,12 @@
   @apply dark:border-border/60 dark:border;
 }
 
+/* 全局消息必须显示在抽屉、确认框和遮罩之上，避免错误提示被弹层压暗。 */
+.ant-message,
+.ant-notification {
+  z-index: 3000 !important;
+}
+
 .form-valid-error {
   /** select 选择器的样式 */
 
