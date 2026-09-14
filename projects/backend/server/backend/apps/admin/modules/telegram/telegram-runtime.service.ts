@@ -91,7 +91,11 @@ export class TelegramRuntimeService {
           await this.reply(
             bot.tokenRef,
             message,
-            ['可用命令：', '/myid - 查看 Telegram 用户编号', '/bind 平台商家编号 - 绑定当前商家群'].join('\n'),
+            [
+              '可用命令：',
+              '/myid - 查看 Telegram 用户编号',
+              '/bind 平台商家编号 - 绑定当前商家群',
+            ].join('\n'),
           )
           return
         }
@@ -165,7 +169,11 @@ export class TelegramRuntimeService {
         `商家群绑定成功\n平台商家编号：${args[0]}\n群组：${groupName}\n发送 /help 查看可用命令`,
       )
     } catch (error) {
-      await this.reply(bot.tokenRef, message, error instanceof Error ? error.message : '商家群绑定失败')
+      await this.reply(
+        bot.tokenRef,
+        message,
+        error instanceof Error ? error.message : '商家群绑定失败',
+      )
     }
   }
 
