@@ -70,3 +70,4 @@ Compose 会等待 PostgreSQL 健康检查通过，启动一次性 `migrate` 服�
 5. `C2cMerchantPlatformCredentials1789003000000`：按商家隔离、单版本生效的平台凭据引用。
 6. `C2cMerchantOrders1789004000000`：买币商家订单、状态历史和每商家同步检查点。
 7. `C2cPaymentBatches1789005000000`：批量支付、批次明细和状态历史。
+8. `C2cTelegramIdentities1789018000000`：移除 Telegram 群组成员和超级管理员对 `sys_user` 的依赖，Telegram 身份独立按所属单位隔离。

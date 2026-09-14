@@ -6,7 +6,6 @@ import { TelegramBotService } from '@/apps/admin/modules/telegram/telegram-bot.s
 import { TelegramGroupService } from '@/apps/admin/modules/telegram/telegram-group.service'
 import { TelegramMemberService } from '@/apps/admin/modules/telegram/telegram-member.service'
 import { TelegramSuperAdminService } from '@/apps/admin/modules/telegram/telegram-super-admin.service'
-import { TelegramUserDirectoryService } from '@/apps/admin/modules/telegram/telegram-user-directory.service'
 import { TelegramBotRuntimeService } from '@/apps/admin/modules/telegram/telegram-bot-runtime.service'
 import { createAdminContractTestApp, expectWrappedSuccess } from './helpers/admin-contract-test-app'
 
@@ -48,9 +47,6 @@ describe('Telegram administration API contract (e2e)', () => {
     setStatus: jest.fn(),
     update: jest.fn(),
   }
-  const userDirectory = {
-    listEligible: jest.fn(),
-  }
   const runtime = {
     check: jest.fn(),
     getStatus: jest.fn().mockReturnValue({
@@ -76,7 +72,6 @@ describe('Telegram administration API contract (e2e)', () => {
         { provide: TelegramGroupService, useValue: groups },
         { provide: TelegramMemberService, useValue: members },
         { provide: TelegramSuperAdminService, useValue: superAdmins },
-        { provide: TelegramUserDirectoryService, useValue: userDirectory },
         { provide: TelegramBotRuntimeService, useValue: runtime },
       ],
     })
@@ -202,7 +197,7 @@ describe('Telegram administration API contract (e2e)', () => {
     )
   })
 
-  it('creates a mapped group member and a tenant-scoped super administrator', async () => {
+  it('creates Telegram identities scoped to a tenant', async () => {
     members.create.mockResolvedValue({ id: 'member-1' })
     superAdmins.create.mockResolvedValue({ id: 'super-1', scopeType: 'SPECIFIED_GROUPS' })
     const tenantId = '00000000-0000-4000-8000-000000000010'
@@ -212,7 +207,6 @@ describe('Telegram administration API contract (e2e)', () => {
       .send({
         tenantId,
         groupId: '00000000-0000-4000-8000-000000000040',
-        userId: 8,
         telegramUserId: '987654321',
         role: 'OPERATOR',
         capabilities: ['ORDER_QUERY'],
@@ -222,7 +216,6 @@ describe('Telegram administration API contract (e2e)', () => {
       .post('/v1/sys/tg/super-admins')
       .send({
         tenantId,
-        userId: 8,
         telegramUserId: '987654321',
         scopeType: 'SPECIFIED_GROUPS',
         groupIds: ['00000000-0000-4000-8000-000000000040'],
@@ -231,32 +224,11 @@ describe('Telegram administration API contract (e2e)', () => {
 
     expect(members.create).toHaveBeenCalledWith(
       'tenant-1',
-      expect.objectContaining({ userId: 8, role: 'OPERATOR' }),
+      expect.objectContaining({ telegramUserId: '987654321', role: 'OPERATOR' }),
     )
     expect(superAdmins.create).toHaveBeenCalledWith(
       'tenant-1',
       expect.objectContaining({ scopeType: 'SPECIFIED_GROUPS' }),
     )
-  })
-
-  it('lists eligible backend users through each authorized Telegram resource', async () => {
-    userDirectory.listEligible.mockResolvedValue([
-      { id: 8, nickname: '值班员', username: 'operator' },
-    ])
-
-    const memberResponse = await request(app.getHttpServer())
-      .get('/v1/sys/tg/members/eligible-users')
-      .query({ tenantId: '00000000-0000-4000-8000-000000000010' })
-      .expect(200)
-    const superAdminResponse = await request(app.getHttpServer())
-      .get('/v1/sys/tg/super-admins/eligible-users')
-      .query({ tenantId: '00000000-0000-4000-8000-000000000010' })
-      .expect(200)
-
-    expectWrappedSuccess(memberResponse.body)
-    expectWrappedSuccess(superAdminResponse.body)
-    expect(memberResponse.body.data).toEqual([{ id: 8, nickname: '值班员', username: 'operator' }])
-    expect(userDirectory.listEligible).toHaveBeenNthCalledWith(1, 'tenant-1')
-    expect(userDirectory.listEligible).toHaveBeenNthCalledWith(2, 'tenant-1')
   })
 })
