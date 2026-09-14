@@ -255,9 +255,10 @@ function groupRules() {
     },
     {
       field: 'capabilities',
-      props: { mode: 'multiple', options: telegramCapabilityOptions },
+      options: telegramCapabilityOptions,
+      props: { class: 'telegram-capability-checkbox-group' },
       title: '群组能力',
-      type: 'select',
+      type: 'checkbox',
       validate: [
         {
           message: '请选择至少一项群组能力',
@@ -496,3 +497,24 @@ onMounted(async () => {
     <FormModalRender />
   </Page>
 </template>
+
+<style scoped>
+:deep(.telegram-capability-checkbox-group) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px 16px;
+  width: 100%;
+}
+
+:deep(.telegram-capability-checkbox-group .ant-checkbox-group-item) {
+  min-height: 36px;
+  margin-inline-end: 0;
+}
+
+@media (max-width: 575px) {
+  :deep(.telegram-capability-checkbox-group) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+}
+</style>

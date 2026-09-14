@@ -1739,7 +1739,34 @@ test('provides complete Telegram administration actions', async ({ page }) => {
     });
     await expect(editDialog).toBeVisible();
     await expectResponsiveTwoColumnForm(page, editDialog);
-    await editDialog.getByRole('button', { name: /取\s*消/ }).click();
+
+    if (assertion.path === '/business/telegram-groups') {
+      const capabilityField = editDialog
+        .locator('.ant-form-item')
+        .filter({ hasText: '群组能力' });
+      await expect(capabilityField.getByRole('checkbox')).toHaveCount(13);
+      await expect(capabilityField.getByRole('combobox')).toHaveCount(0);
+      await expect(
+        capabilityField.getByRole('checkbox', { name: '手工支付' }),
+      ).toBeChecked();
+      await capabilityField.getByRole('checkbox', { name: '订单查询' }).check();
+      const updateRequest = page.waitForRequest(
+        (request) =>
+          request.method() === 'PUT' &&
+          request
+            .url()
+            .endsWith('/v1/sys/tg/groups/00000000-0000-4000-8000-000000000202'),
+      );
+      await editDialog.getByRole('button', { name: /确\s*定/ }).click();
+      const request = await updateRequest;
+      expect(request.postDataJSON()).toMatchObject({ tenantId });
+      expect(request.postDataJSON().capabilities).toEqual(
+        expect.arrayContaining(['MANUAL_PAYMENT', 'ORDER_QUERY']),
+      );
+      expect(request.postDataJSON().capabilities).toHaveLength(2);
+    } else {
+      await editDialog.getByRole('button', { name: /取\s*消/ }).click();
+    }
     await expect(editDialog).toBeHidden();
     expect(
       await page.evaluate(
