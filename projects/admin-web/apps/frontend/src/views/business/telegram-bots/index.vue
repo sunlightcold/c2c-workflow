@@ -118,7 +118,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.TelegramBot> = {
       fixed: 'right',
       slots: { default: 'actions' },
       title: '操作',
-      width: 180,
+      width: 220,
     },
   ],
 };
@@ -403,18 +403,24 @@ onMounted(async () => {
         />
       </template>
       <template #actions="{ row }">
-        <ASpace :size="4">
+        <ASpace :size="12" wrap>
           <AButton
             v-access:code="['telegram:bot:update']"
             size="small"
+            type="link"
             @click="openEdit(row)"
           >
             编辑
           </AButton>
           <AButton
-            v-if="row.status === 'active' && row.runtime?.runtimeRunning"
             v-access:code="['telegram:bot:update']"
+            :disabled="
+              row.status !== 'active' ||
+              !row.runtime?.runtimeRunning ||
+              getRuntimeState(row) === 'CONNECTING'
+            "
             size="small"
+            type="link"
             @click="restartRuntime(row)"
           >
             重启
@@ -423,6 +429,7 @@ onMounted(async () => {
             v-access:code="['telegram:bot:delete']"
             danger
             size="small"
+            type="link"
             @click="remove(row)"
           >
             删除

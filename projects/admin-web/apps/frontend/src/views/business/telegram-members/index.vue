@@ -176,7 +176,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.TelegramMember> = {
       fixed: 'right',
       slots: { default: 'actions' },
       title: '操作',
-      width: 170,
+      width: 160,
     },
   ],
 };
@@ -405,10 +405,11 @@ onMounted(async () => {
         />
       </template>
       <template #actions="{ row }">
-        <ASpace :size="4">
+        <ASpace :size="12" wrap>
           <AButton
             v-access:code="['telegram:member:update']"
             size="small"
+            type="link"
             @click="openEdit(row)"
           >
             编辑
@@ -417,6 +418,7 @@ onMounted(async () => {
             v-access:code="['telegram:member:delete']"
             danger
             size="small"
+            type="link"
             @click="remove(row)"
           >
             移除

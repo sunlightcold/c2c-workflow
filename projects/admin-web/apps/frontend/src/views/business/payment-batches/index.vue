@@ -370,15 +370,15 @@ onMounted(async () => {
         </ATag>
       </template>
       <template #action="{ row }">
-        <ASpace>
-          <AButton size="small" type="default" @click="openDetail(row)">
+        <ASpace :size="12" wrap>
+          <AButton size="small" type="link" @click="openDetail(row)">
             详情
           </AButton>
           <AButton
             v-if="row.status === 'READY'"
             v-access:code="['payment:batch:submit']"
             size="small"
-            type="default"
+            type="link"
             @click="submitBatch(row)"
           >
             提交
@@ -387,7 +387,7 @@ onMounted(async () => {
             v-if="['PROCESSING', 'UNKNOWN'].includes(row.status)"
             v-access:code="['payment:batch:retry']"
             size="small"
-            type="default"
+            type="link"
             @click="reconcileBatch(row)"
           >
             回查

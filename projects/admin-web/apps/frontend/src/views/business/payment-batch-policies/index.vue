@@ -440,11 +440,12 @@ onMounted(async () => {
         />
       </template>
       <template #action="{ row }">
-        <ASpace :size="4">
+        <ASpace :size="12" wrap>
           <AButton
             v-if="hasManualRule(row) && row.status === 'active'"
             v-access:code="['payment:batchPolicy:update']"
             size="small"
+            type="link"
             @click="submitManually(row)"
           >
             手动提交

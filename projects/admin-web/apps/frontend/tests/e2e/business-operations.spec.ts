@@ -1561,7 +1561,7 @@ test('provides complete Telegram administration actions', async ({ page }) => {
     name: '总部支付机器人运行状态',
   });
   await expect(stoppedRuntimeSwitch).not.toBeChecked();
-  await expect(page.getByRole('button', { name: /重\s*启/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /重\s*启/ })).toBeDisabled();
 
   const startRequest = page.waitForRequest(
     (request) =>

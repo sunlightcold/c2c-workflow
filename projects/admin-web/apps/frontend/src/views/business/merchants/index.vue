@@ -719,11 +719,12 @@ onMounted(async () => {
         />
       </template>
       <template #action="{ row }">
-        <ASpace :size="4">
+        <ASpace :size="12" wrap>
           <AButton
             v-access:code="['merchant:account:test']"
             :loading="testingId === row.id"
             size="small"
+            type="link"
             @click="testConnection(row)"
           >
             测试
@@ -732,11 +733,14 @@ onMounted(async () => {
             v-access:code="['merchant:order:sync']"
             :loading="syncingId === row.id"
             size="small"
+            type="link"
             @click="syncOrders(row)"
           >
             同步
           </AButton>
-          <AButton size="small" @click="openConfig(row)">配置</AButton>
+          <AButton size="small" type="link" @click="openConfig(row)">
+            配置
+          </AButton>
           <AButton
             v-access:code="['merchant:account:update']"
             :loading="editingId === row.id"
@@ -809,7 +813,7 @@ onMounted(async () => {
                 :width="160"
               >
                 <template #default="{ record }">
-                  <ASpace :size="4">
+                  <ASpace :size="12" wrap>
                     <AButton
                       v-access:code="['merchant:account:credential']"
                       size="small"
@@ -919,7 +923,7 @@ onMounted(async () => {
                 :width="150"
               >
                 <template #default="{ record }">
-                  <ASpace :size="4">
+                  <ASpace :size="12" wrap>
                     <AButton
                       v-access:code="['payment:account:bind']"
                       size="small"

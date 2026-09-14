@@ -287,8 +287,8 @@ onMounted(async () => {
         </ATag>
       </template>
       <template #action="{ row }">
-        <ASpace>
-          <AButton size="small" type="default" @click="openDetail(row)">
+        <ASpace :size="12" wrap>
+          <AButton size="small" type="link" @click="openDetail(row)">
             详情
           </AButton>
           <AButton
@@ -297,7 +297,7 @@ onMounted(async () => {
             "
             v-access:code="['payment:order:retry']"
             size="small"
-            type="default"
+            type="link"
             @click="runOrderAction(row)"
           >
             {{ row.status === 'PENDING_CONFIG' ? '重新匹配' : '回查' }}

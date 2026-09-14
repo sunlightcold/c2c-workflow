@@ -476,8 +476,10 @@ onMounted(async () => {
         <span v-else class="text-muted-foreground">未创建</span>
       </template>
       <template #action="{ row }">
-        <ASpace :size="4" wrap>
-          <AButton size="small" @click="openDetail(row)">详情</AButton>
+        <ASpace :size="12" wrap>
+          <AButton size="small" type="link" @click="openDetail(row)">
+            详情
+          </AButton>
           <AButton
             v-if="canPay(row)"
             v-access:code="['merchant:order:pay']"
@@ -501,6 +503,7 @@ onMounted(async () => {
             v-access:code="['merchant:order:appeal']"
             :loading="actionLoading === `appeal:${row.id}`"
             size="small"
+            type="link"
             @click="appealOrder(row)"
           >
             申诉

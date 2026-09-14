@@ -152,7 +152,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.TelegramSuperAdmin> = {
       fixed: 'right',
       slots: { default: 'actions' },
       title: '操作',
-      width: 170,
+      width: 160,
     },
   ],
 };
@@ -396,10 +396,11 @@ onMounted(async () => {
         />
       </template>
       <template #actions="{ row }">
-        <ASpace :size="4">
+        <ASpace :size="12" wrap>
           <AButton
             v-access:code="['telegram:superAdmin:update']"
             size="small"
+            type="link"
             @click="openEdit(row)"
           >
             编辑
@@ -408,6 +409,7 @@ onMounted(async () => {
             v-access:code="['telegram:superAdmin:delete']"
             danger
             size="small"
+            type="link"
             @click="remove(row)"
           >
             移除

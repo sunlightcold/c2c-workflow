@@ -181,7 +181,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.PaymentAccount> = {
       fixed: 'right',
       slots: { default: 'action' },
       title: '操作',
-      width: 220,
+      width: 250,
     },
   ],
 };
@@ -509,8 +509,8 @@ onMounted(async () => {
         />
       </template>
       <template #action="{ row }">
-        <ASpace :size="4">
-          <AButton size="small" @click="openChannelDrawer(row)">
+        <ASpace :size="12" wrap>
+          <AButton size="small" type="link" @click="openChannelDrawer(row)">
             通道配置
           </AButton>
           <AButton
@@ -603,7 +603,7 @@ onMounted(async () => {
         </ATableColumn>
         <ATableColumn align="center" key="action" title="操作" :width="150">
           <template #default="{ record }">
-            <ASpace :size="4">
+            <ASpace :size="12" wrap>
               <AButton
                 v-access:code="['payment:account:bind']"
                 size="small"

@@ -188,7 +188,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.TelegramGroup> = {
       fixed: 'right',
       slots: { default: 'actions' },
       title: '操作',
-      width: 230,
+      width: 240,
     },
   ],
 };
@@ -457,10 +457,11 @@ onMounted(async () => {
         </ATag>
       </template>
       <template #actions="{ row }">
-        <ASpace :size="4">
+        <ASpace :size="12" wrap>
           <AButton
             v-access:code="['telegram:group:update']"
             size="small"
+            type="link"
             @click="openEdit(row)"
           >
             编辑
@@ -469,6 +470,7 @@ onMounted(async () => {
             v-if="row.bindingState === 'PENDING'"
             v-access:code="['telegram:group:approve']"
             size="small"
+            type="link"
             @click="approve(row)"
           >
             审批
@@ -478,6 +480,7 @@ onMounted(async () => {
             v-access:code="['telegram:group:unbind']"
             danger
             size="small"
+            type="link"
             @click="unbind(row)"
           >
             解绑
