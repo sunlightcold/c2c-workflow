@@ -457,9 +457,12 @@ onMounted(async () => {
         </ATag>
       </template>
       <template #actions="{ row }">
-        <ASpace :size="12" wrap>
+        <div
+          class="flex w-full flex-nowrap items-center justify-center gap-1 px-1"
+        >
           <AButton
             v-access:code="['telegram:group:update']"
+            class="px-1"
             size="small"
             type="link"
             @click="openEdit(row)"
@@ -467,8 +470,9 @@ onMounted(async () => {
             编辑
           </AButton>
           <AButton
-            v-if="row.bindingState === 'PENDING'"
             v-access:code="['telegram:group:approve']"
+            class="px-1"
+            :disabled="row.bindingState !== 'PENDING'"
             size="small"
             type="link"
             @click="approve(row)"
@@ -476,16 +480,17 @@ onMounted(async () => {
             审批
           </AButton>
           <AButton
-            v-if="row.bindingState !== 'UNBOUND'"
             v-access:code="['telegram:group:unbind']"
+            class="px-1"
             danger
+            :disabled="row.bindingState === 'UNBOUND'"
             size="small"
             type="link"
             @click="unbind(row)"
           >
             解绑
           </AButton>
-        </ASpace>
+        </div>
       </template>
     </Grid>
     <FormModalRender />

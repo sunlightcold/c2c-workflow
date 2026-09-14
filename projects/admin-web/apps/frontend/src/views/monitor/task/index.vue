@@ -225,9 +225,12 @@ function changeStatus(row: RowType, checked: boolean) {
         />
       </template>
       <template #action="{ row }">
-        <ASpace :size="12" wrap>
+        <div
+          class="flex w-full flex-nowrap items-center justify-center gap-1 px-1"
+        >
           <AButton
             v-access:code="['monitor:task:once']"
+            class="px-1"
             size="small"
             type="link"
             :disabled="row.source === 'system'"
@@ -237,6 +240,7 @@ function changeStatus(row: RowType, checked: boolean) {
           </AButton>
           <AButton
             v-access:code="['monitor:task:update']"
+            class="px-1"
             size="small"
             type="link"
             :disabled="row.source === 'system'"
@@ -246,6 +250,7 @@ function changeStatus(row: RowType, checked: boolean) {
           </AButton>
           <AButton
             v-access:code="['monitor:task:delete']"
+            class="px-1"
             size="small"
             danger
             :disabled="row.source === 'system'"
@@ -253,7 +258,7 @@ function changeStatus(row: RowType, checked: boolean) {
           >
             删除
           </AButton>
-        </ASpace>
+        </div>
       </template>
     </Grid>
     <FormModalRender />

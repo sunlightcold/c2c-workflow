@@ -511,13 +511,21 @@ onMounted(async () => {
         <span v-else class="text-muted-foreground">未创建</span>
       </template>
       <template #action="{ row }">
-        <ASpace :size="12" wrap>
-          <AButton size="small" type="link" @click="openDetail(row)">
+        <div
+          class="flex w-full flex-nowrap items-center justify-center gap-1 px-1"
+        >
+          <AButton
+            class="px-1"
+            size="small"
+            type="link"
+            @click="openDetail(row)"
+          >
             详情
           </AButton>
           <AButton
-            v-if="canPay(row)"
             v-access:code="['merchant:order:pay']"
+            class="px-1"
+            :disabled="!canPay(row)"
             size="small"
             type="primary"
             @click="createPayment(row)"
@@ -525,8 +533,9 @@ onMounted(async () => {
             支付
           </AButton>
           <AButton
-            v-if="canConfirm(row)"
             v-access:code="['merchant:order:confirm_paid']"
+            class="px-1"
+            :disabled="!canConfirm(row)"
             size="small"
             type="primary"
             @click="confirmPaid(row)"
@@ -534,8 +543,9 @@ onMounted(async () => {
             补偿确认
           </AButton>
           <AButton
-            v-if="canAppeal(row)"
             v-access:code="['merchant:order:appeal']"
+            class="px-1"
+            :disabled="!canAppeal(row)"
             :loading="actionLoading === `appeal:${row.id}`"
             size="small"
             type="link"
@@ -544,16 +554,17 @@ onMounted(async () => {
             申诉
           </AButton>
           <AButton
-            v-if="canCancel(row)"
             v-access:code="['merchant:order:cancel']"
+            class="px-1"
             danger
+            :disabled="!canCancel(row)"
             size="small"
             type="link"
             @click="cancelOrder(row)"
           >
             作废
           </AButton>
-        </ASpace>
+        </div>
       </template>
     </Grid>
 

@@ -719,9 +719,12 @@ onMounted(async () => {
         />
       </template>
       <template #action="{ row }">
-        <ASpace :size="12" wrap>
+        <div
+          class="flex w-full flex-nowrap items-center justify-center gap-1 px-1"
+        >
           <AButton
             v-access:code="['merchant:account:test']"
+            class="px-1"
             :loading="testingId === row.id"
             size="small"
             type="link"
@@ -731,6 +734,7 @@ onMounted(async () => {
           </AButton>
           <AButton
             v-access:code="['merchant:order:sync']"
+            class="px-1"
             :loading="syncingId === row.id"
             size="small"
             type="link"
@@ -738,11 +742,17 @@ onMounted(async () => {
           >
             同步
           </AButton>
-          <AButton size="small" type="link" @click="openConfig(row)">
+          <AButton
+            class="px-1"
+            size="small"
+            type="link"
+            @click="openConfig(row)"
+          >
             配置
           </AButton>
           <AButton
             v-access:code="['merchant:account:update']"
+            class="px-1"
             :loading="editingId === row.id"
             size="small"
             type="link"
@@ -752,6 +762,7 @@ onMounted(async () => {
           </AButton>
           <AButton
             v-access:code="['merchant:account:delete']"
+            class="px-1"
             danger
             size="small"
             type="link"
@@ -759,7 +770,7 @@ onMounted(async () => {
           >
             删除
           </AButton>
-        </ASpace>
+        </div>
       </template>
     </Grid>
 
@@ -813,9 +824,12 @@ onMounted(async () => {
                 :width="160"
               >
                 <template #default="{ record }">
-                  <ASpace :size="12" wrap>
+                  <div
+                    class="flex w-full flex-nowrap items-center justify-center gap-1 px-1"
+                  >
                     <AButton
                       v-access:code="['merchant:account:credential']"
+                      class="px-1"
                       size="small"
                       type="link"
                       @click="rotateCredential"
@@ -824,6 +838,7 @@ onMounted(async () => {
                     </AButton>
                     <AButton
                       v-access:code="['merchant:account:credential']"
+                      class="px-1"
                       :disabled="record.status === 'active'"
                       danger
                       size="small"
@@ -832,7 +847,7 @@ onMounted(async () => {
                     >
                       删除
                     </AButton>
-                  </ASpace>
+                  </div>
                 </template>
               </ATableColumn>
             </ATable>
@@ -923,9 +938,12 @@ onMounted(async () => {
                 :width="150"
               >
                 <template #default="{ record }">
-                  <ASpace :size="12" wrap>
+                  <div
+                    class="flex w-full flex-nowrap items-center justify-center gap-1 px-1"
+                  >
                     <AButton
                       v-access:code="['payment:account:bind']"
+                      class="px-1"
                       size="small"
                       type="link"
                       @click="editPaymentPlan(record)"
@@ -934,6 +952,7 @@ onMounted(async () => {
                     </AButton>
                     <AButton
                       v-access:code="['payment:account:bind']"
+                      class="px-1"
                       danger
                       size="small"
                       type="link"
@@ -941,7 +960,7 @@ onMounted(async () => {
                     >
                       删除
                     </AButton>
-                  </ASpace>
+                  </div>
                 </template>
               </ATableColumn>
             </ATable>

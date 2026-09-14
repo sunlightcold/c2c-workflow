@@ -509,12 +509,20 @@ onMounted(async () => {
         />
       </template>
       <template #action="{ row }">
-        <ASpace :size="12" wrap>
-          <AButton size="small" type="link" @click="openChannelDrawer(row)">
+        <div
+          class="flex w-full flex-nowrap items-center justify-center gap-1 px-1"
+        >
+          <AButton
+            class="px-1"
+            size="small"
+            type="link"
+            @click="openChannelDrawer(row)"
+          >
             通道配置
           </AButton>
           <AButton
             v-access:code="['payment:account:update']"
+            class="px-1"
             size="small"
             type="link"
             @click="editAccount(row)"
@@ -523,6 +531,7 @@ onMounted(async () => {
           </AButton>
           <AButton
             v-access:code="['payment:account:delete']"
+            class="px-1"
             danger
             size="small"
             type="link"
@@ -530,7 +539,7 @@ onMounted(async () => {
           >
             删除
           </AButton>
-        </ASpace>
+        </div>
       </template>
     </Grid>
 
@@ -603,9 +612,12 @@ onMounted(async () => {
         </ATableColumn>
         <ATableColumn align="center" key="action" title="操作" :width="150">
           <template #default="{ record }">
-            <ASpace :size="12" wrap>
+            <div
+              class="flex w-full flex-nowrap items-center justify-center gap-1 px-1"
+            >
               <AButton
                 v-access:code="['payment:account:bind']"
+                class="px-1"
                 size="small"
                 type="link"
                 @click="editChannel(record)"
@@ -614,6 +626,7 @@ onMounted(async () => {
               </AButton>
               <AButton
                 v-access:code="['payment:account:bind']"
+                class="px-1"
                 danger
                 size="small"
                 type="link"
@@ -621,7 +634,7 @@ onMounted(async () => {
               >
                 移除
               </AButton>
-            </ASpace>
+            </div>
           </template>
         </ATableColumn>
       </ATable>

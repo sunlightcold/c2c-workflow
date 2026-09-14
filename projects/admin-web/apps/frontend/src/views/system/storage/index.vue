@@ -291,9 +291,12 @@ onMounted(refresh);
             :width="210"
           >
             <template #default="{ record }">
-              <ASpace :size="12" wrap>
+              <div
+                class="flex w-full flex-nowrap items-center justify-center gap-1 px-1"
+              >
                 <AButton
                   v-access:code="['system:storage:test']"
+                  class="px-1"
                   size="small"
                   type="link"
                   @click="testChannel(record)"
@@ -302,6 +305,7 @@ onMounted(refresh);
                 </AButton>
                 <AButton
                   v-access:code="['system:storage:update']"
+                  class="px-1"
                   size="small"
                   type="link"
                   @click="openEdit(record)"
@@ -310,6 +314,7 @@ onMounted(refresh);
                 </AButton>
                 <AButton
                   v-access:code="['system:storage:delete']"
+                  class="px-1"
                   danger
                   :disabled="record.status === 'active'"
                   size="small"
@@ -318,7 +323,7 @@ onMounted(refresh);
                 >
                   删除
                 </AButton>
-              </ASpace>
+              </div>
             </template>
           </ATableColumn>
         </ATable>

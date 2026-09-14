@@ -196,9 +196,12 @@ function onRemove(row: RowType) {
         </AButton>
       </template>
       <template #action="{ row }">
-        <ASpace :size="12" wrap>
+        <div
+          class="flex w-full flex-nowrap items-center justify-center gap-1 px-1"
+        >
           <AButton
             v-access:code="['system:user:update']"
+            class="px-1"
             size="small"
             type="link"
             @click="onEdit(row)"
@@ -207,6 +210,7 @@ function onRemove(row: RowType) {
           </AButton>
           <AButton
             v-access:code="['system:user:delete']"
+            class="px-1"
             size="small"
             type="link"
             danger
@@ -214,7 +218,7 @@ function onRemove(row: RowType) {
           >
             删除
           </AButton>
-        </ASpace>
+        </div>
       </template>
     </Grid>
     <FormModalRender />

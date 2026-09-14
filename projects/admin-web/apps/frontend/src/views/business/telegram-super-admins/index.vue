@@ -396,9 +396,12 @@ onMounted(async () => {
         />
       </template>
       <template #actions="{ row }">
-        <ASpace :size="12" wrap>
+        <div
+          class="flex w-full flex-nowrap items-center justify-center gap-1 px-1"
+        >
           <AButton
             v-access:code="['telegram:superAdmin:update']"
+            class="px-1"
             size="small"
             type="link"
             @click="openEdit(row)"
@@ -407,6 +410,7 @@ onMounted(async () => {
           </AButton>
           <AButton
             v-access:code="['telegram:superAdmin:delete']"
+            class="px-1"
             danger
             size="small"
             type="link"
@@ -414,7 +418,7 @@ onMounted(async () => {
           >
             移除
           </AButton>
-        </ASpace>
+        </div>
       </template>
     </Grid>
     <FormModalRender />

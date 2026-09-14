@@ -390,13 +390,21 @@ onMounted(async () => {
         </ATag>
       </template>
       <template #action="{ row }">
-        <ASpace :size="12" wrap>
-          <AButton size="small" type="link" @click="openDetail(row)">
+        <div
+          class="flex w-full flex-nowrap items-center justify-center gap-1 px-1"
+        >
+          <AButton
+            class="px-1"
+            size="small"
+            type="link"
+            @click="openDetail(row)"
+          >
             详情
           </AButton>
           <AButton
-            v-if="row.status === 'READY'"
             v-access:code="['payment:batch:submit']"
+            class="px-1"
+            :disabled="row.status !== 'READY'"
             size="small"
             type="link"
             @click="submitBatch(row)"
@@ -404,15 +412,16 @@ onMounted(async () => {
             提交
           </AButton>
           <AButton
-            v-if="['PROCESSING', 'UNKNOWN'].includes(row.status)"
             v-access:code="['payment:batch:retry']"
+            class="px-1"
+            :disabled="!['PROCESSING', 'UNKNOWN'].includes(row.status)"
             size="small"
             type="link"
             @click="reconcileBatch(row)"
           >
             回查
           </AButton>
-        </ASpace>
+        </div>
       </template>
     </Grid>
     <FormModalRender />

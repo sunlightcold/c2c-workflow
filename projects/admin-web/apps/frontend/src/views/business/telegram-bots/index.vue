@@ -403,9 +403,12 @@ onMounted(async () => {
         />
       </template>
       <template #actions="{ row }">
-        <ASpace :size="12" wrap>
+        <div
+          class="flex w-full flex-nowrap items-center justify-center gap-1 px-1"
+        >
           <AButton
             v-access:code="['telegram:bot:update']"
+            class="px-1"
             size="small"
             type="link"
             @click="openEdit(row)"
@@ -414,6 +417,7 @@ onMounted(async () => {
           </AButton>
           <AButton
             v-access:code="['telegram:bot:update']"
+            class="px-1"
             :disabled="
               row.status !== 'active' ||
               !row.runtime?.runtimeRunning ||
@@ -427,6 +431,7 @@ onMounted(async () => {
           </AButton>
           <AButton
             v-access:code="['telegram:bot:delete']"
+            class="px-1"
             danger
             size="small"
             type="link"
@@ -434,7 +439,7 @@ onMounted(async () => {
           >
             删除
           </AButton>
-        </ASpace>
+        </div>
       </template>
     </Grid>
     <FormModalRender />

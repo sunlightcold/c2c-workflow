@@ -335,22 +335,30 @@ onMounted(async () => {
         </ATag>
       </template>
       <template #action="{ row }">
-        <ASpace :size="12" wrap>
-          <AButton size="small" type="link" @click="openDetail(row)">
+        <div
+          class="flex w-full flex-nowrap items-center justify-center gap-1 px-1"
+        >
+          <AButton
+            class="px-1"
+            size="small"
+            type="link"
+            @click="openDetail(row)"
+          >
             详情
           </AButton>
           <AButton
-            v-if="
-              ['PENDING_CONFIG', 'PROCESSING', 'UNKNOWN'].includes(row.status)
-            "
             v-access:code="['payment:order:retry']"
+            class="px-1"
+            :disabled="
+              !['PENDING_CONFIG', 'PROCESSING', 'UNKNOWN'].includes(row.status)
+            "
             size="small"
             type="link"
             @click="runOrderAction(row)"
           >
             {{ row.status === 'PENDING_CONFIG' ? '重新匹配' : '回查' }}
           </AButton>
-        </ASpace>
+        </div>
       </template>
     </Grid>
     <FormModalRender />

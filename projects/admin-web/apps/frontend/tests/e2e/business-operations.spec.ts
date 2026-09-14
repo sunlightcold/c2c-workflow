@@ -7,6 +7,7 @@ import { expect, test } from '@playwright/test';
 const tenantId = '00000000-0000-4000-8000-000000000001';
 const pageErrors = new WeakMap<Page, string[]>();
 const botListRequestCounts = new WeakMap<Page, number>();
+const merchantOrderItems = new WeakMap<Page, Array<Record<string, unknown>>>();
 const testCertificateDerBase64 = 'MA4wAwIBATADBgEqAwIA/w==';
 const testCertificatePem = `-----BEGIN CERTIFICATE-----
 ${testCertificateDerBase64}
@@ -81,7 +82,13 @@ const permissions = [
   'merchant:account:read',
   'merchant:account:create',
   'merchant:account:credential',
+  'merchant:account:delete',
+  'merchant:account:test',
   'merchant:account:update',
+  'merchant:order:appeal',
+  'merchant:order:cancel',
+  'merchant:order:confirm_paid',
+  'merchant:order:pay',
   'merchant:order:read',
   'merchant:order:sync',
   'payment:account:read',
@@ -470,10 +477,9 @@ test.beforeEach(async ({ page }) => {
         ];
         break;
       }
-      case '/sys/merchant-orders':
-      case '/sys/payment-batches':
-      case '/sys/payment-orders': {
-        data = { items: [], page: 1, pageSize: 20, total: 0 };
+      case '/sys/merchant-orders': {
+        const items = merchantOrderItems.get(page) ?? [];
+        data = { items, page: 1, pageSize: 20, total: items.length };
         break;
       }
       case '/sys/merchants': {
@@ -598,6 +604,11 @@ test.beforeEach(async ({ page }) => {
           );
           data = { items, page: 1, pageSize: 20, total: items.length };
         }
+        break;
+      }
+      case '/sys/payment-batches':
+      case '/sys/payment-orders': {
+        data = { items: [], page: 1, pageSize: 20, total: 0 };
         break;
       }
       case '/sys/payment-plans': {
@@ -1110,6 +1121,106 @@ test('manages payment plans inside the merchant configuration drawer', async ({
   await expect(planTable.getByText('总部支付宝主账号')).toHaveCount(0);
 });
 
+test('keeps merchant order actions aligned across order states', async ({
+  page,
+}) => {
+  const baseOrder = {
+    appealComplaintNo: null,
+    appealLastError: null,
+    appealReason: null,
+    appealReasonCode: null,
+    appealStatus: null,
+    appealSubmittedAt: null,
+    asset: 'USDT',
+    assetAmount: '10.00',
+    counterpartyName: '测试用户',
+    fiatAmount: '70.00',
+    fiatCurrency: 'CNY',
+    identityMatched: true,
+    lastError: null,
+    merchantId: '00000000-0000-4000-8000-000000000020',
+    paymentDeadline: '2026-09-14T09:30:00.000Z',
+    paymentMethod: 'ALIPAY',
+    payeeIdentity: 'buyer@example.com',
+    payeeName: '测试用户',
+    platform: 'BINANCE',
+    platformCreatedAt: '2026-09-14T09:00:00.000Z',
+    platformStatus: 'BUYER_PAY_PENDING',
+    tenantId,
+  };
+  merchantOrderItems.set(page, [
+    {
+      ...baseOrder,
+      id: '00000000-0000-4000-8000-000000000301',
+      payable: true,
+      paymentOrder: null,
+      platformOrderId: 'ORDER-PAYABLE',
+      status: 'PENDING_PAYMENT',
+    },
+    {
+      ...baseOrder,
+      id: '00000000-0000-4000-8000-000000000302',
+      payable: false,
+      paymentOrder: {
+        amount: '70.00',
+        createdAt: '2026-09-14T09:01:00.000Z',
+        currency: 'CNY',
+        executionMode: 'BATCH',
+        id: '00000000-0000-4000-8000-000000000303',
+        lastError: null,
+        merchantId: '00000000-0000-4000-8000-000000000020',
+        payeeIdentity: 'buyer@example.com',
+        payeeName: '测试用户',
+        paymentAccountChannelId: '00000000-0000-4000-8000-000000000111',
+        paymentAccountId: '00000000-0000-4000-8000-000000000110',
+        paymentNo: 'PAY-0001',
+        sourceBusinessNo: 'ORDER-APPEALABLE',
+        sourceType: 'C2C_BUY',
+        status: 'COMPLETED',
+        tenantId,
+        updatedAt: '2026-09-14T09:05:00.000Z',
+        upstreamId: 'ALIPAY-0001',
+      },
+      platformOrderId: 'ORDER-APPEALABLE',
+      platformStatus: 'PAID',
+      status: 'PENDING_RELEASE',
+    },
+  ]);
+
+  await page.goto('/business/merchant-orders');
+  await selectHeadquartersTenant(page);
+  await page.getByLabel('商家账号').click({ force: true });
+  await page
+    .locator('.ant-select-dropdown:visible .ant-select-item-option-content')
+    .getByText('币安主账号 · 币安', { exact: true })
+    .click();
+  const orderResponse = page.waitForResponse((response) =>
+    response.url().includes('/v1/sys/merchant-orders?'),
+  );
+  await page.getByRole('button', { name: /搜\s*索/ }).click();
+  await orderResponse;
+
+  const rows = page.locator('.vxe-table--fixed-right-wrapper .vxe-body--row');
+  await expect(rows).toHaveCount(2);
+  for (const row of await rows.all()) {
+    await expect(row.getByRole('button')).toHaveCount(5);
+    await expect(row.locator('.flex-nowrap')).toHaveCount(1);
+  }
+
+  await expect(
+    rows.nth(0).getByRole('button', { name: /支\s*付/ }),
+  ).toBeEnabled();
+  await expect(
+    rows.nth(1).getByRole('button', { name: /支\s*付/ }),
+  ).toBeDisabled();
+  await expect(
+    rows.nth(0).getByRole('button', { name: /申\s*诉/ }),
+  ).toBeDisabled();
+  await expect(
+    rows.nth(1).getByRole('button', { name: /申\s*诉/ }),
+  ).toBeEnabled();
+});
+
 test('manages parallel payment batch policy rules without horizontal overflow', async ({
   page,
 }, testInfo) => {
@@ -1214,9 +1325,12 @@ test('manages parallel payment batch policy rules without horizontal overflow', 
   let createdRow = page.locator('tr').filter({ hasText: '晚间并行策略' });
   await expect(createdRow.getByText('间隔 120 秒')).toBeVisible();
   await expect(createdRow.getByText('满 20 笔')).toBeVisible();
+  const createdActionRow = page
+    .locator('.vxe-table--fixed-right-wrapper .vxe-body--row')
+    .first();
   await expect(
-    createdRow.getByRole('button', { name: '手动提交' }),
-  ).toHaveCount(0);
+    createdActionRow.getByRole('button', { name: '手动提交' }),
+  ).toBeDisabled();
 
   await page
     .getByRole('button', { name: /编\s*辑/ })
@@ -1489,10 +1603,14 @@ test('provides complete Telegram administration actions', async ({ page }) => {
 
   await page.goto('/business/telegram-groups');
   await selectHeadquartersTenant(page);
-  await expect(page.getByRole('button', { name: /审\s*批/ })).toBeVisible();
-  await expect(
-    page.getByRole('button', { name: /解\s*绑/ }).first(),
-  ).toBeVisible();
+  const approveButtons = page.getByRole('button', { name: /审\s*批/ });
+  const unbindButtons = page.getByRole('button', { name: /解\s*绑/ });
+  await expect(approveButtons).toHaveCount(2);
+  await expect(approveButtons.first()).toBeEnabled();
+  await expect(approveButtons.last()).toBeDisabled();
+  await expect(unbindButtons).toHaveCount(2);
+  await expect(unbindButtons.first()).toBeEnabled();
+  await expect(unbindButtons.last()).toBeEnabled();
 
   await page.goto('/business/telegram-members');
   await selectHeadquartersTenant(page);
