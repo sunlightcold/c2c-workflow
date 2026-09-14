@@ -811,7 +811,6 @@ onMounted(async () => {
                   {{ businessStatusText(record.status) }}
                 </template>
               </ATableColumn>
-              <ATableColumn data-index="clientType" title="客户端类型" />
               <ATableColumn
                 data-index="requestTimeoutMs"
                 title="超时（毫秒）"

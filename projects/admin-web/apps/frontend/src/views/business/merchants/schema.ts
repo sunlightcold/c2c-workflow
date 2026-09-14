@@ -40,7 +40,7 @@ export const DEFAULT_ORDER_COMPLETED_CHAT_MESSAGE = `感谢您的信任与配合
 const required = (message: string) => [
   { message, required: true, trigger: 'blur' },
 ];
-const binanceFields = ['apiKey', 'secretKey', 'clientType', 'xUserId'];
+const binanceFields = ['apiKey', 'secretKey'];
 const okxFields = [
   'authorization',
   'sessionCookie',
@@ -297,12 +297,6 @@ export function createMerchantAccountModalOptions(
           },
           { ...secretRule('apiKey', 'API Key'), hidden: !binance },
           { ...secretRule('secretKey', 'Secret Key'), hidden: !binance },
-          {
-            ...textRule('clientType', '客户端类型'),
-            hidden: !binance,
-            value: 'WEB',
-          },
-          { ...textRule('xUserId', 'X-User-ID'), hidden: !binance },
           { ...secretRule('authorization', 'Authorization'), hidden: !okx },
           { ...secretRule('sessionCookie', 'Cookie'), hidden: !okx },
           {
@@ -356,12 +350,7 @@ export function rotateMerchantCredentialModalOptions(
 ): FormModalOptions {
   const rules =
     platform === 'BINANCE'
-      ? [
-          secretRule('apiKey', 'API Key'),
-          secretRule('secretKey', 'Secret Key'),
-          { ...textRule('clientType', '客户端类型'), value: 'WEB' },
-          textRule('xUserId', 'X-User-ID'),
-        ]
+      ? [secretRule('apiKey', 'API Key'), secretRule('secretKey', 'Secret Key')]
       : [
           secretRule('authorization', 'Authorization'),
           secretRule('sessionCookie', 'Cookie'),

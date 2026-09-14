@@ -45,6 +45,9 @@ describe('merchant account form schemas', () => {
     );
     expect(names).not.toEqual(expect.arrayContaining(['botCode', 'chatId']));
     expect(names).not.toEqual(
+      expect.arrayContaining(['clientType', 'xUserId']),
+    );
+    expect(names).not.toEqual(
       expect.arrayContaining(['code', 'currency', 'timezone', 'riskLevel']),
     );
   });
@@ -154,6 +157,9 @@ describe('merchant account form schemas', () => {
     const binance = fields(binanceOptions);
     const okx = fields(okxOptions);
     expect(binance).toEqual(expect.arrayContaining(['apiKey', 'secretKey']));
+    expect(binance).not.toEqual(
+      expect.arrayContaining(['clientType', 'xUserId']),
+    );
     expect(okx).toEqual(
       expect.arrayContaining([
         'authorization',
