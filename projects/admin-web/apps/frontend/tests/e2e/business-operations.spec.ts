@@ -607,7 +607,36 @@ test.beforeEach(async ({ page }) => {
         break;
       }
       case '/sys/payment-batches': {
-        data = { items: [], page: 1, pageSize: 20, total: 0 };
+        data = {
+          items: [
+            {
+              batchNo: 'BATCH202609140001',
+              batchPolicyId: null,
+              createdAt: '2026-09-14T09:00:00.000Z',
+              currency: 'CNY',
+              failedCount: 0,
+              id: '00000000-0000-4000-8000-000000000401',
+              lastError: null,
+              merchantId: '00000000-0000-4000-8000-000000000020',
+              paymentAccountChannelId: '00000000-0000-4000-8000-000000000111',
+              paymentAccountId: '00000000-0000-4000-8000-000000000110',
+              processingCount: 0,
+              status: 'SUCCESS',
+              successCount: 1,
+              tenantId,
+              totalAmount: '70.00',
+              totalCount: 1,
+              triggerRuleIds: [],
+              triggerSource: 'MANUAL',
+              unknownCount: 0,
+              updatedAt: '2026-09-14T09:02:00.000Z',
+              upstreamId: 'ALIPAY-BATCH-0001',
+            },
+          ],
+          page: 1,
+          pageSize: 20,
+          total: 1,
+        };
         break;
       }
       case '/sys/payment-orders': {
@@ -875,6 +904,16 @@ test('shows payment, system, and platform order numbers together', async ({
   await expect(orderNumberCell).toContainText('ALIPAY202609140001');
   await expect(orderNumberCell).toContainText('PAY202609140001');
   await expect(orderNumberCell).toContainText('BINANCE202609140001');
+  const orderTimeCell = row.getByTestId('order-time-cell');
+  await expect(orderTimeCell.locator('.ant-tag')).toHaveText(['创建', '结束']);
+  await expect(orderTimeCell.locator('time')).toHaveCount(2);
+  await expect(orderTimeCell.locator('time').nth(0)).toHaveText(
+    /2026-09-14 \d{2}:\d{2}:\d{2}/,
+  );
+  await expect(orderTimeCell.locator('time').nth(1)).toHaveText(
+    /2026-09-14 \d{2}:\d{2}:\d{2}/,
+  );
+  await orderTimeCell.scrollIntoViewIfNeeded();
   await page.screenshot({
     fullPage: true,
     path: `node_modules/.e2e/screenshots/payment-order-numbers-${testInfo.project.name}.png`,
@@ -1046,6 +1085,7 @@ test('loads all second-level business pages under one menu', async ({
 
   await page.goto('/business/payment-batches');
   await selectHeadquartersTenant(page);
+  await page.getByRole('button', { name: /搜\s*索/ }).click();
   await expect(
     page
       .getByRole('combobox', { name: '商家' })
@@ -1056,6 +1096,16 @@ test('loads all second-level business pages under one menu', async ({
       .getByRole('combobox', { name: '支付账号' })
       .locator('.ant-select-selection-item'),
   ).toHaveCount(0);
+  const batchRow = page.locator('.vxe-body--row').filter({
+    hasText: 'BATCH202609140001',
+  });
+  await expect(batchRow).toBeVisible();
+  await expect(
+    batchRow.getByTestId('order-time-cell').locator('.ant-tag'),
+  ).toHaveText(['创建', '结束']);
+  await expect(
+    batchRow.getByTestId('order-time-cell').locator('time'),
+  ).toHaveCount(2);
 });
 
 test('manages payment plans inside the merchant configuration drawer', async ({
@@ -1289,6 +1339,13 @@ test('keeps merchant order actions aligned across order states', async ({
 
   const rows = page.locator('.vxe-table--fixed-right-wrapper .vxe-body--row');
   await expect(rows).toHaveCount(3);
+  const merchantOrderTime = page.getByTestId('order-time-cell').first();
+  await expect(merchantOrderTime.locator('.ant-tag')).toHaveText([
+    '创建',
+    '结束',
+  ]);
+  await expect(merchantOrderTime.locator('time')).toHaveCount(1);
+  await expect(merchantOrderTime).toContainText('-');
   for (const row of await rows.all()) {
     await expect(row.getByRole('button')).toHaveCount(5);
     await expect(row.locator('.flex-nowrap')).toHaveCount(1);

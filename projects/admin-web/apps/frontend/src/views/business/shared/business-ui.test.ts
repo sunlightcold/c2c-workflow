@@ -1,12 +1,32 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  formatBusinessTime,
   matchesPaymentRoute,
   merchantPlatformApiBaseUrl,
   merchantPlatformOptions,
   paymentRouteKey,
+  resolveBusinessEndTime,
   toBusinessGridData,
 } from './business-ui';
+
+describe('business time formatting', () => {
+  it('uses the compact report timestamp format', () => {
+    expect(formatBusinessTime('2026-09-14 21:10:47')).toBe(
+      '2026-09-14 21:10:47',
+    );
+    expect(formatBusinessTime(null)).toBe('-');
+  });
+
+  it('only exposes an end time after business processing has ended', () => {
+    const updatedAt = '2026-09-14 21:11:59';
+
+    expect(resolveBusinessEndTime('COMPLETED', updatedAt)).toBe(updatedAt);
+    expect(resolveBusinessEndTime('EXCEPTION', updatedAt)).toBe(updatedAt);
+    expect(resolveBusinessEndTime('FAILED', updatedAt)).toBe(updatedAt);
+    expect(resolveBusinessEndTime('PROCESSING', updatedAt)).toBeNull();
+  });
+});
 
 describe('merchant platform options', () => {
   it('only allows Binance or OKX when creating a merchant', () => {

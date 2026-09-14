@@ -29,12 +29,13 @@ import { createEmptyBusinessPage } from '../shared/business-grid';
 import {
   businessEnumText,
   businessStateColor,
-  formatBusinessTime,
   matchesPaymentRoute,
   merchantPlatformText,
   paymentRouteKey,
+  resolveBusinessEndTime,
   resolvePaymentRoute,
 } from '../shared/business-ui';
+import OrderTimeCell from '../shared/OrderTimeCell.vue';
 import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 
 type BatchDetail = {
@@ -152,10 +153,10 @@ const gridOptions: VxeTableGridOptions<BusinessApi.PaymentBatch> = {
       slots: { default: 'status' },
     },
     {
-      field: 'createdAt',
-      title: '创建时间',
-      width: 190,
-      formatter: ({ cellValue }) => formatBusinessTime(cellValue as string),
+      field: 'orderTime',
+      slots: { default: 'orderTime' },
+      title: '订单时间',
+      width: 215,
     },
     {
       field: 'active',
@@ -388,6 +389,12 @@ onMounted(async () => {
         <ATag :color="businessStateColor(row.status)">
           {{ businessEnumText(row.status) }}
         </ATag>
+      </template>
+      <template #orderTime="{ row }">
+        <OrderTimeCell
+          :created-at="row.createdAt"
+          :ended-at="resolveBusinessEndTime(row.status, row.updatedAt)"
+        />
       </template>
       <template #action="{ row }">
         <div

@@ -37,8 +37,10 @@ import {
   businessStateColor,
   formatBusinessTime,
   merchantPlatformText,
+  resolveBusinessEndTime,
   resolvePaymentRoute,
 } from '../shared/business-ui';
+import OrderTimeCell from '../shared/OrderTimeCell.vue';
 import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 
 type SearchValues = {
@@ -199,16 +201,10 @@ const gridOptions: VxeTableGridOptions<BusinessApi.MerchantOrder> = {
       width: 145,
     },
     {
-      field: 'platformCreatedAt',
-      formatter: ({ cellValue }) => formatBusinessTime(cellValue as string),
+      field: 'orderTime',
+      slots: { default: 'orderTime' },
       title: '订单时间',
-      width: 180,
-    },
-    {
-      field: 'paymentDeadline',
-      formatter: ({ cellValue }) => formatBusinessTime(cellValue as string),
-      title: '支付截止时间',
-      width: 180,
+      width: 215,
     },
     {
       align: 'center',
@@ -510,6 +506,12 @@ onMounted(async () => {
           {{ businessEnumText(row.paymentOrder.status) }}
         </ATag>
         <span v-else class="text-muted-foreground">未创建</span>
+      </template>
+      <template #orderTime="{ row }">
+        <OrderTimeCell
+          :created-at="row.platformCreatedAt"
+          :ended-at="resolveBusinessEndTime(row.status, row.updatedAt)"
+        />
       </template>
       <template #action="{ row }">
         <div

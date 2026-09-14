@@ -252,6 +252,7 @@ export namespace BusinessApi {
     platformStatus: string;
     status: string;
     tenantId: string;
+    updatedAt: string;
   }
 
   export interface MerchantOrderDetail extends MerchantOrder {

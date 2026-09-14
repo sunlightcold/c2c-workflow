@@ -2,6 +2,8 @@ import type { CommonPaginationData } from '../../../../types/common';
 
 import type { BusinessApi } from '#/api';
 
+import { formatDateTime } from '@vben/utils';
+
 export const businessStatusOptions = [
   { label: '启用', value: 'active' },
   { label: '停用', value: 'disabled' },
@@ -34,10 +36,26 @@ export function merchantPlatformApiBaseUrl(
 
 export function formatBusinessTime(value?: null | string) {
   if (!value) return '-';
-  return new Intl.DateTimeFormat('zh-CN', {
-    dateStyle: 'medium',
-    timeStyle: 'medium',
-  }).format(new Date(value));
+  return formatDateTime(value);
+}
+
+const terminalBusinessStates = new Set([
+  'CANCELLED',
+  'COMPLETED',
+  'EXCEPTION',
+  'EXPIRED',
+  'FAILED',
+  'FUND_EXCEPTION',
+  'FUNDS_EXCEPTION',
+  'PARTIAL_SUCCESS',
+  'SUCCESS',
+]);
+
+export function resolveBusinessEndTime(
+  status: string,
+  updatedAt?: null | string,
+) {
+  return terminalBusinessStates.has(status) ? updatedAt : null;
 }
 
 type PaymentRouteFields = Pick<
