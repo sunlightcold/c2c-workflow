@@ -95,14 +95,14 @@ export async function getOPTUrlApi() {
  * 绑定 OTP
  */
 export async function bindOPTApi(data: AuthApi.OtpBindParams) {
-  return requestClient.put('/auth/bindOtp', data);
+  return requestClient.put('/auth/enabledOtp', data);
 }
 
 /**
  * 解绑 OTP
  */
 export async function unbindOPTApi(code: string) {
-  return requestClient.put(`/auth/unbindOtp/${code}`);
+  return requestClient.put(`/auth/disabledOtp/${code}`);
 }
 
 /**
