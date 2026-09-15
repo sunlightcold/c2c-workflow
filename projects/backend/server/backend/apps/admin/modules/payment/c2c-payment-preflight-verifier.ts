@@ -124,8 +124,8 @@ export class C2cPaymentPreflightVerifier {
     private readonly platformClient: C2cPlatformClient,
   ) {}
 
-  async verify(tenantId: string, orderId: string, now = new Date()): Promise<VerifiedC2cPayment> {
-    return this.verifyFor(tenantId, orderId, now, {
+  async verify(tenantId: string, orderId: string, _now = new Date()): Promise<VerifiedC2cPayment> {
+    return this.verifyFor(tenantId, orderId, {
       orderStatus: PaymentOrderStatus.SUBMITTING,
       merchantOrderStatus: MerchantOrderStatus.PAYMENT_PROCESSING,
       adapterCode: PaymentAdapterCode.ALIPAY_MERCHANT_TRANSFER,
@@ -137,9 +137,9 @@ export class C2cPaymentPreflightVerifier {
   async verifyBatch(
     tenantId: string,
     orderId: string,
-    now = new Date(),
+    _now = new Date(),
   ): Promise<VerifiedC2cPayment> {
-    return this.verifyFor(tenantId, orderId, now, {
+    return this.verifyFor(tenantId, orderId, {
       orderStatus: PaymentOrderStatus.READY,
       merchantOrderStatus: MerchantOrderStatus.PENDING_PAYMENT,
       adapterCode: PaymentAdapterCode.ALIPAY_BATCH,
@@ -155,7 +155,6 @@ export class C2cPaymentPreflightVerifier {
   private async verifyFor(
     tenantId: string,
     orderId: string,
-    now: Date,
     expected: {
       orderStatus: PaymentOrderStatus
       merchantOrderStatus: MerchantOrderStatus
@@ -165,7 +164,7 @@ export class C2cPaymentPreflightVerifier {
     },
   ): Promise<VerifiedC2cPayment> {
     const context = await this.store.load(tenantId, orderId)
-    this.verifyLocal(context, now, expected)
+    this.verifyLocal(context, expected)
     let platformOrder: C2cBuyOrderDetail
     try {
       const secret = await this.secretResolver.resolve(context.credential.credentialRef)
@@ -178,7 +177,7 @@ export class C2cPaymentPreflightVerifier {
     } catch (error) {
       throw this.notSubmitted(error)
     }
-    this.verifyPlatform(context, platformOrder, now)
+    this.verifyPlatform(context, platformOrder)
     return {
       order: context.order,
       platformOrder,
@@ -188,7 +187,6 @@ export class C2cPaymentPreflightVerifier {
 
   private verifyLocal(
     context: PaymentPreflightConfiguration,
-    now: Date,
     expected: {
       orderStatus: PaymentOrderStatus
       merchantOrderStatus: MerchantOrderStatus
@@ -243,18 +241,9 @@ export class C2cPaymentPreflightVerifier {
     this.require(order.payeeIdentity === merchantOrder.payeeIdentity, '商家订单收款账号已变化')
     this.require(order.payeeName === merchantOrder.payeeName, '商家订单收款人已变化')
     this.require(Boolean(merchantOrder.platformPaymentMethodId), '商家订单缺少平台付款方式')
-    this.require(Boolean(merchantOrder.paymentDeadline), '商家订单缺少明确付款截止时间')
-    this.require(
-      merchantOrder.paymentDeadline!.getTime() > now.getTime(),
-      '商家订单付款截止时间已过',
-    )
   }
 
-  private verifyPlatform(
-    context: PaymentPreflightConfiguration,
-    current: C2cBuyOrderDetail,
-    now: Date,
-  ): void {
+  private verifyPlatform(context: PaymentPreflightConfiguration, current: C2cBuyOrderDetail): void {
     const snapshot = context.merchantOrder
     this.require(current.status === C2cBuyOrderStatus.PENDING_PAYMENT, '平台订单已不可付款')
     this.require(current.payable, '平台订单当前不可付款')
@@ -268,14 +257,6 @@ export class C2cPaymentPreflightVerifier {
       current.platformPaymentMethodId === snapshot.platformPaymentMethodId,
       '平台付款方式已变化',
     )
-    this.require(Boolean(current.paymentDeadline), '平台订单缺少明确付款截止时间')
-    const deadline = new Date(current.paymentDeadline!)
-    this.require(!Number.isNaN(deadline.getTime()), '平台订单付款截止时间无效')
-    this.require(
-      deadline.getTime() === snapshot.paymentDeadline!.getTime(),
-      '平台订单付款截止时间已变化',
-    )
-    this.require(deadline.getTime() > now.getTime(), '平台订单付款截止时间已过')
   }
 
   private getPlatformOrder(

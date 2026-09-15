@@ -13,7 +13,7 @@ import type {
 export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore {
   constructor(private readonly dataSource: DataSource) {}
 
-  findCandidates(now: Date, limit: number): Promise<AutomaticPaymentCandidate[]> {
+  findCandidates(_now: Date, limit: number): Promise<AutomaticPaymentCandidate[]> {
     return this.dataSource.query(
       `
         SELECT merchant_order."tenantId" AS "tenantId",
@@ -42,7 +42,6 @@ export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore
           AND merchant_order."fiatCurrency" = 'CNY'
           AND merchant_order."payeeIdentity" IS NOT NULL
           AND merchant_order."payeeName" IS NOT NULL
-          AND merchant_order."paymentDeadline" > $2
           AND EXISTS (
             SELECT 1
             FROM merchant_payment_plan plan
@@ -83,9 +82,9 @@ export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore
             OR payment_order.status IN ('PENDING_CONFIG', 'READY')
           )
         ORDER BY merchant_order."platformCreatedAt" ASC, merchant_order.id ASC
-        LIMIT $3
+        LIMIT $2
       `,
-      [PaymentSourceType.C2C_BUY, now, limit],
+      [PaymentSourceType.C2C_BUY, limit],
     )
   }
 

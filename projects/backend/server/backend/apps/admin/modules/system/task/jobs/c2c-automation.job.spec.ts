@@ -28,6 +28,29 @@ describe('C2cAutomationJob order discovery', () => {
     expect(sync.sync).toHaveBeenNthCalledWith(2, 'tenant-2', 'merchant-2', now)
   })
 
+  it('processes newly discovered orders before finishing the discovery run', async () => {
+    sync.sync
+      .mockResolvedValueOnce({ scanned: 1, created: 1, updated: 0 })
+      .mockRejectedValueOnce(new Error('upstream down'))
+
+    const job = new C2cAutomationJob(store as never, sync as never, automaticPayments as never)
+
+    await expect(job.syncDueOrders(now)).resolves.toEqual({
+      claimed: 2,
+      succeeded: 1,
+      failed: 1,
+      payments: {
+        orders: { found: 1, succeeded: 1, failed: 0 },
+        batches: { found: 1, succeeded: 1, failed: 0 },
+      },
+    })
+    expect(automaticPayments.createAndSubmit).toHaveBeenCalledWith(now)
+    expect(automaticPayments.submitReadyBatches).toHaveBeenCalledWith(now)
+    expect(automaticPayments.createAndSubmit.mock.invocationCallOrder[0]).toBeGreaterThan(
+      sync.sync.mock.invocationCallOrder[0],
+    )
+  })
+
   it('creates payments before submitting ready batches', async () => {
     const job = new C2cAutomationJob(store as never, sync as never, automaticPayments as never)
 

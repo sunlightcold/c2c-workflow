@@ -227,18 +227,29 @@ describe('C2cPaymentPreflightVerifier', () => {
     ['amount changed', { fiatAmount: '101.00' }, '平台订单金额已变化'],
     ['payee changed', { payeeIdentity: 'other@example.com' }, '平台订单收款账号已变化'],
     ['payment method changed', { platformPaymentMethodId: '902' }, '平台付款方式已变化'],
-    ['deadline missing', { paymentDeadline: undefined }, '平台订单缺少明确付款截止时间'],
-    [
-      'deadline passed',
-      { paymentDeadline: '2026-09-10T07:59:59.000Z' },
-      '平台订单付款截止时间已变化',
-    ],
   ])('rejects before payment when %s', async (_case, change, message) => {
     platformClient.getOrderDetail.mockResolvedValue({ ...platformOrder, ...change })
 
     await expect(verifier.verify('tenant-1', 'payment-1', now)).rejects.toEqual(
       new PaymentNotSubmittedError(message),
     )
+  })
+
+  it('allows payment when Binance does not provide a payment deadline', async () => {
+    store.load.mockResolvedValue({
+      order,
+      ...configuration,
+      merchantOrder: { ...configuration.merchantOrder, paymentDeadline: null },
+    })
+    platformClient.getOrderDetail.mockResolvedValue({
+      ...platformOrder,
+      paymentDeadline: undefined,
+    })
+
+    await expect(verifier.verify('tenant-1', 'payment-1', now)).resolves.toMatchObject({
+      order,
+      platformOrder: expect.objectContaining({ paymentDeadline: undefined }),
+    })
   })
 
   it('rejects when the locked route is no longer the instant merchant-transfer channel', async () => {
@@ -255,21 +266,6 @@ describe('C2cPaymentPreflightVerifier', () => {
   })
 
   it.each([
-    [
-      'the stored deadline is missing',
-      { merchantOrder: { ...configuration.merchantOrder, paymentDeadline: null } },
-      '商家订单缺少明确付款截止时间',
-    ],
-    [
-      'the stored deadline has passed',
-      {
-        merchantOrder: {
-          ...configuration.merchantOrder,
-          paymentDeadline: new Date('2026-09-10T07:59:59.000Z'),
-        },
-      },
-      '商家订单付款截止时间已过',
-    ],
     [
       'the payment account is disabled',
       { account: { ...configuration.account, status: BusinessStatus.DISABLED } },

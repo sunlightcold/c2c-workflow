@@ -26,9 +26,11 @@ export class C2cAutomationJob {
     const scopes = await this.syncStore.claimDue(randomUUID(), now, SYNC_CLAIM_LIMIT, SYNC_LEASE_MS)
     let succeeded = 0
     let failed = 0
+    let created = 0
     for (const scope of scopes) {
       try {
-        await this.orderSync.sync(scope.tenantId, scope.merchantId, now)
+        const result = await this.orderSync.sync(scope.tenantId, scope.merchantId, now)
+        created += result.created ?? 0
         succeeded += 1
       } catch (error) {
         failed += 1
@@ -37,7 +39,18 @@ export class C2cAutomationJob {
         )
       }
     }
-    return { claimed: scopes.length, succeeded, failed }
+    // The discovery and payment schedulers intentionally remain separate so
+    // existing payment orders can be retried independently.  A newly synced
+    // order, however, must not wait for the next repeat-job tick: BullMQ does
+    // not guarantee which of the two 5-second jobs runs first.  Process the
+    // just-committed orders once before reporting the discovery run complete.
+    const payments = created > 0 ? await this.processAutomaticPayments(now) : undefined
+    return {
+      claimed: scopes.length,
+      succeeded,
+      failed,
+      ...(payments ? { payments } : {}),
+    }
   }
 
   async processAutomaticPayments(now = new Date()) {

@@ -203,10 +203,14 @@ describe('Automatic C2C payment workflow database integration', () => {
       body: JSON.stringify({ markOrderAsPaidFailure: true }),
     })
 
-    await expect(harness.job.syncDueOrders()).resolves.toMatchObject({ claimed: 1, succeeded: 1 })
+    await expect(harness.job.syncDueOrders()).resolves.toMatchObject({
+      claimed: 1,
+      succeeded: 1,
+      payments: { orders: { found: 1, succeeded: 1, failed: 0 } },
+    })
     const merchantOrder = await findMerchantOrder(harness.dataSource, 'BIN-E2E-1001')
     expect(merchantOrder).toMatchObject({
-      status: MerchantOrderStatus.PENDING_PAYMENT,
+      status: MerchantOrderStatus.PAYMENT_PROCESSING,
       identityMatched: true,
       paymentMethod: 'ALIPAY',
     })
@@ -375,9 +379,21 @@ describe('Automatic C2C payment workflow database integration', () => {
     await addBinanceOrder('BIN-BATCH-1001', '40.10')
     await addBinanceOrder('BIN-BATCH-1002', '59.90')
 
-    await harness.job.syncDueOrders()
-    const processed = await harness.job.processAutomaticPayments()
-    expect(processed).toEqual({
+    const discovered = await harness.job.syncDueOrders()
+    expect(discovered).toMatchObject({
+      claimed: 1,
+      succeeded: 1,
+      failed: 0,
+      payments: {
+        orders: { found: 2, succeeded: 2, failed: 0 },
+        batches: { found: 1, succeeded: 1, failed: 0 },
+      },
+    })
+    await expect(harness.job.processAutomaticPayments()).resolves.toEqual({
+      orders: { found: 0, succeeded: 0, failed: 0 },
+      batches: { found: 0, succeeded: 0, failed: 0 },
+    })
+    expect(discovered.payments).toEqual({
       orders: { found: 2, succeeded: 2, failed: 0 },
       batches: { found: 1, succeeded: 1, failed: 0 },
     })
@@ -419,7 +435,7 @@ describe('Automatic C2C payment workflow database integration', () => {
     ])
   })
 
-  it('selects only active-tenant, enabled, identity-matched orders with an unexpired deadline', async () => {
+  it('selects only active-tenant, enabled, identity-matched orders regardless of deadline metadata', async () => {
     const now = new Date('2026-09-13T04:00:00.000Z')
     const disabledTenantId = '35000000-0000-4000-8000-000000000001'
     await harness.dataSource.query(
@@ -491,15 +507,21 @@ describe('Automatic C2C payment workflow database integration', () => {
       100,
     )
 
-    expect(
-      await Promise.all(
-        result.map(async ({ merchantOrderId }) =>
-          harness.dataSource
-            .getRepository(MerchantOrderEntity)
-            .findOneByOrFail({ id: merchantOrderId }),
-        ),
+    const selected = await Promise.all(
+      result.map(async ({ merchantOrderId }) =>
+        harness.dataSource
+          .getRepository(MerchantOrderEntity)
+          .findOneByOrFail({ id: merchantOrderId }),
       ),
-    ).toEqual([expect.objectContaining({ platformOrderId: 'eligible' })])
+    )
+    expect(selected).toHaveLength(3)
+    expect(selected).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ platformOrderId: 'eligible' }),
+        expect.objectContaining({ platformOrderId: 'deadline-missing' }),
+        expect.objectContaining({ platformOrderId: 'deadline-expired' }),
+      ]),
+    )
 
     const claimed = await new TypeOrmC2cOrderSyncStore(harness.dataSource).claimDue(
       'tenant-status-test',

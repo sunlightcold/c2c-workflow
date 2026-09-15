@@ -15,9 +15,8 @@ describe('TypeOrmC2cAutomaticPaymentStore', () => {
     expect(sql).toContain('merchant_order."identityMatched" = true')
     expect(sql).toContain(`merchant_order."paymentMethod" = 'ALIPAY'`)
     expect(sql).toContain(`merchant_order."fiatCurrency" = 'CNY'`)
-    expect(sql).toContain('merchant_order."paymentDeadline" > $2')
-    expect(sql).not.toContain('merchant_order."paymentDeadline" IS NULL')
-    expect(parameters).toEqual(['C2C_BUY', now, 100])
+    expect(sql).not.toContain('merchant_order."paymentDeadline"')
+    expect(parameters).toEqual(['C2C_BUY', 100])
   })
 
   it('recovers submitted payments from every source but excludes batch items from single-payment queries', async () => {
