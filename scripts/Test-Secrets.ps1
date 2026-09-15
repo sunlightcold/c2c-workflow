@@ -17,9 +17,13 @@ if ($LASTEXITCODE -ne 0) {
 }
 $files = @(
   foreach ($relativePath in $trackedFiles) {
+    $relativePath = ([string]$relativePath).Trim()
     if ($relativePath -notmatch '(^|[/\\])(node_modules|dist|output|\.turbo|test)([/\\]|$)' -and
         $relativePath -notmatch '\.(spec|test)\.[^.]+$') {
-      Get-Item -LiteralPath (Join-Path $workspaceRoot $relativePath)
+      $fullPath = Join-Path $workspaceRoot $relativePath
+      if (Test-Path -LiteralPath $fullPath -PathType Leaf) {
+        $fullPath
+      }
     }
   }
 )
@@ -27,10 +31,10 @@ $files = @(
 $findings = @(
   foreach ($file in $files) {
     $lineNumber = 0
-    foreach ($line in (Get-Content -LiteralPath $file.FullName)) {
+    foreach ($line in (Get-Content -LiteralPath $file)) {
       $lineNumber++
       if ($line -match ($patterns -join '|') -and $line -notmatch 'change-me-before-use') {
-        "{0}:{1}:{2}" -f $file.FullName, $lineNumber, $line
+        "{0}:{1}:{2}" -f $file, $lineNumber, $line
       }
     }
   }
