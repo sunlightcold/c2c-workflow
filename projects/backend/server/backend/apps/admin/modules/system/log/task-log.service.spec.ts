@@ -5,6 +5,7 @@ jest.mock('nestjs-typeorm-paginate', () => ({
 }))
 
 import { TaskLogService } from './task-log.service'
+import { LessThan } from 'typeorm'
 
 describe('TaskLogService', () => {
   it('returns the newest task executions first with stable pagination', async () => {
@@ -29,5 +30,18 @@ describe('TaskLogService', () => {
 
     expect(queryBuilder.orderBy).toHaveBeenCalledWith('taskLog.startedAt', 'DESC')
     expect(queryBuilder.addOrderBy).toHaveBeenCalledWith('taskLog.id', 'DESC')
+  })
+
+  it('deletes only task logs older than the supplied cutoff', async () => {
+    const repository = {
+      delete: jest.fn().mockResolvedValue({ affected: 3 }),
+    }
+    const service = new TaskLogService()
+    Object.defineProperty(service, 'taskLogRepository', { value: repository })
+    const cutoff = new Date('2026-09-13T04:00:00.000Z')
+
+    await service.clearBefore(cutoff)
+
+    expect(repository.delete).toHaveBeenCalledWith({ startedAt: LessThan(cutoff) })
   })
 })

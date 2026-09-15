@@ -1,6 +1,7 @@
 import { SysTaskSource, SysTaskStatus, SysTaskTypeEnum } from '@/apps/admin/database'
 
 export const EXPIRED_ADMIN_TOKEN_CLEANUP_CRON = '0 0 */12 * * *'
+export const TASK_LOG_CLEANUP_CRON = '0 0 4 * * *'
 export const C2C_ORDER_DISCOVERY_INTERVAL_MS = 5_000
 export const C2C_AUTOMATIC_PAYMENT_INTERVAL_MS = 5_000
 export const C2C_PAYMENT_RECOVERY_INTERVAL_MS = 15_000
@@ -26,6 +27,15 @@ export const SYSTEM_TASKS: SystemTaskDefinition[] = [
     status: SysTaskStatus.Activated,
     cron: EXPIRED_ADMIN_TOKEN_CLEANUP_CRON,
     description: '清理已过期的后台登录Token会话记录',
+  },
+  {
+    id: '00000000-0000-4000-8000-000000000107',
+    name: '清理过期任务日志',
+    service: 'LogClearJob.clearTaskLog',
+    type: SysTaskTypeEnum.Cron,
+    status: SysTaskStatus.Activated,
+    cron: TASK_LOG_CLEANUP_CRON,
+    description: '每天凌晨4点删除执行时间早于2天前的任务日志',
   },
   {
     id: '00000000-0000-4000-8000-000000000104',

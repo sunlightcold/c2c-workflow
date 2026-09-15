@@ -4,7 +4,7 @@ import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { isNotEmpty } from 'class-validator'
 import { paginate } from 'nestjs-typeorm-paginate'
-import { Like, Repository } from 'typeorm'
+import { LessThan, Like, Repository } from 'typeorm'
 import { TaskLogCreateDto, TaskLogFilterDto } from './dto'
 
 @Injectable()
@@ -35,7 +35,8 @@ export class TaskLogService {
     )
   }
 
-  async clear() {
-    await this.taskLogRepository.deleteAll()
+  async clearBefore(cutoff: Date) {
+    const result = await this.taskLogRepository.delete({ startedAt: LessThan(cutoff) })
+    return result.affected ?? 0
   }
 }

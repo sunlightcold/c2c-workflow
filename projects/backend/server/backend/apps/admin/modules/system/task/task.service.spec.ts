@@ -48,6 +48,7 @@ import {
   EXPIRED_ADMIN_TOKEN_CLEANUP_CRON,
   SYSTEM_TASKS,
   SYSTEM_TASK_SERVICES,
+  TASK_LOG_CLEANUP_CRON,
 } from './system-task.registry'
 import { TaskInvokerService } from './task-invoker.service'
 import { TaskService } from './task.service'
@@ -274,6 +275,7 @@ describe('TaskService', () => {
     expect(taskInvoker.checkService).toHaveBeenCalledWith(
       'SystemMaintenanceJob.clearExpiredAdminTokenSessions',
     )
+    expect(taskInvoker.checkService).toHaveBeenCalledWith('LogClearJob.clearTaskLog')
     expect(taskInvoker.checkService).toHaveBeenCalledWith('C2cAutomationJob.syncDueOrders')
     expect(taskInvoker.checkService).toHaveBeenCalledWith(
       'C2cAutomationJob.processAutomaticPayments',
@@ -291,6 +293,19 @@ describe('TaskService', () => {
       cron: EXPIRED_ADMIN_TOKEN_CLEANUP_CRON,
     })
     expect(EXPIRED_ADMIN_TOKEN_CLEANUP_CRON).toBe('0 0 */12 * * *')
+  })
+
+  it('registers task log cleanup to run daily at 04:00', () => {
+    expect(SYSTEM_TASKS).toContainEqual(
+      expect.objectContaining({
+        name: '清理过期任务日志',
+        service: 'LogClearJob.clearTaskLog',
+        type: SysTaskTypeEnum.Cron,
+        status: SysTaskStatus.Activated,
+        cron: TASK_LOG_CLEANUP_CRON,
+      }),
+    )
+    expect(TASK_LOG_CLEANUP_CRON).toBe('0 0 4 * * *')
   })
 
   it('does not remove locked active jobs when stopping an existing schedule', async () => {
