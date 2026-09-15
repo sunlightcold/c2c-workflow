@@ -141,6 +141,34 @@ describe('TelegramRuntimeService', () => {
     })
   })
 
+  it('ignores ordinary conversation without authorizing or replying', async () => {
+    const runtime = new TelegramRuntimeService(
+      bots as never,
+      authorization as never,
+      telegram as never,
+      manualPayments as never,
+      batchPayments as never,
+      queries as never,
+      groups as never,
+    )
+
+    await runtime.handle({
+      botId: 'bot-1',
+      tenantId: 'tenant-1',
+      payload: {
+        message: {
+          message_id: 9,
+          chat: { id: -1001, type: 'supergroup' },
+          from: { id: 88 },
+          text: '看绑定商家吗？',
+        },
+      },
+    })
+
+    expect(authorization.authorize).not.toHaveBeenCalled()
+    expect(telegram.sendMessage).not.toHaveBeenCalled()
+  })
+
   it('shows only commands enabled by final authorization', async () => {
     const runtime = new TelegramRuntimeService(
       bots as never,
@@ -170,6 +198,87 @@ describe('TelegramRuntimeService', () => {
     expect(reply.text).toContain('/myid')
     expect(reply.text).not.toContain('/balance')
     expect(reply.text).not.toContain('/submitbatch')
+  })
+
+  it('explains how to bind an unbound group instead of reporting a permission failure', async () => {
+    authorization.authorize.mockResolvedValueOnce({
+      allowed: false,
+      reason: 'CHAT_NOT_BOUND',
+    })
+    const runtime = new TelegramRuntimeService(
+      bots as never,
+      authorization as never,
+      telegram as never,
+      manualPayments as never,
+      batchPayments as never,
+      queries as never,
+      groups as never,
+    )
+
+    await runtime.handle({
+      botId: 'bot-1',
+      tenantId: 'tenant-1',
+      payload: {
+        message: {
+          message_id: 10,
+          chat: { id: -1001, type: 'supergroup' },
+          from: { id: 88 },
+          text: '/query PAY001',
+        },
+      },
+    })
+
+    expect(telegram.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: '当前群尚未绑定商家，请机器人超级管理员发送：/bind 平台商家编号',
+      }),
+    )
+  })
+
+  it('shows detailed command usage and aliases without the unsupported balance command', async () => {
+    authorization.authorize.mockResolvedValueOnce({
+      allowed: true,
+      capabilities: Object.values(TelegramCapability),
+      group: { merchantId: 'merchant-1' },
+    })
+    const runtime = new TelegramRuntimeService(
+      bots as never,
+      authorization as never,
+      telegram as never,
+      manualPayments as never,
+      batchPayments as never,
+      queries as never,
+      groups as never,
+    )
+
+    await runtime.handle({
+      botId: 'bot-1',
+      tenantId: 'tenant-1',
+      payload: {
+        message: {
+          message_id: 10,
+          chat: { id: -1001, type: 'supergroup' },
+          from: { id: 88 },
+          text: '/help',
+        },
+      },
+    })
+
+    const reply = telegram.sendMessage.mock.calls[0]?.[0]
+    expect(reply.text).toContain('/help - 查看可用命令')
+    expect(reply.text).toContain('/start - 启用机器人并查看帮助')
+    expect(reply.text).toContain('/myid - 查看 Telegram 用户编号')
+    expect(reply.text).toContain(
+      '/query 订单号或批次号 - 查询支付订单或批次（或发送：查单 订单号）',
+    )
+    expect(reply.text).toContain('/receipt 订单号 - 获取支付回单（或发送：回单 订单号）')
+    expect(reply.text).toContain('/stats - 查看今日支付统计（或发送：今日跑量/今日统计）')
+    expect(reply.text).toContain('/submitbatch - 提交待处理支付批次（或发送：提交/提交批次）')
+    expect(reply.text).toContain('/appeal C2C订单号 - 发起 C2C 订单申诉（或发送：申诉 订单号）')
+    expect(reply.text).toContain('日报 [YYYYMMDD] - 查询 C2C 日报')
+    expect(reply.text).toContain('/status - 查看机器人和群组状态')
+    expect(reply.text).toContain('发送四行订单信息 - 创建手工支付订单')
+    expect(reply.text).not.toContain('/balance')
   })
 
   it('turns a four-line message into a confirmation reply', async () => {

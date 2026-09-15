@@ -35,12 +35,24 @@ interface TelegramCallbackMessage extends TelegramTextMessage {
 }
 
 const commandCapabilities: Array<[TelegramCapability, string, string]> = [
-  [TelegramCapability.ORDER_QUERY, '/query', '查询支付订单或批次'],
-  [TelegramCapability.RECEIPT_QUERY, '/receipt', '获取支付回单'],
-  [TelegramCapability.PAYMENT_STATISTICS, '/stats', '查看今日支付统计'],
-  [TelegramCapability.PAYMENT_BATCH_SUBMIT, '/submitbatch', '提交待处理支付批次'],
-  [TelegramCapability.C2C_APPEAL, '/appeal', '发起 C2C 订单申诉'],
-  [TelegramCapability.BOT_STATUS_MANAGE, '/status', '查看机器人状态'],
+  [
+    TelegramCapability.ORDER_QUERY,
+    '/query 订单号或批次号',
+    '查询支付订单或批次（或发送：查单 订单号）',
+  ],
+  [TelegramCapability.RECEIPT_QUERY, '/receipt 订单号', '获取支付回单（或发送：回单 订单号）'],
+  [
+    TelegramCapability.PAYMENT_STATISTICS,
+    '/stats',
+    '查看今日支付统计（或发送：今日跑量/今日统计）',
+  ],
+  [
+    TelegramCapability.PAYMENT_BATCH_SUBMIT,
+    '/submitbatch',
+    '提交待处理支付批次（或发送：提交/提交批次）',
+  ],
+  [TelegramCapability.C2C_APPEAL, '/appeal C2C订单号', '发起 C2C 订单申诉（或发送：申诉 订单号）'],
+  [TelegramCapability.BOT_STATUS_MANAGE, '/status', '查看机器人和群组状态'],
 ]
 
 @Injectable()
@@ -81,6 +93,11 @@ export class TelegramRuntimeService {
     if (!message) return
 
     const command = message.text.split(/\s+/, 1)[0]?.split('@', 1)[0]?.toLowerCase()
+    // Ignore ordinary conversation and unknown slash commands. Authorization is
+    // only relevant once the message has been recognized as a bot operation;
+    // otherwise every chat message would receive a misleading permission error.
+    const parsed = parseTelegramPayoutCommand(message.text)
+    if (parsed.kind === 'UNKNOWN') return
     if (command === '/myid') {
       await this.reply(bot.tokenRef, message, `您的 Telegram 用户编号：${message.userId}`)
       return
@@ -115,7 +132,15 @@ export class TelegramRuntimeService {
     }
     const authorization = await this.authorization.authorize(bot, message.chatId, message.userId)
     if (!authorization.allowed) {
-      await this.reply(bot.tokenRef, message, '您没有权限使用当前机器人')
+      await this.reply(
+        bot.tokenRef,
+        message,
+        authorization.reason === 'CHAT_NOT_BOUND'
+          ? '当前群尚未绑定商家，请机器人超级管理员发送：/bind 平台商家编号'
+          : authorization.reason === 'MERCHANT_DISABLED'
+            ? '当前群绑定的商家不可用或已停用，请联系管理员'
+            : '您没有权限使用当前机器人',
+      )
       return
     }
     if (await this.handleAuthorizedCommand(bot, message, authorization, command)) return
@@ -134,6 +159,12 @@ export class TelegramRuntimeService {
     const lines = commandCapabilities
       .filter(([capability]) => authorization.capabilities.includes(capability))
       .map(([, name, description]) => `${name} - ${description}`)
+    if (authorization.capabilities.includes(TelegramCapability.C2C_DAILY_REPORT)) {
+      lines.push('日报 [YYYYMMDD] - 查询 C2C 日报')
+    }
+    if (authorization.capabilities.includes(TelegramCapability.ALIPAY_BATCH_PAYMENT)) {
+      lines.push('发送四行订单信息 - 创建手工支付订单')
+    }
     if (
       typeof this.authorization.canBindGroups === 'function' &&
       (await this.authorization.canBindGroups(bot.tenantId, message.userId))
@@ -143,7 +174,13 @@ export class TelegramRuntimeService {
     await this.reply(
       bot.tokenRef,
       message,
-      ['可用命令：', '/myid - 查看 Telegram 用户编号', ...lines].join('\n'),
+      [
+        '可用命令：',
+        '/help - 查看可用命令',
+        '/start - 启用机器人并查看帮助',
+        '/myid - 查看 Telegram 用户编号',
+        ...lines,
+      ].join('\n'),
     )
   }
 
