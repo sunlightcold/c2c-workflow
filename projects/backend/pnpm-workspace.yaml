@@ -92,6 +92,7 @@ catalog:
   "ts-jest": ^29.2.5
   "ts-loader": ^9.5.2
   "ts-node": ^10.9.2
+  "tsx": ^4.19.3
   "tsconfig-paths": ^4.2.0
   "typeorm": ^0.3.28
   "typescript": ^5.7.3

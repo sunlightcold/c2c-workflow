@@ -267,6 +267,9 @@ catalogs:
     tsconfig-paths:
       specifier: ^4.2.0
       version: 4.2.0
+    tsx:
+      specifier: ^4.19.3
+      version: 4.23.13
     typeorm:
       specifier: ^0.3.28
       version: 0.3.28
@@ -320,6 +323,9 @@ importers:
       '@types/shelljs':
         specifier: 'catalog:'
         version: 0.8.16
+      tsx:
+        specifier: 'catalog:'
+        version: 4.23.13
 
   server/backend:
     dependencies:
@@ -6659,6 +6665,11 @@ packages:
 
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==, tarball: https://registry.npmjs.org/tslib/-/tslib-2.8.1.tgz}
+
+  tsx@4.23.13:
+    resolution: {integrity: sha512-BL5MGkRln6aDYhb0xbQlEAGw743BaZYWdbWtdJOBriYJboKgUUYCadFp2/FpBBZquBC/ezNBn7wMMPx7FDZUDw==, tarball: https://registry.npmjs.org/tsx/-/tsx-4.23.13.tgz}
+    engines: {node: '>=18.0.0'}
+    hasBin: true
 
   tweetnacl@1.0.3:
     resolution: {integrity: sha512-6rt+RN7aOi1nGMyC4Xa5DdYiukl2UWCbcJft7YhxReBGQD7OAM8Pbxw6YMo4r2diNEA8FEmu32YOn9rhaiE5yw==, tarball: https://registry.npmjs.org/tweetnacl/-/tweetnacl-1.0.3.tgz}
@@ -14230,6 +14241,12 @@ snapshots:
       strip-bom: 3.0.0
 
   tslib@2.8.1: {}
+
+  tsx@4.23.13:
+    dependencies:
+      esbuild: 0.28.2
+    optionalDependencies:
+      fsevents: 2.3.3
 
   tweetnacl@1.0.3: {}
 
