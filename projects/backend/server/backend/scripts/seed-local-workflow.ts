@@ -184,6 +184,7 @@ async function seed(
     authMode: 'API_KEY',
     apiBaseUrl: config.binance.gateway,
     clientType: config.binance.settings.clientType,
+    xUserId: 'mock-hq-binance',
   })
   await upsertMerchantCredential(manager, {
     id: '5a000000-0000-4000-8000-000000000002',
@@ -199,6 +200,7 @@ async function seed(
     authMode: 'WEB_COOKIE',
     apiBaseUrl: config.okx.gateway,
     clientType: null,
+    xUserId: null,
   })
   await upsertMerchantCredential(manager, {
     id: '5a000000-0000-4000-8000-000000000003',
@@ -212,6 +214,7 @@ async function seed(
     authMode: 'API_KEY',
     apiBaseUrl: config.binance.gateway,
     clientType: config.binance.settings.clientType,
+    xUserId: 'mock-agent-binance',
   })
 
   await upsertPaymentAccount(manager, {
@@ -337,16 +340,18 @@ async function upsertMerchantCredential(
     merchantId: string
     platform: string
     tenantId: string
+    xUserId: string | null
   },
 ): Promise<void> {
   await manager.query(
     `INSERT INTO merchant_platform_credential
        (id, "tenantId", "merchantId", platform, version, "credentialRef", "authMode",
-        "apiBaseUrl", "clientType", "requestTimeoutMs", status)
-     VALUES ($1, $2, $3, $4, 1, $5, $6, $7, $8, 5000, 'active')
+        "apiBaseUrl", "clientType", "xUserId", "requestTimeoutMs", status)
+     VALUES ($1, $2, $3, $4, 1, $5, $6, $7, $8, $9, 5000, 'active')
      ON CONFLICT (id) DO UPDATE SET
        "credentialRef" = EXCLUDED."credentialRef", "apiBaseUrl" = EXCLUDED."apiBaseUrl",
-       "clientType" = EXCLUDED."clientType", "requestTimeoutMs" = EXCLUDED."requestTimeoutMs",
+       "clientType" = EXCLUDED."clientType", "xUserId" = EXCLUDED."xUserId",
+       "requestTimeoutMs" = EXCLUDED."requestTimeoutMs",
        status = EXCLUDED.status`,
     [
       input.id,
@@ -357,6 +362,7 @@ async function upsertMerchantCredential(
       input.authMode,
       input.apiBaseUrl,
       input.clientType,
+      input.xUserId,
     ],
   )
 }

@@ -42,13 +42,13 @@ export class BinanceC2cMockPlugin {
   handle(request: BinanceRequest) {
     try {
       this.verify(request)
-      if (request.path === BINANCE_C2C_PATHS.listOrders) return this.listOrders(request.body)
-      if (request.path === BINANCE_C2C_PATHS.reportOrders) return this.reportOrders(request.query)
-      if (request.path === BINANCE_C2C_PATHS.detail) return this.detail(request.body)
-      if (request.path === BINANCE_C2C_PATHS.markOrderAsPaid) return this.markOrderAsPaid(request.body)
-      if (request.path === BINANCE_C2C_PATHS.complaintReasons) return this.complaintReasons(request.body)
+      if (request.path === BINANCE_C2C_PATHS.listOrders) return this.listOrders(request)
+      if (request.path === BINANCE_C2C_PATHS.reportOrders) return this.reportOrders(request)
+      if (request.path === BINANCE_C2C_PATHS.detail) return this.detail(request)
+      if (request.path === BINANCE_C2C_PATHS.markOrderAsPaid) return this.markOrderAsPaid(request)
+      if (request.path === BINANCE_C2C_PATHS.complaintReasons) return this.complaintReasons(request)
       if (request.path === BINANCE_C2C_PATHS.complaintUploadUrl) return this.complaintUploadUrl(request.query)
-      if (request.path === BINANCE_C2C_PATHS.complaintSubmit) return this.complaintSubmit(request.body)
+      if (request.path === BINANCE_C2C_PATHS.complaintSubmit) return this.complaintSubmit(request)
       return errorResponse('404', '接口不存在', 404)
     } catch (error) {
       return errorResponse('400001', (error as Error).message)
@@ -71,7 +71,8 @@ export class BinanceC2cMockPlugin {
     if (signature !== expected) throw new Error('签名校验失败')
   }
 
-  private listOrders(body: Record<string, unknown>) {
+  private listOrders(request: BinanceRequest) {
+    const { body } = request
     const asset = requiredString(body.asset, 'asset')
     const tradeType = requiredString(body.tradeType, 'tradeType')
     const page = Number(body.page)
@@ -81,7 +82,7 @@ export class BinanceC2cMockPlugin {
     if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(rows) || rows < 1)
       throw new Error('分页参数错误')
     const statuses = Array.isArray(body.orderStatusList) ? body.orderStatusList.map(Number) : []
-    const orders = this.list().filter((order) => {
+    const orders = this.ordersFor(request).filter((order) => {
       const createdAt = parseDate(order.createTime)
       return (
         order.asset === asset &&
@@ -103,7 +104,8 @@ export class BinanceC2cMockPlugin {
     }
   }
 
-  private reportOrders(query: Record<string, string>) {
+  private reportOrders(request: BinanceRequest) {
+    const { query } = request
     const page = Number(query.page)
     const rows = Number(query.rows)
     const startTimestamp = Number(query.startTimestamp)
@@ -113,7 +115,7 @@ export class BinanceC2cMockPlugin {
       throw new Error('分页参数错误')
     }
     if (!Number.isFinite(startTimestamp) || !Number.isFinite(endTimestamp)) throw new Error('日期参数错误')
-    const orders = this.list().filter((order) => {
+    const orders = this.ordersFor(request).filter((order) => {
       const createdAt = parseDate(order.createTime)
       return createdAt >= startTimestamp && createdAt <= endTimestamp && (!tradeType || order.tradeType === tradeType)
     })
@@ -129,18 +131,20 @@ export class BinanceC2cMockPlugin {
     }
   }
 
-  private detail(body: Record<string, unknown>) {
+  private detail(request: BinanceRequest) {
+    const { body } = request
     const orderNumber = requiredString(body.adOrderNo, 'adOrderNo')
-    const order = this.find(orderNumber)
+    const order = this.findFor(request, orderNumber)
     if (!order) return errorResponse('400002', '订单不存在', 404)
-    const { id: _id, ...detail } = order
+    const { id: _id, externalMerchantId: _externalMerchantId, ...detail } = order
     return { status: 200, body: { code: '000000', success: true, data: detail } }
   }
 
-  private markOrderAsPaid(body: Record<string, unknown>) {
+  private markOrderAsPaid(request: BinanceRequest) {
+    const { body } = request
     if (this.getSettings().markOrderAsPaidFailure) return errorResponse('400003', '模拟确认付款失败')
     const orderNumber = requiredString(body.orderNumber, 'orderNumber')
-    const order = this.find(orderNumber)
+    const order = this.findFor(request, orderNumber)
     if (!order) return errorResponse('400002', '订单不存在', 404)
     const payId = Number(body.payId)
     if (!Number.isSafeInteger(payId) || String(payId) !== order.selectedPayId) {
@@ -169,9 +173,10 @@ export class BinanceC2cMockPlugin {
     }
   }
 
-  private complaintReasons(body: Record<string, unknown>) {
+  private complaintReasons(request: BinanceRequest) {
+    const { body } = request
     const orderNumber = requiredString(body.orderNo, 'orderNo')
-    const order = this.find(orderNumber)
+    const order = this.findFor(request, orderNumber)
     if (!order) return errorResponse('400002', '订单不存在', 404)
     return {
       status: 200,
@@ -198,9 +203,10 @@ export class BinanceC2cMockPlugin {
     }
   }
 
-  private complaintSubmit(body: Record<string, unknown>) {
+  private complaintSubmit(request: BinanceRequest) {
+    const { body } = request
     const orderNumber = requiredString(body.orderNo, 'orderNo')
-    const order = this.find(orderNumber)
+    const order = this.findFor(request, orderNumber)
     if (!order) return errorResponse('400002', '订单不存在', 404)
     requiredString(body.description, 'description')
     requiredString(body.reason, 'reason')
@@ -229,5 +235,18 @@ export class BinanceC2cMockPlugin {
       tradeType: order.tradeType,
       createTime: order.createTime,
     }
+  }
+
+  private ordersFor(request: BinanceRequest) {
+    const externalMerchantId = request.headers.get('x-user-id')?.trim()
+    if (!externalMerchantId) return this.list()
+    return this.list().filter((order) => order.externalMerchantId === externalMerchantId)
+  }
+
+  private findFor(request: BinanceRequest, orderNumber: string) {
+    const order = this.find(orderNumber)
+    if (!order) return undefined
+    const externalMerchantId = request.headers.get('x-user-id')?.trim()
+    return !externalMerchantId || order.externalMerchantId === externalMerchantId ? order : undefined
   }
 }

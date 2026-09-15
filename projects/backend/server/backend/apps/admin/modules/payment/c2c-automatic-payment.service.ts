@@ -1,4 +1,4 @@
-import { PaymentExecutionMode, PaymentOrderStatus, PaymentSourceType } from '@admin/database'
+import { PaymentExecutionMode, PaymentOrderStatus } from '@admin/database'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { C2cMerchantPaymentService } from './c2c-merchant-payment.service'
 import type {
@@ -10,6 +10,7 @@ import { PaymentBatchService } from './payment-batch.service'
 import { PaymentBatchPolicyService } from './payment-batch-policy.service'
 import { PaymentExecutionCoordinator } from './payment-execution-coordinator'
 import { PaymentOrderService } from './payment-order.service'
+import { sumCnyAmounts } from './payment-adapter.types'
 import { EVENT_KEYS, EventEmitterService } from '../event-emitter'
 
 export const C2C_AUTOMATIC_PAYMENT_STORE = Symbol('C2C_AUTOMATIC_PAYMENT_STORE')
@@ -43,9 +44,7 @@ export class C2cAutomaticPaymentService {
     const scopes = await this.store.findBatchScopes(AUTOMATION_LIMIT)
     const groups = (
       await Promise.all(
-        scopes.map((scope) =>
-          this.batches.findReadyGroups(scope.tenantId, scope.merchantId, PaymentSourceType.C2C_BUY),
-        ),
+        scopes.map((scope) => this.batches.findReadyGroups(scope.tenantId, scope.merchantId)),
       )
     ).flatMap((readyGroups, index) => readyGroups.map((group) => ({ ...scopes[index], ...group })))
     const eligible: Array<(typeof groups)[number] & { ruleIds: string[] }> = []
@@ -62,25 +61,78 @@ export class C2cAutomaticPaymentService {
       })
       if (ruleIds.length) eligible.push({ ...group, ruleIds })
     }
-    return this.runItems(eligible, (group) =>
-      this.store.runLocked(this.batchLockKey(group), async () => {
-        const created = await this.batches.create(group.tenantId, group.paymentOrderIds, {
-          ruleIds: group.ruleIds,
-          source: 'AUTOMATIC',
+    const summaries = new Map<
+      string,
+      {
+        tenantId: string
+        merchantId: string
+        totalCount: number
+        amounts: string[]
+        groups: number
+        submitted: number
+        failed: number
+        errors: string[]
+      }
+    >()
+    const result = await this.runItems(eligible, async (group) => {
+      const key = `${group.tenantId}:${group.merchantId}`
+      const summary = summaries.get(key) ?? {
+        tenantId: group.tenantId,
+        merchantId: group.merchantId,
+        totalCount: 0,
+        amounts: [],
+        groups: 0,
+        submitted: 0,
+        failed: 0,
+        errors: [],
+      }
+      summary.totalCount += group.paymentOrderIds.length
+      summary.amounts.push(group.totalAmount)
+      summary.groups += 1
+      summaries.set(key, summary)
+      try {
+        const submitted = await this.store.runLocked(this.batchLockKey(group), async () => {
+          const created = await this.batches.create(group.tenantId, group.paymentOrderIds, {
+            ruleIds: group.ruleIds,
+            source: 'AUTOMATIC',
+          })
+          return this.batchExecution.submit(group.tenantId, created.batch.id)
         })
-        return this.batchExecution.submit(group.tenantId, created.batch.id)
-      }),
-    )
+        if (submitted === undefined) {
+          summary.totalCount -= group.paymentOrderIds.length
+          summary.amounts.pop()
+          summary.groups -= 1
+        } else if (submitted.status === 'PROCESSING') {
+          summary.submitted += 1
+        } else {
+          summary.failed += 1
+        }
+        return submitted
+      } catch (error) {
+        summary.failed += 1
+        summary.errors.push(this.errorMessage(error))
+        throw error
+      }
+    })
+    for (const summary of summaries.values()) {
+      if (!summary.groups) continue
+      await this.eventEmitter?.emitAsync(EVENT_KEYS.TELEGRAM_BATCH_SUBMITTED, {
+        tenantId: summary.tenantId,
+        merchantId: summary.merchantId,
+        totalCount: summary.totalCount,
+        totalAmount: sumCnyAmounts(summary.amounts),
+        groups: summary.groups,
+        submitted: summary.submitted,
+        failed: summary.failed,
+        ...(summary.errors.length ? { errors: summary.errors } : {}),
+      })
+    }
+    return result
   }
 
   async submitPolicyManually(tenantId: string, policyId: string, merchantId: string | null) {
     await this.batchPolicies.requireManualRule(tenantId, merchantId, policyId)
-    const groups = await this.batches.findReadyGroups(
-      tenantId,
-      merchantId,
-      PaymentSourceType.C2C_BUY,
-      policyId,
-    )
+    const groups = await this.batches.findReadyGroups(tenantId, merchantId, policyId)
     return this.runItems(groups, (group) =>
       this.store.runLocked(this.batchLockKey({ ...group, tenantId }), async () => {
         const created = await this.batches.create(tenantId, group.paymentOrderIds, {
@@ -114,12 +166,43 @@ export class C2cAutomaticPaymentService {
 
   private async processCandidate(candidate: AutomaticPaymentCandidate) {
     if (!candidate.paymentOrderId) {
-      return this.merchantPayments.create(
+      const payment = await this.merchantPayments.create(
         candidate.tenantId,
         candidate.merchantId,
         candidate.merchantOrderId,
-        candidate.executionMode,
+        true,
       )
+      if ([PaymentOrderStatus.PENDING_CONFIG, PaymentOrderStatus.READY].includes(payment.status)) {
+        this.eventEmitter?.emit(EVENT_KEYS.TELEGRAM_PAYMENT_CREATED, {
+          tenantId: candidate.tenantId,
+          merchantId: candidate.merchantId,
+          merchantOrderId: candidate.merchantOrderId,
+          paymentOrderId: payment.id,
+          paymentNo: payment.paymentNo,
+          sourceBusinessNo: payment.sourceBusinessNo,
+          amount: payment.amount ?? null,
+          currency: payment.currency ?? null,
+          paymentMethod: payment.paymentMethod ?? null,
+          payeeName: payment.payeeName ?? null,
+          payeeIdentity: payment.payeeIdentity ?? null,
+          identityMatched: true,
+          status: payment.status,
+          upstreamId: payment.upstreamId ?? null,
+          errorMessage: payment.lastError ?? null,
+        })
+        this.eventEmitter?.emit(EVENT_KEYS.TELEGRAM_PAYMENT_STATUS, {
+          tenantId: candidate.tenantId,
+          merchantId: candidate.merchantId,
+          paymentOrderId: payment.id,
+          paymentNo: payment.paymentNo,
+          sourceBusinessNo: payment.sourceBusinessNo,
+          status: payment.status,
+          upstreamId: payment.upstreamId ?? null,
+          errorMessage: payment.lastError ?? null,
+          notificationType: 'CREATED',
+        })
+      }
+      return payment
     }
     let payment = {
       id: candidate.paymentOrderId,
@@ -127,7 +210,7 @@ export class C2cAutomaticPaymentService {
       executionMode: candidate.paymentOrderExecutionMode!,
     }
     if (payment.status === PaymentOrderStatus.PENDING_CONFIG) {
-      payment = await this.paymentOrders.rematch(candidate.tenantId, payment.id)
+      payment = await this.paymentOrders.rematch(candidate.tenantId, payment.id, true)
     }
     if (
       payment.status === PaymentOrderStatus.READY &&

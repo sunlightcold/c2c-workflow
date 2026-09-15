@@ -33,6 +33,18 @@ import { DEFAULT_ADMIN_MENUS } from './registry/default-admin-menus'
 describe('MenuRegistryService', () => {
   const service = new MenuRegistryService({} as any, {} as any)
 
+  it('registers workspace as a top-level menu without an overview folder', () => {
+    const workspaceMenu = DEFAULT_ADMIN_MENUS.find(({ key }) => key === 'dashboard.workspace')
+
+    expect(DEFAULT_ADMIN_MENUS).not.toContainEqual(expect.objectContaining({ key: 'dashboard' }))
+    expect(workspaceMenu).toMatchObject({
+      name: '工作台',
+      path: '/workspace',
+      type: SysMenuType.MENU,
+    })
+    expect(workspaceMenu?.parentKey).toBeUndefined()
+  })
+
   it('groups business pages into merchant, payment, and robot menus without visible third levels', () => {
     const visibleMenus = DEFAULT_ADMIN_MENUS.filter(({ type }) => type !== SysMenuType.PERMISSION)
     const permissions = new Set(

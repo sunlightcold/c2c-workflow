@@ -14,7 +14,7 @@ describe('TelegramAuthorizationService', () => {
         tenantId: 'tenant-1',
         botId: 'bot-1',
         merchantId: 'merchant-1',
-        capabilities: [TelegramCapability.ORDER_QUERY, TelegramCapability.MANUAL_PAYMENT],
+        capabilities: [TelegramCapability.ORDER_QUERY, TelegramCapability.ALIPAY_BATCH_PAYMENT],
         bindingState: TelegramGroupBindingState.ACTIVE,
       }),
     }
@@ -40,7 +40,7 @@ describe('TelegramAuthorizationService', () => {
         {
           id: 'bot-1',
           tenantId: 'tenant-1',
-          capabilities: [TelegramCapability.ORDER_QUERY, TelegramCapability.MANUAL_PAYMENT],
+          capabilities: [TelegramCapability.ORDER_QUERY, TelegramCapability.ALIPAY_BATCH_PAYMENT],
         },
         '-1001',
         '88',
@@ -105,5 +105,27 @@ describe('TelegramAuthorizationService', () => {
         '88',
       ),
     ).resolves.toEqual({ allowed: false, reason: 'USER_NOT_AUTHORIZED' })
+  })
+
+  it('allows only an all-groups super administrator to bind a new group', async () => {
+    const groups = { findOne: jest.fn() }
+    const merchants = { findOne: jest.fn() }
+    const members = { findOne: jest.fn() }
+    const superAdmins = { findOne: jest.fn().mockResolvedValue(null) }
+    const service = new TelegramAuthorizationService(
+      groups as never,
+      merchants as never,
+      members as never,
+      superAdmins as never,
+    )
+
+    await expect(service.canBindGroups('tenant-1', '88')).resolves.toBe(false)
+    expect(superAdmins.findOne).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        scopeType: TelegramSuperAdminScopeType.ALL_GROUPS,
+        tenantId: 'tenant-1',
+        telegramUserId: '88',
+      }),
+    })
   })
 })

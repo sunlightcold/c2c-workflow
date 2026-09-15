@@ -5,6 +5,7 @@ import {
   normalizeCnyAmount,
   PaymentExecutionStatus,
   type PaymentExecutionResult,
+  type PaymentReconciliationPolicy,
   sumCnyAmounts,
 } from './payment-adapter.types'
 
@@ -45,9 +46,20 @@ export interface AlipayBatchResponse {
   accDetailList?: AlipayBatchDetail[]
 }
 
+export const ALIPAY_BATCH_RECONCILIATION_POLICY: PaymentReconciliationPolicy = {
+  enabled: true,
+  initialDelaySeconds: 10,
+  intervalSeconds: 5,
+  maxAttempts: 12,
+}
+
 @Injectable()
 export class AlipayBatchAdapter {
   constructor(@Inject(ALIPAY_GATEWAY) private readonly gateway: AlipayGateway) {}
+
+  getReconciliationPolicy(): PaymentReconciliationPolicy {
+    return { ...ALIPAY_BATCH_RECONCILIATION_POLICY }
+  }
 
   async create(input: {
     batchNo: string

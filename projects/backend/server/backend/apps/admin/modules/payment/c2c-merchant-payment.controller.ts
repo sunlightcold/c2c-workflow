@@ -43,12 +43,7 @@ export class C2cMerchantPaymentController {
     @Body() dto: CreateC2cMerchantPaymentDto,
     @User() actor: AuthUser,
   ) {
-    return this.payments.create(
-      this.scope.resolveTenantId(actor, dto.tenantId),
-      dto.merchantId,
-      id,
-      dto.executionMode,
-    )
+    return this.payments.create(this.scope.resolveTenantId(actor, dto.tenantId), dto.merchantId, id)
   }
 
   @Post(':id/confirm-paid')

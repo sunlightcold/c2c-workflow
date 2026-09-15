@@ -4,8 +4,10 @@
 export const EVENT_KEYS = {
   ADMIN_SESSION_REVOKED: 'admin.session.revoked',
   TELEGRAM_ORDER_DISCOVERED: 'telegram.order.discovered',
+  TELEGRAM_PAYMENT_CREATED: 'telegram.payment.created',
   TELEGRAM_PAYMENT_STATUS: 'telegram.payment.status',
   TELEGRAM_BATCH_STATUS: 'telegram.batch.status',
+  TELEGRAM_BATCH_SUBMITTED: 'telegram.batch.submitted',
   TELEGRAM_EXCEPTION: 'telegram.exception',
 } as const
 
@@ -29,6 +31,27 @@ export interface TelegramPaymentStatusPayload {
   status: string
   upstreamId?: string | null
   errorMessage?: string | null
+  notificationType?: 'STATUS' | 'CREATED'
+}
+
+export interface TelegramPaymentCreatedPayload {
+  tenantId: string
+  merchantId: string
+  merchantOrderId: string
+  paymentOrderId: string
+  paymentNo?: string
+  sourceBusinessNo?: string
+  amount?: string | null
+  currency?: string | null
+  paymentMethod?: string | null
+  payeeName?: string | null
+  payeeIdentity?: string | null
+  identityName?: string | null
+  identityMatched: boolean
+  kycStatus?: string | null
+  status: string
+  upstreamId?: string | null
+  errorMessage?: string | null
 }
 
 export interface TelegramBatchStatusPayload {
@@ -45,6 +68,17 @@ export interface TelegramBatchStatusPayload {
   errorMessage?: string | null
 }
 
+export interface TelegramBatchSubmittedPayload {
+  tenantId: string
+  merchantId: string
+  totalCount: number
+  totalAmount: string
+  groups: number
+  submitted: number
+  failed: number
+  errors?: string[]
+}
+
 export interface TelegramExceptionPayload {
   tenantId: string
   merchantId?: string
@@ -56,8 +90,10 @@ export interface TelegramExceptionPayload {
 export interface GlobalEventMap {
   [EVENT_KEYS.ADMIN_SESSION_REVOKED]: AdminSessionRevokedPayload
   [EVENT_KEYS.TELEGRAM_ORDER_DISCOVERED]: TelegramOrderDiscoveredPayload
+  [EVENT_KEYS.TELEGRAM_PAYMENT_CREATED]: TelegramPaymentCreatedPayload
   [EVENT_KEYS.TELEGRAM_PAYMENT_STATUS]: TelegramPaymentStatusPayload
   [EVENT_KEYS.TELEGRAM_BATCH_STATUS]: TelegramBatchStatusPayload
+  [EVENT_KEYS.TELEGRAM_BATCH_SUBMITTED]: TelegramBatchSubmittedPayload
   [EVENT_KEYS.TELEGRAM_EXCEPTION]: TelegramExceptionPayload
 }
 

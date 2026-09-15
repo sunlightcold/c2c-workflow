@@ -100,10 +100,9 @@ function normalizeBinancePaymentDetails(input: Record<string, unknown>): Payment
 }
 
 export function normalizeOkxSummary(input: Record<string, unknown>): C2cBuyOrderSummary {
-  if (text(input.side ?? 'buy').toLowerCase() !== 'buy')
-    throw new Error('欧易 C2C 返回了非 BUY 订单')
+  if (text(input.side).toLowerCase() !== 'buy') throw new Error('欧易 C2C 返回了非 BUY 订单')
   return {
-    platformOrderId: requiredText(input.id ?? input.publicOrderId ?? input.orderId, '欧易订单 ID'),
+    platformOrderId: requiredText(input.id, '欧易订单 ID'),
     side: 'BUY',
     status: normalizeOkxStatus(input),
     asset: requiredText(
@@ -131,7 +130,9 @@ export function normalizeOkxDetail(
 }
 
 function normalizeOkxPaymentDetails(input: Record<string, unknown>): PaymentDetails {
-  const selected = (input.sellerReceiptAccount ??
+  const selected = ((input.detailUser as { sellerSelectedReceiptAccount?: unknown } | undefined)
+    ?.sellerSelectedReceiptAccount ??
+    input.sellerReceiptAccount ??
     (input.orderDetailUserVo as { sellerReceiptAccount?: unknown } | undefined)
       ?.sellerReceiptAccount ??
     input.receiptAccount) as Record<string, unknown> | undefined
@@ -171,6 +172,8 @@ function buildDetail(
     payable:
       summary.status === C2cBuyOrderStatus.PENDING_PAYMENT &&
       details.verified &&
+      !truthy(input.markAsPaidDisabled) &&
+      !truthy(input.appeal) &&
       Boolean(
         details.payeeIdentity &&
           details.payeeName &&
@@ -200,9 +203,15 @@ function normalizeOkxStatus(input: Record<string, unknown>): C2cBuyOrderStatus {
   if (status === 'completed' || process === '4') return C2cBuyOrderStatus.COMPLETED
   if (status === 'cancelled' || process === '3') return C2cBuyOrderStatus.CANCELLED
   if (status === 'expired') return C2cBuyOrderStatus.EXPIRED
+  if (truthy(input.appeal) || status.includes('appeal') || status.includes('dispute'))
+    return C2cBuyOrderStatus.DISPUTED
   if (payment === 'paid' || payment === 'confirmed') return C2cBuyOrderStatus.PAID
   if (status === 'new' && payment === 'unpaid') return C2cBuyOrderStatus.PENDING_PAYMENT
   return C2cBuyOrderStatus.UNKNOWN
+}
+
+function truthy(value: unknown): boolean {
+  return value === true || value === 1 || ['1', 'true'].includes(text(value).toLowerCase())
 }
 
 function paymentMethods(value: unknown): PaymentMethod[] {

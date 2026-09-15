@@ -1,4 +1,4 @@
-export default {
+const productionConfig = {
   common: {
     env: 'production',
     timeZone: process.env.C2C_TIME_ZONE ?? 'Asia/Shanghai',
@@ -33,3 +33,5 @@ export default {
     },
   },
 }
+
+export = productionConfig

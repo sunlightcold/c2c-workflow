@@ -11,6 +11,8 @@ import { PaymentBatchService } from '../payment/payment-batch.service'
 import type { TelegramAuthorizationResult } from './telegram-authorization.service'
 import { TelegramInteractionService } from './telegram-interaction.service'
 import { TelegramCapability } from './telegram-policy'
+import { escapeTelegramHtml } from './telegram-query.formatter'
+import type { TelegramBotReply } from './telegram-query.formatter'
 
 interface TelegramMessageIdentity {
   chatId: string
@@ -29,10 +31,7 @@ interface PaymentBatchGroup {
   totalAmount: string
 }
 
-export interface TelegramBatchPaymentReply {
-  replyMarkup?: Record<string, unknown>
-  text: string
-}
+export type TelegramBatchPaymentReply = TelegramBotReply
 
 @Injectable()
 export class TelegramBatchPaymentService {
@@ -47,7 +46,6 @@ export class TelegramBatchPaymentService {
     const groups = await this.batches.findReadyGroups(
       context.bot.tenantId,
       context.authorization.group.merchantId,
-      context.authorization.group.paymentScene,
     )
     if (!groups.length) return { text: '当前没有可提交的支付宝批量支付订单' }
     if (!context.bot.batchSubmitRequireConfirmation) return this.submitGroups(context, groups)
@@ -63,10 +61,12 @@ export class TelegramBatchPaymentService {
       payload: { groups },
     })
     return {
-      text: [
-        `待确认 ${groups.reduce((count, group) => count + group.paymentOrderIds.length, 0)} 笔，分为 ${groups.length} 个支付批次`,
-        `合计：${sumCnyAmounts(groups.map(({ totalAmount }) => totalAmount))} CNY`,
-      ].join('\n'),
+      parseMode: 'HTML',
+      text:
+        `<b>请确认提交批次</b>\n\n` +
+        `待提交订单：<code>${groups.reduce((count, group) => count + group.paymentOrderIds.length, 0)}</code> 笔\n` +
+        `批次组：<code>${groups.length}</code> 组\n` +
+        `订单总金额：<code>¥${sumCnyAmounts(groups.map(({ totalAmount }) => totalAmount))}</code>`,
       replyMarkup: {
         inline_keyboard: [
           [
@@ -103,6 +103,7 @@ export class TelegramBatchPaymentService {
   }
 
   cancel(context: BatchContext & { interactionId: string }) {
+    if (!this.canSubmit(context)) return Promise.resolve(false)
     return this.interactions.cancel({
       action: TelegramInteractionAction.SUBMIT_PAYMENT_BATCHES,
       id: context.interactionId,
@@ -139,8 +140,22 @@ export class TelegramBatchPaymentService {
         errors.length ? errors.join('; ').slice(0, 500) : null,
       )
     }
+    const count = groups.reduce((total, group) => total + group.paymentOrderIds.length, 0)
+    const totalAmount = sumCnyAmounts(groups.map(({ totalAmount: amount }) => amount))
     return {
-      text: [`已提交 ${results.length} 个支付批次`, ...results, ...errors].join('\n'),
+      parseMode: 'HTML' as const,
+      text: [
+        `<b>批次提交结果</b>`,
+        '',
+        `本次提交订单：<code>${count}</code> 笔`,
+        `订单总金额：<code>¥${totalAmount}</code>`,
+        `发现批次组：<code>${groups.length}</code>`,
+        `已提交批次：<code>${results.length}</code>`,
+        `失败批次：<code>${errors.length}</code>`,
+        ...(errors.length
+          ? [`失败原因：`, ...errors.map((item) => `- ${escapeTelegramHtml(item)}`)]
+          : []),
+      ].join('\n'),
     }
   }
 

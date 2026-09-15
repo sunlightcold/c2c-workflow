@@ -50,4 +50,14 @@ describe('C2cPlatformCredentialFactory', () => {
       ),
     ).toThrow('signaturePrivateKey')
   })
+
+  it('rejects an unknown platform instead of treating it as OKX', () => {
+    expect(() =>
+      factory.create(
+        'UNKNOWN' as MerchantPlatform,
+        { clientType: null, xUserId: null, requestTimeoutMs: 6000 },
+        { cookie: 'cookie', authorization: 'authorization', signaturePrivateKey: 'key' },
+      ),
+    ).toThrow('不支持的 C2C 平台')
+  })
 })

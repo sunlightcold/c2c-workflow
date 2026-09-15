@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  businessEnumText,
   formatBusinessTime,
   matchesPaymentRoute,
   merchantPlatformApiBaseUrl,
@@ -25,6 +26,21 @@ describe('business time formatting', () => {
     expect(resolveBusinessEndTime('EXCEPTION', updatedAt)).toBe(updatedAt);
     expect(resolveBusinessEndTime('FAILED', updatedAt)).toBe(updatedAt);
     expect(resolveBusinessEndTime('PROCESSING', updatedAt)).toBeNull();
+  });
+});
+
+describe('business status and source labels', () => {
+  it('maps internal timeline statuses and sources to Chinese labels', () => {
+    expect(businessEnumText('PLATFORM_SYNC')).toBe('平台订单同步');
+    expect(businessEnumText('PAYMENT_BATCH_COORDINATOR')).toBe('支付批次处理');
+    expect(businessEnumText('PAYMENT_BATCH_SERVICE')).toBe('支付批次服务');
+    expect(businessEnumText('AUTOMATIC')).toBe('自动处理');
+    expect(businessEnumText('PLATFORM_PAYMENT_CONFIRMATION')).toBe(
+      '平台付款确认',
+    );
+    expect(businessEnumText('PENDING_RELEASE')).toBe('待放币');
+    expect(businessEnumText('PLATFORM_CONFIRM_PENDING')).toBe('待平台确认');
+    expect(businessEnumText('PARTIAL_SUCCESS')).toBe('部分成功');
   });
 });
 

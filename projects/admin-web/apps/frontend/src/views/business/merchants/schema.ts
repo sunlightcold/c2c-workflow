@@ -48,8 +48,6 @@ const okxFields = [
   'skipPaymentProofUpload',
 ];
 const automationFields = [
-  'automaticPaymentEnabled',
-  'automaticPaymentExecutionMode',
   'c2cChatOrderCreatedEnabled',
   'c2cChatOrderCreatedMessage',
   'c2cChatOrderPaidEnabled',
@@ -121,15 +119,6 @@ function settings(
     },
     numberRule('pageSize', '每页同步笔数', 20, 1, 100),
     numberRule('overlapSeconds', '同步重叠秒数', 120, 0, 3600),
-    {
-      field: 'orderStatusList',
-      options: [{ label: '待付款', value: 1 }],
-      props: { mode: 'multiple', placeholder: '请选择同步订单状态' },
-      title: '同步订单状态',
-      type: 'select',
-      validate: required('请选择同步订单状态'),
-      value: [1],
-    },
     numberRule(
       'requestTimeoutMs',
       '请求超时（毫秒）',
@@ -138,42 +127,6 @@ function settings(
       60_000,
       1000,
     ),
-    numberRule(
-      'paidConfirmIntervalMinMs',
-      '付款确认最小间隔（毫秒）',
-      platform === 'OKX' ? 2000 : 0,
-      0,
-      60_000,
-      100,
-    ),
-    numberRule(
-      'paidConfirmIntervalMaxMs',
-      '付款确认最大间隔（毫秒）',
-      platform === 'OKX' ? 3000 : 0,
-      0,
-      60_000,
-      100,
-    ),
-    {
-      field: 'automaticPaymentEnabled',
-      hidden: hideAutomation,
-      title: '自动付款',
-      type: 'switch',
-      value: false,
-    },
-    {
-      field: 'automaticPaymentExecutionMode',
-      hidden: hideAutomation,
-      options: [
-        { label: '单笔付款（订单逐笔提交）', value: 'INSTANT' },
-        { label: '批次付款（按批次策略提交）', value: 'BATCH' },
-      ],
-      props: { allowClear: false, placeholder: '请选择付款模式' },
-      title: '付款模式',
-      type: 'select',
-      validate: required('请选择付款模式'),
-      value: 'INSTANT',
-    },
     ...(telegramGroupOptions
       ? [
           {
@@ -197,6 +150,22 @@ function settings(
           } satisfies Rule,
         ]
       : []),
+    numberRule(
+      'paidConfirmIntervalMinMs',
+      '付款确认最小间隔（毫秒）',
+      platform === 'OKX' ? 2000 : 0,
+      0,
+      60_000,
+      100,
+    ),
+    numberRule(
+      'paidConfirmIntervalMaxMs',
+      '付款确认最大间隔（毫秒）',
+      platform === 'OKX' ? 3000 : 0,
+      0,
+      60_000,
+      100,
+    ),
     {
       field: 'c2cChatOrderCreatedEnabled',
       hidden: hideAutomation,
@@ -317,7 +286,6 @@ export function createMerchantAccountModalOptions(
           'apiKey',
           'authorization',
           'description',
-          'orderStatusList',
           'secretKey',
           'sessionCookie',
           'signaturePrivateKey',
@@ -339,7 +307,6 @@ export function editMerchantAccountModalOptions(
       rule: layoutBusinessFormRules(settings(platform, telegramGroupOptions), [
         'apiBaseUrl',
         'description',
-        'orderStatusList',
       ]),
     },
   };
@@ -437,6 +404,14 @@ function paymentPlanModalOptions(
             type: 'select',
             validate: required('批量支付方案必须选择批次策略'),
             value: '',
+          },
+          {
+            children: ['启用自动付款'],
+            field: 'automaticPaymentEnabled',
+            modelField: 'checked',
+            title: '自动付款',
+            type: 'aCheckbox',
+            value: false,
           },
           numberRule('priority', '使用顺序', 100, 1, 1000),
           numberRule('weight', '分配比例', 100, 1, 100),

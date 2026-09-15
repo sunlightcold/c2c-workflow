@@ -31,6 +31,7 @@ import { migrateC2cPaymentRouting } from '@/apps/admin/database/migrations/c2c-p
 import { migratePaymentAccountCredentials } from '@/apps/admin/database/migrations/payment-account-credentials.migration'
 import { migrateC2cAutomaticPayments } from '@/apps/admin/database/migrations/c2c-automatic-payments.migration'
 import { migrateC2cPaymentBatchPolicies } from '@/apps/admin/database/migrations/c2c-payment-batch-policies.migration'
+import { migrateC2cPaymentPlanAutomation } from '@/apps/admin/database/migrations/c2c-payment-plan-automation.migration'
 import { PaymentOrderService } from '@/apps/admin/modules/payment/payment-order.service'
 import { PaymentPlanResolver } from '@/apps/admin/modules/payment/payment-plan-resolver'
 import { PaymentConfigService } from '@/apps/admin/modules/business/payment-config.service'
@@ -105,6 +106,7 @@ describe('Payment routing database integration', () => {
     await migratePaymentAccountCredentials(dataSource.manager)
     await migrateC2cAutomaticPayments(dataSource.manager)
     await migrateC2cPaymentBatchPolicies(dataSource.manager)
+    await migrateC2cPaymentPlanAutomation({ query: dataSource.query.bind(dataSource) })
     await seedConfiguration()
     resolver = new PaymentPlanResolver(dataSource)
     orders = new PaymentOrderService(

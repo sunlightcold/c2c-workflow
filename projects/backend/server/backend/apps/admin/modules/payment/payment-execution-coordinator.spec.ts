@@ -75,6 +75,28 @@ describe('PaymentExecutionCoordinator', () => {
     expect(confirmer.confirmPaid).not.toHaveBeenCalled()
   })
 
+  it('publishes a failed payment status only once', async () => {
+    store.claim.mockResolvedValue({
+      ...order,
+      merchantId: 'm1',
+      paymentNo: 'PAY1',
+      status: PaymentOrderState.SUBMITTING,
+    })
+    store.transition.mockImplementation(async (current, status) => ({ ...current, status }))
+    executor.submit.mockResolvedValue({
+      status: PaymentExecutionStatus.FAILED,
+      errorMessage: '收款账户错误',
+    })
+
+    await coordinator.submit('t1', 'o1')
+
+    expect(eventEmitter.emit).toHaveBeenCalledTimes(1)
+    expect(eventEmitter.emit).toHaveBeenCalledWith(
+      'telegram.payment.status',
+      expect.objectContaining({ status: PaymentOrderState.FAILED }),
+    )
+  })
+
   it('queries an unknown payment using the original order and confirms the platform on success', async () => {
     executor.query.mockResolvedValue({ status: PaymentExecutionStatus.SUCCESS, upstreamId: 'a1' })
     confirmer.confirmPaid.mockResolvedValue(undefined)

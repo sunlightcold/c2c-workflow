@@ -43,9 +43,16 @@ export interface CreatePaymentOrderInput {
   amount: string
   currency: string
   paymentMethod: string
-  executionMode: PaymentExecutionMode
+  executionMode?: PaymentExecutionMode
   payeeIdentity: string
   payeeName: string
+}
+
+export interface PaymentOrderCreationOptions {
+  automaticOnly?: boolean
+  requireRoute?: boolean
+  reason: string
+  source: string
 }
 
 @Injectable()
@@ -105,7 +112,11 @@ export class PaymentOrderService {
     return { ...order, history, batchItems }
   }
 
-  async create(tenantId: string, input: CreatePaymentOrderInput): Promise<PaymentOrderEntity> {
+  async create(
+    tenantId: string,
+    input: CreatePaymentOrderInput,
+    options?: Partial<PaymentOrderCreationOptions>,
+  ): Promise<PaymentOrderEntity> {
     if (input.sourceType === PaymentSourceType.REFUND)
       throw new BadRequestException('退款支付尚未开放')
     if (input.paymentMethod !== 'ALIPAY' || input.currency !== 'CNY')
@@ -117,9 +128,14 @@ export class PaymentOrderService {
       where: { id: input.merchantId, tenantId, status: BusinessStatus.ACTIVE },
     })
     if (!merchant) throw new BadRequestException('商家不可用或不属于当前所属单位')
-    const route = await this.resolveRoute(tenantId, normalizedInput)
+    const route = await this.resolveRoute(tenantId, normalizedInput, options?.automaticOnly)
+    if (!route && (options?.requireRoute || !normalizedInput.executionMode)) {
+      throw new BadRequestException('未匹配到可用的支付方案')
+    }
+    const executionMode = route?.executionMode ?? normalizedInput.executionMode!
     const order = this.orders.create({
       ...normalizedInput,
+      executionMode,
       tenantId,
       paymentNo: IdUtils.generateBusinessNo(BusinessNoPrefix.PAYMENT_ORDER),
       ...this.routeFields(route),
@@ -137,8 +153,8 @@ export class PaymentOrderService {
           paymentOrderId: saved.id,
           fromStatus: null,
           toStatus: saved.status,
-          source: 'PAYMENT_ORDER_SERVICE',
-          reason: null,
+          source: options?.source ?? 'PAYMENT_ORDER_SERVICE',
+          reason: options?.reason ?? null,
         })
         return saved
       })
@@ -150,7 +166,11 @@ export class PaymentOrderService {
     }
   }
 
-  async rematch(tenantId: string, orderId: string): Promise<PaymentOrderEntity> {
+  async rematch(
+    tenantId: string,
+    orderId: string,
+    automaticOnly = false,
+  ): Promise<PaymentOrderEntity> {
     return this.dataSource.transaction(async (manager) => {
       const order = await manager.findOne(PaymentOrderEntity, {
         where: { id: orderId, tenantId },
@@ -159,7 +179,7 @@ export class PaymentOrderService {
       if (!order) throw new BadRequestException('支付订单不存在或不属于当前所属单位')
       if (order.status !== PaymentOrderStatus.PENDING_CONFIG)
         throw new ConflictException('只有待配置支付订单可以重新匹配')
-      const route = await this.resolveRoute(tenantId, order)
+      const route = await this.resolveRoute(tenantId, order, automaticOnly)
       if (!route) return order
       Object.assign(order, this.routeFields(route), { status: PaymentOrderStatus.READY })
       const saved = await manager.save(PaymentOrderEntity, order)
@@ -253,7 +273,11 @@ export class PaymentOrderService {
     return result
   }
 
-  private resolveRoute(tenantId: string, input: CreatePaymentOrderInput | PaymentOrderEntity) {
+  private resolveRoute(
+    tenantId: string,
+    input: CreatePaymentOrderInput | PaymentOrderEntity,
+    automaticOnly = false,
+  ) {
     return this.plans.resolve({
       tenantId,
       merchantId: input.merchantId,
@@ -262,7 +286,8 @@ export class PaymentOrderService {
       amount: input.amount,
       paymentMethod: input.paymentMethod,
       executionMode: input.executionMode,
-      routingKey: `${input.sourceType}:${input.sourceBusinessNo}`,
+      automaticOnly,
+      routingKey: input.sourceBusinessNo,
     })
   }
 
@@ -300,7 +325,7 @@ export class PaymentOrderService {
       existing.amount === input.amount &&
       existing.currency === input.currency &&
       existing.paymentMethod === input.paymentMethod &&
-      existing.executionMode === input.executionMode &&
+      (input.executionMode === undefined || existing.executionMode === input.executionMode) &&
       existing.payeeIdentity === input.payeeIdentity &&
       existing.payeeName === input.payeeName
     if (!unchanged) throw new ConflictException('来源业务编号已用于不同的支付信息')

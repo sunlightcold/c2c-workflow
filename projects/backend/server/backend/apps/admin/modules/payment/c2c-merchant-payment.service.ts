@@ -23,28 +23,18 @@ export class C2cMerchantPaymentService {
     tenantId: string,
     merchantId: string,
     merchantOrderId: string,
-    executionMode: PaymentExecutionMode,
+    automaticOnly = false,
   ) {
-    const merchantOrder = await this.merchantOrders.detail(tenantId, merchantId, merchantOrderId)
-    this.assertPayable(merchantOrder)
-    const paymentOrder = await this.paymentOrders.create(tenantId, {
-      merchantId,
-      sourceType: PaymentSourceType.C2C_BUY,
-      sourceBusinessNo: merchantOrder.platformOrderId,
-      amount: merchantOrder.fiatAmount,
-      currency: merchantOrder.fiatCurrency,
-      paymentMethod: merchantOrder.paymentMethod!,
-      executionMode,
-      payeeIdentity: merchantOrder.payeeIdentity!,
-      payeeName: merchantOrder.payeeName!,
-    })
-    if (
-      executionMode === PaymentExecutionMode.INSTANT &&
-      paymentOrder.status === PaymentOrderStatus.READY
-    ) {
-      await this.execution.submit(tenantId, paymentOrder.id)
-    }
-    return this.paymentOrders.detail(tenantId, paymentOrder.id)
+    return this.createFromOrder(tenantId, merchantId, merchantOrderId, false, automaticOnly)
+  }
+
+  async createAfterManualReview(
+    tenantId: string,
+    merchantId: string,
+    merchantOrderId: string,
+    operator: string,
+  ) {
+    return this.createFromOrder(tenantId, merchantId, merchantOrderId, true, false, operator)
   }
 
   async confirmPaid(tenantId: string, merchantId: string, merchantOrderId: string) {
@@ -81,22 +71,66 @@ export class C2cMerchantPaymentService {
     return this.merchantOrders.detail(tenantId, merchantId, merchantOrderId)
   }
 
-  private assertPayable(order: {
-    status: MerchantOrderStatus
-    payable: boolean
-    identityMatched: boolean
-    paymentMethod: string | null
-    paymentOrder?: { status: PaymentOrderStatus } | null
-    payeeIdentity: string | null
-    payeeName: string | null
-  }): void {
+  private async createFromOrder(
+    tenantId: string,
+    merchantId: string,
+    merchantOrderId: string,
+    allowIdentityMismatch: boolean,
+    automaticOnly: boolean,
+    operator?: string,
+  ) {
+    const merchantOrder = await this.merchantOrders.detail(tenantId, merchantId, merchantOrderId)
+    this.assertPayable(merchantOrder, allowIdentityMismatch)
+    const paymentInput = {
+      merchantId,
+      sourceType: PaymentSourceType.C2C_BUY,
+      sourceBusinessNo: merchantOrder.platformOrderId,
+      amount: merchantOrder.fiatAmount,
+      currency: merchantOrder.fiatCurrency,
+      paymentMethod: merchantOrder.paymentMethod!,
+      payeeIdentity: merchantOrder.payeeIdentity!,
+      payeeName: merchantOrder.payeeName!,
+    }
+    const paymentOrder = allowIdentityMismatch
+      ? await this.paymentOrders.create(tenantId, paymentInput, {
+          automaticOnly,
+          source: 'TELEGRAM_C2C_REVIEW',
+          reason: `实名不一致订单已由 ${operator || 'Telegram 操作员'} 人工确认`,
+          requireRoute: true,
+        })
+      : await this.paymentOrders.create(tenantId, paymentInput, {
+          automaticOnly,
+          requireRoute: true,
+        })
+    if (
+      paymentOrder.executionMode === PaymentExecutionMode.INSTANT &&
+      paymentOrder.status === PaymentOrderStatus.READY
+    ) {
+      await this.execution.submit(tenantId, paymentOrder.id)
+    }
+    return this.paymentOrders.detail(tenantId, paymentOrder.id)
+  }
+
+  private assertPayable(
+    order: {
+      status: MerchantOrderStatus
+      payable: boolean
+      identityMatched: boolean
+      paymentMethod: string | null
+      paymentOrder?: { status: PaymentOrderStatus } | null
+      payeeIdentity: string | null
+      payeeName: string | null
+    },
+    allowIdentityMismatch = false,
+  ): void {
     if (order.status !== MerchantOrderStatus.PENDING_PAYMENT || !order.payable) {
       throw new BadRequestException('商家订单当前不可支付')
     }
     if (order.paymentOrder) {
       throw new ConflictException('商家订单已存在支付订单，请在支付订单中处理')
     }
-    if (!order.identityMatched) throw new BadRequestException('收款人与平台实名不一致')
+    if (!allowIdentityMismatch && !order.identityMatched)
+      throw new BadRequestException('收款人与平台实名不一致')
     if (order.paymentMethod !== 'ALIPAY' || !order.payeeIdentity || !order.payeeName) {
       throw new BadRequestException('商家订单缺少完整的支付宝收款资料')
     }

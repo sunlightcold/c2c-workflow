@@ -17,6 +17,7 @@ import { C2cPlatformModule } from '../c2c-platform'
 import { PaymentModule } from '../payment'
 import { C2cOrderModule } from '../c2c-order'
 import { TelegramModule } from '../telegram'
+import { DashboardModule } from '../dashboard'
 
 const routedModules = [
   CredentialModule,
@@ -33,6 +34,7 @@ const routedModules = [
   C2cPlatformModule,
   PaymentModule,
   C2cOrderModule,
+  DashboardModule,
 ]
 const modules = [...routedModules, TelegramModule]
 

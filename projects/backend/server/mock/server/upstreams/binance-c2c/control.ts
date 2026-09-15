@@ -46,6 +46,10 @@ export function validateOrder(value: unknown): BinanceC2cMockOrder {
   }))
   const order: BinanceC2cMockOrder = {
     id: orderNumber,
+    externalMerchantId:
+      typeof input.externalMerchantId === 'string'
+        ? string(input.externalMerchantId, 'externalMerchantId')
+        : undefined,
     orderNumber,
     orderStatus: Number(input.orderStatus ?? 1),
     totalPrice: string(input.totalPrice ?? '10.00', 'totalPrice'),

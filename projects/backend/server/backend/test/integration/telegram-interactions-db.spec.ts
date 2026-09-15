@@ -67,7 +67,7 @@ describe('Telegram interaction database integration', () => {
       `INSERT INTO telegram_bot
        (id, "tenantId", code, name, "botType", "tokenRef", capabilities, status)
        VALUES ($1, $2, 'PAY_MAIN', 'Payment bot', 'PAYMENT', 'env://TG_TOKEN',
-         ARRAY['MANUAL_PAYMENT'], 'active')`,
+         ARRAY['ALIPAY_BATCH_PAYMENT'], 'active')`,
       [botId, tenantId],
     )
     await dataSource.query(
@@ -75,7 +75,7 @@ describe('Telegram interaction database integration', () => {
        (id, "tenantId", "botId", "merchantId", name, "chatId", "chatType",
         "paymentScene", capabilities, "bindingState", "verifiedAt")
        VALUES ($1, $2, $3, $4, 'Payment group', '-1001', 'supergroup', 'BOT_MANUAL',
-         ARRAY['MANUAL_PAYMENT'], 'ACTIVE', now())`,
+         ARRAY['ALIPAY_BATCH_PAYMENT'], 'ACTIVE', now())`,
       [groupId, tenantId, botId, merchantId],
     )
     await dataSource.query(

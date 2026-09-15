@@ -210,6 +210,9 @@ catalogs:
     nitropack:
       specifier: ^2.10.4
       version: 2.13.4
+    node-poppler:
+      specifier: ^8.0.1
+      version: 8.0.6
     otplib:
       specifier: ^12.0.1
       version: 12.0.1
@@ -434,6 +437,9 @@ importers:
       nestjs-typeorm-paginate:
         specifier: 'catalog:'
         version: 4.1.0(@nestjs/common@11.0.12(class-transformer@0.5.1)(class-validator@0.14.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(typeorm@0.3.28(babel-plugin-macros@3.1.0)(ioredis@5.9.3)(mongodb@6.14.2)(pg@8.16.3)(redis@4.7.0)(ts-node@10.9.2(@swc/core@1.11.11)(@types/node@22.13.11)(typescript@5.8.2)))
+      node-poppler:
+        specifier: 'catalog:'
+        version: 8.0.6
       otplib:
         specifier: 'catalog:'
         version: 12.0.1
@@ -5584,6 +5590,10 @@ packages:
 
   node-mock-http@1.0.5:
     resolution: {integrity: sha512-KQyt/wLjG3TAc7DOUhpqWzgd4ERxR80JOlTK5VE5R1S12IaPVN5qkj4klBce9HPG1Njuup4Sb5bljaT34lIyjw==, tarball: https://registry.npmjs.org/node-mock-http/-/node-mock-http-1.0.5.tgz}
+
+  node-poppler@8.0.6:
+    resolution: {integrity: sha512-1YcZRWKrRoaLBQnhfnfAm9XUREXqwn7qjhZg+uzDYcDE1MudZETw7pZ5C93xpNihbVXdQXb4oywoRv87VuqG/Q==, tarball: https://registry.npmjs.org/node-poppler/-/node-poppler-8.0.6.tgz}
+    engines: {node: '>=20'}
 
   node-releases@2.0.19:
     resolution: {integrity: sha512-xxOWJsBKtzAq7DY0J+DTzuz58K8e7sJbdgwkbMWQe8UYB6ekmsQ45q0M/tJDsGaZmbC+l7n57UV8Hl5tHxO9uw==, tarball: https://registry.npmjs.org/node-releases/-/node-releases-2.0.19.tgz}
@@ -13076,6 +13086,11 @@ snapshots:
   node-int64@0.4.0: {}
 
   node-mock-http@1.0.5: {}
+
+  node-poppler@8.0.6:
+    dependencies:
+      camelcase: 6.3.0
+      semver: 7.7.4
 
   node-releases@2.0.19: {}
 

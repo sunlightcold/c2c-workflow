@@ -4,6 +4,7 @@ import {
   PaymentBatchItemEntity,
   PaymentBatchPolicyEntity,
   PaymentBatchPolicyRuleEntity,
+  PaymentAccountEntity,
   PaymentOrderEntity,
 } from '@admin/database'
 import { Module } from '@nestjs/common'
@@ -21,11 +22,6 @@ import {
   PLATFORM_PAYMENT_CONFIRMER,
   PaymentExecutionCoordinator,
 } from './payment-execution-coordinator'
-import {
-  ALIPAY_ACCOUNT_GATEWAY_FACTORY,
-  AlipayAccountGatewayProvider,
-} from './alipay-account-gateway.provider'
-import { AlipayGatewayFactory } from './alipay-gateway.factory'
 import { C2cAlipayPaymentExecutor } from './c2c-alipay-payment.executor'
 import { C2cPlatformPaymentConfirmer } from './c2c-platform-payment.confirmer'
 import { PaymentOrderService } from './payment-order.service'
@@ -54,14 +50,18 @@ import {
   C2cAutomaticPaymentService,
 } from './c2c-automatic-payment.service'
 import { TypeOrmC2cAutomaticPaymentStore } from './typeorm-c2c-automatic-payment.store'
+import { PaymentChannelModule } from './payment-channel.module'
+import { C2cPaymentProofService } from './c2c-payment-proof.service'
 
 @Module({
   imports: [
     BusinessModule,
     C2cOrderModule,
     C2cPlatformModule,
+    PaymentChannelModule,
     TypeOrmModule.forFeature([
       MerchantEntity,
+      PaymentAccountEntity,
       PaymentOrderEntity,
       PaymentBatchEntity,
       PaymentBatchItemEntity,
@@ -84,6 +84,7 @@ import { TypeOrmC2cAutomaticPaymentStore } from './typeorm-c2c-automatic-payment
     PaymentAccountBalanceService,
     C2cMerchantPaymentService,
     C2cPaymentCancellationService,
+    C2cPaymentProofService,
     C2cAutomaticPaymentService,
     TypeOrmC2cAutomaticPaymentStore,
     { provide: C2C_AUTOMATIC_PAYMENT_STORE, useExisting: TypeOrmC2cAutomaticPaymentStore },
@@ -95,12 +96,6 @@ import { TypeOrmC2cAutomaticPaymentStore } from './typeorm-c2c-automatic-payment
     { provide: PAYMENT_PREFLIGHT_STORE, useExisting: TypeOrmPaymentPreflightStore },
     C2cPaymentPreflightVerifier,
     { provide: PAYMENT_BATCH_PREFLIGHT, useExisting: C2cPaymentPreflightVerifier },
-    AlipayGatewayFactory,
-    AlipayAccountGatewayProvider,
-    {
-      provide: ALIPAY_ACCOUNT_GATEWAY_FACTORY,
-      useExisting: AlipayAccountGatewayProvider,
-    },
     C2cAlipayPaymentExecutor,
     { provide: PAYMENT_EXECUTOR, useExisting: C2cAlipayPaymentExecutor },
     C2cPlatformPaymentConfirmer,
@@ -111,6 +106,7 @@ import { TypeOrmC2cAutomaticPaymentStore } from './typeorm-c2c-automatic-payment
     PaymentBatchExecutionCoordinator,
   ],
   exports: [
+    PaymentChannelModule,
     C2cPaymentPreflightVerifier,
     PAYMENT_EXECUTOR,
     PLATFORM_PAYMENT_CONFIRMER,
@@ -122,6 +118,7 @@ import { TypeOrmC2cAutomaticPaymentStore } from './typeorm-c2c-automatic-payment
     PAYMENT_ORDER_STORE,
     PAYMENT_PLAN_RESOLVER,
     C2cAutomaticPaymentService,
+    C2cMerchantPaymentService,
   ],
 })
 export class PaymentModule {}

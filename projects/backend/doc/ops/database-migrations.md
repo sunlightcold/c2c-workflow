@@ -12,15 +12,21 @@
 
 ## 部署执行
 
-`pnpm run build:libs` 会同时生成：
+`pnpm run build:libs` 会同时生成本地发布包中的：
 
 - `output/volumes/apps/admin/main.js`
 - `output/volumes/apps/migrate/main.js`
 
-服务器覆盖 `output` 后只执行：
+正式服务器部署使用 Actions 发布的同一个后端镜像，Compose 通过镜像中的两个入口执行：
+
+- `node dist/apps/migrate/main.js`
+- `node dist/apps/admin/main.js`
+
+更新镜像标签后执行：
 
 ```bash
-docker compose up -d --build
+docker compose --env-file .env pull
+docker compose --env-file .env up -d --remove-orphans
 ```
 
 Compose 会等待 PostgreSQL 健康检查通过，启动一次性 `migrate` 服务，再在迁移成功后启动

@@ -15,6 +15,8 @@
 /.cache/
 /coverage/
 /.runtime/
+/.playwright-cli/
+/%SystemDrive%/
 __pycache__/
 *.py[cod]
 *.log

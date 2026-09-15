@@ -62,7 +62,8 @@ if (module.hot) {
 - 使用 Node.js 22 和锁定版本的 pnpm 进行多阶段构建。
 - Builder 同时编译 `admin` 和 `migrate`，再生成只包含生产依赖的运行目录。
 - Runner 直接以 `node dist/apps/admin/main.js` 启动。进程重启交给 Docker，容器内不再叠加 PM2。
-- `server/backend/config/production.ts` 不进入 Docker 构建上下文；生产配置由服务器只读挂载。
+- `server/backend/config/production.ts` 在镜像构建时编译为 CommonJS 配置。配置结构随镜像发布，
+  所有敏感值仍只通过服务器 `.env` 注入。
 
 #### Docker Compose (`compose.yaml`)
 
@@ -73,20 +74,21 @@ if (module.hot) {
 3. **`redis` 服务**：启动固定版本 Redis 并通过健康检查确认可用。
 4. **`app` 服务**：只有迁移成功且 Redis 健康后才启动。
 
-Compose 从 `.env` 读取镜像、宿主机端口和基础设施凭据。应用代码与 `initJson` 固化在镜像内，禁止再用宿主机目录覆盖；服务器只挂载生产配置、日志和持久化数据。
+Compose 从 `.env` 读取镜像、宿主机端口和基础设施凭据。应用代码、生产配置结构与 `initJson`
+固化在镜像内，禁止再用宿主机目录覆盖；服务器只挂载日志、上传文件和持久化数据。
 
 #### GitHub Actions
 
-容器基础设施在 `main` 维护并合并到 `app`。镜像工作流只接受 `app` 分支：
+镜像工作流在 `main` 分支的后端文件变更后运行，也可手工触发：
 
-- `app-latest`：当前 `app` 分支最新成功构建；
-- `app-<commit SHA>`：不可变版本，用于发布审计和精确回滚。
+- `latest`：当前 `main` 分支最新成功构建；
+- `sha-<40 位提交 SHA>`：不可变版本，用于发布审计和精确回滚。
 
 工作流先执行 lint、TypeScript 检查、测试和 workspace 检查，全部通过后才构建并推送 GHCR 镜像。服务器更新使用：
 
 ```bash
 docker compose pull
-docker compose up -d
+docker compose up -d --remove-orphans
 ```
 
 迁移版本记录在 PostgreSQL 的 `schema_migrations` 表中，已经成功执行的版本不会重复运行。

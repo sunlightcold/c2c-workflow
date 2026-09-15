@@ -3,14 +3,9 @@ jest.mock('nanoid', () => ({ customAlphabet: () => () => 'fixed-test-id' }))
 import { Test } from '@nestjs/testing'
 import { MODULE_METADATA } from '@nestjs/common/constants'
 import { C2C_SECRET_RESOLVER } from '../c2c-order/c2c-secret-resolver'
-import {
-  BinanceC2cClient,
-  C2cPlatformCredentialFactory,
-  OkxWebPrivateClient,
-} from '../c2c-platform'
-import { ALIPAY_ACCOUNT_GATEWAY_FACTORY } from './alipay-account-gateway.provider'
+import { C2cPlatformClient, C2cPlatformCredentialFactory } from '../c2c-platform'
+import { PAYMENT_CHANNEL_CAPABILITY_FACTORY } from './payment-channel-capability.factory'
 import { AlipayBatchPaymentExecutor } from './alipay-batch-payment.executor'
-import { AlipayGatewayFactory } from './alipay-gateway.factory'
 import { PaymentAccountBalanceService } from './payment-account-balance.service'
 import { PaymentModule } from './payment.module'
 import { C2cAlipayPaymentExecutor } from './c2c-alipay-payment.executor'
@@ -19,6 +14,7 @@ import {
   PAYMENT_PREFLIGHT_STORE,
 } from './c2c-payment-preflight-verifier'
 import { C2cPlatformPaymentConfirmer } from './c2c-platform-payment.confirmer'
+import { C2cPaymentProofService } from './c2c-payment-proof.service'
 import {
   PAYMENT_EXECUTOR,
   PAYMENT_ORDER_STORE,
@@ -49,7 +45,6 @@ describe('Payment provider graph', () => {
         C2cPlatformPaymentConfirmer,
         C2cPaymentPreflightVerifier,
         C2cPlatformCredentialFactory,
-        AlipayGatewayFactory,
         { provide: PAYMENT_ORDER_STORE, useValue: {} },
         { provide: PAYMENT_EXECUTOR, useExisting: C2cAlipayPaymentExecutor },
         { provide: PAYMENT_BATCH_EXECUTOR, useExisting: AlipayBatchPaymentExecutor },
@@ -58,9 +53,9 @@ describe('Payment provider graph', () => {
         { provide: PLATFORM_PAYMENT_CONFIRMER, useExisting: C2cPlatformPaymentConfirmer },
         { provide: PAYMENT_PREFLIGHT_STORE, useValue: {} },
         { provide: C2C_SECRET_RESOLVER, useValue: {} },
-        { provide: ALIPAY_ACCOUNT_GATEWAY_FACTORY, useValue: {} },
-        { provide: BinanceC2cClient, useValue: {} },
-        { provide: OkxWebPrivateClient, useValue: {} },
+        { provide: PAYMENT_CHANNEL_CAPABILITY_FACTORY, useValue: {} },
+        { provide: C2cPaymentProofService, useValue: {} },
+        { provide: C2cPlatformClient, useValue: {} },
       ],
     }).compile()
 

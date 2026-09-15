@@ -20,10 +20,21 @@ RUN pnpm --filter ./server/backend exec nest build \
       --builder webpack \
       --webpackPath webpack.build.config.js \
       admin \
+  && mkdir -p /build-artifacts/apps \
+  && cp -R /workspace/server/backend/dist/apps/admin /build-artifacts/apps/admin \
   && pnpm --filter ./server/backend exec nest build \
       --builder webpack \
       --webpackPath webpack.build.config.js \
-      migrate
+      migrate \
+  && cp -R /workspace/server/backend/dist/apps/migrate /build-artifacts/apps/migrate \
+  && pnpm --filter ./server/backend exec tsc \
+      config/production.ts \
+      --target ES2022 \
+      --module CommonJS \
+      --moduleResolution Node \
+      --esModuleInterop \
+      --skipLibCheck \
+      --outDir /runtime-config
 RUN pnpm --filter ./server/backend deploy --prod --legacy /runtime \
   && mkdir -p /runtime/initJson \
   && if [ -d /workspace/server/backend/initJson ]; then \
@@ -32,15 +43,25 @@ RUN pnpm --filter ./server/backend deploy --prod --legacy /runtime \
 
 FROM node:22-bookworm-slim AS runner
 
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends poppler-utils \
+  && rm -rf /var/lib/apt/lists/*
+
 ENV NODE_ENV=production
 ENV NODE_CONFIG_DIR=/app/config
 ENV NODE_OPTIONS=--enable-source-maps
 
 WORKDIR /app
 
-COPY --from=builder /runtime/node_modules ./node_modules
-COPY --from=builder /workspace/server/backend/dist ./dist
-COPY --from=builder /runtime/initJson ./initJson
+COPY --chown=node:node --from=builder /runtime/node_modules ./node_modules
+COPY --chown=node:node --from=builder /build-artifacts/apps ./dist/apps
+COPY --chown=node:node --from=builder /runtime/initJson ./initJson
+COPY --chown=node:node --from=builder /runtime-config/production.js ./config/production.js
+
+RUN mkdir -p /app/logs /app/dist/apps/static \
+  && chown node:node /app/logs /app/dist/apps/static
+
+USER node
 
 EXPOSE 3000
 

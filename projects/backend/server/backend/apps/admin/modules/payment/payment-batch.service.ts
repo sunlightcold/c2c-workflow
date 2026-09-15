@@ -15,7 +15,6 @@ import {
   PaymentExecutionMode,
   PaymentOrderEntity,
   PaymentOrderStatus,
-  PaymentSourceType,
   PaymentPlatformEntity,
 } from '@admin/database'
 import {
@@ -57,14 +56,12 @@ export class PaymentBatchService {
   async findReadyGroups(
     tenantId: string,
     merchantId: string | null,
-    sourceType: PaymentSourceType,
     batchPolicyId?: string,
   ): Promise<ReadyPaymentBatchGroup[]> {
     const query = this.dataSource
       .getRepository(PaymentOrderEntity)
       .createQueryBuilder('payment_order')
       .where('payment_order."tenantId" = :tenantId', { tenantId })
-      .andWhere('payment_order."sourceType" = :sourceType', { sourceType })
       .andWhere('payment_order.status = :status', { status: PaymentOrderStatus.READY })
       .andWhere('payment_order."executionMode" = :executionMode', {
         executionMode: PaymentExecutionMode.BATCH,

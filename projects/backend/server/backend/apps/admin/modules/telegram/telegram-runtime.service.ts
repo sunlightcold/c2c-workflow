@@ -9,6 +9,10 @@ import { TelegramManualPaymentService } from './telegram-manual-payment.service'
 import { TelegramBatchPaymentService } from './telegram-batch-payment.service'
 import { TelegramQueryService } from './telegram-query.service'
 import { TelegramGroupService } from './telegram-group.service'
+import { TelegramC2cOrderActionService } from './telegram-c2c-order-action.service'
+import { TelegramC2cAppealService } from './telegram-c2c-appeal.service'
+import { parseTelegramPayoutCommand } from './telegram-payout-command.parser'
+import type { TelegramBotReply } from './telegram-query.formatter'
 
 interface TelegramUpdateInput {
   botId: string
@@ -26,12 +30,12 @@ interface TelegramTextMessage {
 }
 
 interface TelegramCallbackMessage extends TelegramTextMessage {
+  callbackQueryId?: string
   data: string
 }
 
 const commandCapabilities: Array<[TelegramCapability, string, string]> = [
   [TelegramCapability.ORDER_QUERY, '/query', '查询支付订单或批次'],
-  [TelegramCapability.BALANCE_QUERY, '/balance', '查询支付账号余额'],
   [TelegramCapability.RECEIPT_QUERY, '/receipt', '获取支付回单'],
   [TelegramCapability.PAYMENT_STATISTICS, '/stats', '查看今日支付统计'],
   [TelegramCapability.PAYMENT_BATCH_SUBMIT, '/submitbatch', '提交待处理支付批次'],
@@ -50,8 +54,12 @@ export class TelegramRuntimeService {
     private readonly batchPayments: TelegramBatchPaymentService,
     private readonly queries: TelegramQueryService,
     @Optional() private readonly groups?: TelegramGroupService,
+    @Optional() private readonly c2cOrderActions?: TelegramC2cOrderActionService,
+    @Optional() private readonly c2cAppeals?: TelegramC2cAppealService,
   ) {}
 
+  // The runtime remains a compatibility facade while handlers are migrated into feature modules.
+  // eslint-disable-next-line complexity
   async handle(update: TelegramUpdateInput): Promise<void> {
     const bot = await this.bots
       .createQueryBuilder('bot')
@@ -77,14 +85,18 @@ export class TelegramRuntimeService {
       await this.reply(bot.tokenRef, message, `您的 Telegram 用户编号：${message.userId}`)
       return
     }
+    if (command === '/start') {
+      await this.reply(bot.tokenRef, message, '机器人已启用\n发送 /help 查看可用命令。')
+      return
+    }
     if (command === '/bind') {
       await this.handleBindCommand(bot, message)
       return
     }
     if (command === '/help') {
       const isSuperAdmin =
-        typeof this.authorization.isActiveSuperAdmin === 'function' &&
-        (await this.authorization.isActiveSuperAdmin(bot.tenantId, message.userId))
+        typeof this.authorization.canBindGroups === 'function' &&
+        (await this.authorization.canBindGroups(bot.tenantId, message.userId))
       if (isSuperAdmin && message.chatType && ['group', 'supergroup'].includes(message.chatType)) {
         const existing = await this.authorization.authorize(bot, message.chatId, message.userId)
         if (!existing.allowed) {
@@ -115,7 +127,7 @@ export class TelegramRuntimeService {
           message,
           text: message.text,
         })
-        await this.reply(bot.tokenRef, message, result.text, result.replyMarkup)
+        await this.reply(bot.tokenRef, message, result)
       }
       return
     }
@@ -123,8 +135,8 @@ export class TelegramRuntimeService {
       .filter(([capability]) => authorization.capabilities.includes(capability))
       .map(([, name, description]) => `${name} - ${description}`)
     if (
-      typeof this.authorization.isActiveSuperAdmin === 'function' &&
-      (await this.authorization.isActiveSuperAdmin(bot.tenantId, message.userId))
+      typeof this.authorization.canBindGroups === 'function' &&
+      (await this.authorization.canBindGroups(bot.tenantId, message.userId))
     ) {
       lines.unshift('/bind 平台商家编号 - 绑定当前商家群')
     }
@@ -141,8 +153,8 @@ export class TelegramRuntimeService {
       return
     }
     if (
-      typeof this.authorization.isActiveSuperAdmin !== 'function' ||
-      !(await this.authorization.isActiveSuperAdmin(bot.tenantId, message.userId))
+      typeof this.authorization.canBindGroups !== 'function' ||
+      !(await this.authorization.canBindGroups(bot.tenantId, message.userId))
     ) {
       await this.reply(bot.tokenRef, message, '只有机器人超级管理员可以绑定商家群')
       return
@@ -187,15 +199,91 @@ export class TelegramRuntimeService {
     command: string,
   ): Promise<boolean> {
     const merchantId = authorization.group?.merchantId ?? ''
-    const responses: Record<string, () => Promise<string> | string> = {
+    const parsed = parseTelegramPayoutCommand(message.text)
+    if (!message.text.startsWith('/')) {
+      if (parsed.kind === 'QUERY') {
+        await this.reply(
+          bot.tokenRef,
+          message,
+          authorization.capabilities.includes(TelegramCapability.ORDER_QUERY)
+            ? await this.queries.query(bot.tenantId, merchantId, parsed.argument, {
+                canReceipt: authorization.capabilities.includes(TelegramCapability.RECEIPT_QUERY),
+                canVoid: authorization.capabilities.includes(
+                  TelegramCapability.ALIPAY_BATCH_PAYMENT,
+                ),
+              })
+            : '您没有查询支付订单的权限',
+        )
+        return true
+      }
+      if (parsed.kind === 'RECEIPT') {
+        await this.reply(
+          bot.tokenRef,
+          message,
+          authorization.capabilities.includes(TelegramCapability.RECEIPT_QUERY)
+            ? await this.queries.receipt(bot.tenantId, merchantId, parsed.argument)
+            : '您没有获取支付回单的权限',
+        )
+        return true
+      }
+      if (parsed.kind === 'STATISTICS') {
+        await this.reply(
+          bot.tokenRef,
+          message,
+          authorization.capabilities.includes(TelegramCapability.PAYMENT_STATISTICS)
+            ? await this.queries.todayStats(bot.tenantId, merchantId)
+            : '您没有查看支付统计的权限',
+        )
+        return true
+      }
+      if (parsed.kind === 'SUBMIT_BATCH') {
+        const result = await this.batchPayments.prepare({ bot, authorization, message })
+        await this.reply(bot.tokenRef, message, result)
+        return true
+      }
+      if (parsed.kind === 'DAILY_REPORT') {
+        await this.reply(
+          bot.tokenRef,
+          message,
+          authorization.capabilities.includes(TelegramCapability.C2C_DAILY_REPORT)
+            ? await this.queries.dailyReport(bot.tenantId, merchantId, parsed.argument)
+            : '您没有查询 C2C 日报的权限',
+        )
+        return true
+      }
+      if (parsed.kind === 'APPEAL') {
+        const result = this.c2cAppeals
+          ? await this.c2cAppeals.prepare({
+              bot,
+              authorization,
+              message,
+              orderReference: parsed.argument,
+            })
+          : { text: 'C2C 申诉服务不可用' }
+        await this.reply(bot.tokenRef, message, result)
+        return true
+      }
+    }
+    const responses: Record<
+      string,
+      () => Promise<TelegramBotReply | string> | TelegramBotReply | string
+    > = {
+      '/appeal': () =>
+        this.c2cAppeals
+          ? this.c2cAppeals.prepare({
+              bot,
+              authorization,
+              message,
+              orderReference: this.commandArgument(message.text),
+            })
+          : { text: 'C2C 申诉服务不可用' },
       '/query': () =>
         authorization.capabilities.includes(TelegramCapability.ORDER_QUERY)
-          ? this.queries.query(bot.tenantId, merchantId, this.commandArgument(message.text))
+          ? this.queries.query(bot.tenantId, merchantId, this.commandArgument(message.text), {
+              canReceipt: authorization.capabilities.includes(TelegramCapability.RECEIPT_QUERY),
+              canVoid: authorization.capabilities.includes(TelegramCapability.ALIPAY_BATCH_PAYMENT),
+            })
           : '您没有查询支付订单的权限',
-      '/balance': () =>
-        authorization.capabilities.includes(TelegramCapability.BALANCE_QUERY)
-          ? this.queries.balance(bot.tenantId, merchantId)
-          : '您没有查询支付账号余额的权限',
       '/receipt': () =>
         authorization.capabilities.includes(TelegramCapability.RECEIPT_QUERY)
           ? this.queries.receipt(bot.tenantId, merchantId, this.commandArgument(message.text))
@@ -215,13 +303,156 @@ export class TelegramRuntimeService {
     }
     if (command === '/submitbatch') {
       const result = await this.batchPayments.prepare({ bot, authorization, message })
-      await this.reply(bot.tokenRef, message, result.text, result.replyMarkup)
+      await this.reply(bot.tokenRef, message, result)
+      return true
+    }
+    if (parsed.kind === 'DAILY_REPORT') {
+      if (!authorization.capabilities.includes(TelegramCapability.C2C_DAILY_REPORT)) {
+        await this.reply(bot.tokenRef, message, '您没有查询 C2C 日报的权限')
+      } else {
+        await this.reply(
+          bot.tokenRef,
+          message,
+          await this.queries.dailyReport(bot.tenantId, merchantId, parsed.argument),
+        )
+      }
       return true
     }
     return false
   }
 
+  // eslint-disable-next-line complexity
   private async handleCallback(bot: TelegramBotEntity, message: TelegramCallbackMessage) {
+    const appealMatch = /^appeal:reason:([0-9a-f-]{36}):(\d+)$/i.exec(message.data)
+    if (appealMatch) {
+      const authorization = await this.authorization.authorize(bot, message.chatId, message.userId)
+      if (
+        !authorization.allowed ||
+        !authorization.capabilities.includes(TelegramCapability.C2C_APPEAL)
+      ) {
+        await this.finishCallback(bot.tokenRef, message, '您没有权限提交申诉', true)
+        return
+      }
+      if (!this.c2cAppeals) {
+        await this.finishCallback(bot.tokenRef, message, 'C2C 申诉服务不可用', true)
+        return
+      }
+      const result = await this.c2cAppeals.confirmReason({
+        bot,
+        authorization,
+        message,
+        interactionId: appealMatch[1],
+        reasonCode: Number(appealMatch[2]),
+      })
+      const success = result.text.includes('申诉提交成功') && !result.text.includes('申诉失败')
+      await this.finishCallback(
+        bot.tokenRef,
+        message,
+        success ? '申诉已提交' : result.text.slice(0, 180),
+        !success,
+        true,
+      )
+      await this.reply(bot.tokenRef, message, result)
+      return
+    }
+    const c2cMatch = /^c2c:(confirm|cancel):([0-9a-f-]{36})$/.exec(message.data)
+    if (c2cMatch) {
+      await this.handleC2cOrderCallback(
+        bot,
+        message,
+        c2cMatch[1] as 'cancel' | 'confirm',
+        c2cMatch[2],
+      )
+      return
+    }
+    const queryReceiptMatch = /^query:receipt:([0-9a-f-]{36})$/i.exec(message.data)
+    if (queryReceiptMatch) {
+      const authorization = await this.authorization.authorize(bot, message.chatId, message.userId)
+      if (!authorization.allowed) {
+        await this.finishCallback(bot.tokenRef, message, '您没有权限执行该操作', true)
+        return
+      }
+      if (!authorization.capabilities.includes(TelegramCapability.RECEIPT_QUERY)) {
+        await this.finishCallback(bot.tokenRef, message, '您没有获取回单的权限', true)
+        return
+      }
+      const text = await this.queries.receipt(
+        bot.tenantId,
+        authorization.group.merchantId,
+        queryReceiptMatch[1],
+      )
+      await this.finishCallback(bot.tokenRef, message, '查询完成', false, true)
+      await this.reply(bot.tokenRef, message, text)
+      return
+    }
+    const queryOrderMatch = /^query:order:([0-9a-f-]{36})$/i.exec(message.data)
+    if (queryOrderMatch) {
+      const authorization = await this.authorization.authorize(bot, message.chatId, message.userId)
+      if (
+        !authorization.allowed ||
+        !authorization.capabilities.includes(TelegramCapability.ORDER_QUERY)
+      ) {
+        await this.finishCallback(bot.tokenRef, message, '您没有查询订单的权限', true)
+        return
+      }
+      const result = await this.queries.queryById(
+        bot.tenantId,
+        authorization.group.merchantId,
+        queryOrderMatch[1],
+        {
+          canReceipt: authorization.capabilities.includes(TelegramCapability.RECEIPT_QUERY),
+          canVoid: authorization.capabilities.includes(TelegramCapability.ALIPAY_BATCH_PAYMENT),
+        },
+      )
+      await this.finishCallback(bot.tokenRef, message, '查询完成', false)
+      await this.reply(bot.tokenRef, message, result)
+      return
+    }
+    const queryVoidMatch = /^query:void:([0-9a-f-]{36})$/i.exec(message.data)
+    if (queryVoidMatch) {
+      const authorization = await this.authorization.authorize(bot, message.chatId, message.userId)
+      if (
+        !authorization.allowed ||
+        !authorization.capabilities.includes(TelegramCapability.ALIPAY_BATCH_PAYMENT)
+      ) {
+        await this.finishCallback(bot.tokenRef, message, '您没有权限作废该订单', true)
+        return
+      }
+      try {
+        const result = await this.queries.voidOrder(
+          bot.tenantId,
+          authorization.group.merchantId,
+          queryVoidMatch[1],
+        )
+        await this.finishCallback(bot.tokenRef, message, '订单已作废', false, true)
+        await this.reply(bot.tokenRef, message, result)
+      } catch (error) {
+        const text = error instanceof Error ? error.message : '订单作废失败'
+        await this.finishCallback(bot.tokenRef, message, text.slice(0, 180), true)
+        await this.reply(bot.tokenRef, message, `订单作废失败：${text}`)
+      }
+      return
+    }
+    const queryBatchMatch = /^query:batch:([^:]+):(\d+)$/i.exec(message.data)
+    if (queryBatchMatch) {
+      const authorization = await this.authorization.authorize(bot, message.chatId, message.userId)
+      if (
+        !authorization.allowed ||
+        !authorization.capabilities.includes(TelegramCapability.ORDER_QUERY)
+      ) {
+        await this.finishCallback(bot.tokenRef, message, '您没有查询订单的权限', true)
+        return
+      }
+      const result = await this.queries.queryBatch(
+        bot.tenantId,
+        authorization.group.merchantId,
+        queryBatchMatch[1],
+        Number(queryBatchMatch[2]),
+      )
+      await this.finishCallback(bot.tokenRef, message, '查询完成', false)
+      await this.reply(bot.tokenRef, message, result)
+      return
+    }
     const receiptMatch = /^receipt:([0-9a-f-]{36})$/.exec(message.data)
     if (receiptMatch) {
       const authorization = await this.authorization.authorize(bot, message.chatId, message.userId)
@@ -244,6 +475,10 @@ export class TelegramRuntimeService {
     }
     const [, type, action, interactionId] = match
     if (type === 'batch') {
+      if (!authorization.capabilities.includes(TelegramCapability.PAYMENT_BATCH_SUBMIT)) {
+        await this.finishCallback(bot.tokenRef, message, '您没有提交支付批次的权限', true)
+        return
+      }
       if (action === 'cancel') {
         const cancelled = await this.batchPayments.cancel({
           interactionId,
@@ -264,7 +499,11 @@ export class TelegramRuntimeService {
         authorization,
         message,
       })
-      await this.reply(bot.tokenRef, message, result.text)
+      await this.reply(bot.tokenRef, message, result)
+      return
+    }
+    if (!authorization.capabilities.includes(TelegramCapability.ALIPAY_BATCH_PAYMENT)) {
+      await this.finishCallback(bot.tokenRef, message, '您没有创建支付订单的权限', true)
       return
     }
     if (action === 'cancel') {
@@ -287,25 +526,120 @@ export class TelegramRuntimeService {
       authorization,
       message,
     })
-    await this.reply(bot.tokenRef, message, result.text)
+    await this.reply(bot.tokenRef, message, result)
+  }
+
+  private async handleC2cOrderCallback(
+    bot: TelegramBotEntity,
+    message: TelegramCallbackMessage,
+    action: 'cancel' | 'confirm',
+    orderId: string,
+  ): Promise<void> {
+    const authorization = await this.authorization.authorize(bot, message.chatId, message.userId)
+    if (
+      !authorization.allowed ||
+      !authorization.capabilities.includes(TelegramCapability.C2C_ORDER_PAYMENT)
+    ) {
+      await this.finishCallback(bot.tokenRef, message, '您没有权限执行该操作', true)
+      return
+    }
+    if (!this.c2cOrderActions) {
+      await this.finishCallback(bot.tokenRef, message, '商家订单操作服务不可用', true)
+      return
+    }
+    try {
+      const result = await this.c2cOrderActions[action]({
+        tenantId: bot.tenantId,
+        merchantId: authorization.group.merchantId,
+        orderId,
+        operator: `TG:${message.userId}`,
+      })
+      await this.finishCallback(
+        bot.tokenRef,
+        message,
+        action === 'confirm' ? 'C2C订单已创建' : 'C2C订单已作废',
+        false,
+        true,
+      )
+      await this.reply(bot.tokenRef, message, result)
+    } catch (error) {
+      const text = error instanceof Error ? error.message : '商家订单操作失败'
+      await this.finishCallback(bot.tokenRef, message, text.slice(0, 180), true)
+      await this.reply(bot.tokenRef, message, `操作失败：${text}`)
+    }
+  }
+
+  private async finishCallback(
+    tokenRef: string,
+    message: TelegramCallbackMessage,
+    text: string,
+    showAlert: boolean,
+    clearKeyboard = false,
+  ): Promise<void> {
+    const effects: Promise<void>[] = []
+    if (message.callbackQueryId && this.telegram.answerCallbackQuery) {
+      effects.push(
+        this.telegram.answerCallbackQuery({
+          tokenRef,
+          callbackQueryId: message.callbackQueryId,
+          text,
+          showAlert,
+        }),
+      )
+    }
+    if (clearKeyboard && this.telegram.editMessageReplyMarkup) {
+      effects.push(
+        this.telegram.editMessageReplyMarkup({
+          tokenRef,
+          chatId: message.chatId,
+          messageId: message.messageId,
+        }),
+      )
+    }
+    await Promise.allSettled(effects)
   }
 
   private commandArgument(text: string): string {
     return text.split(/\s+/).slice(1).join(' ').trim()
   }
 
-  private reply(
+  private async reply(
     tokenRef: string,
     message: TelegramTextMessage,
-    text: string,
+    reply: string | TelegramBotReply,
     replyMarkup?: Record<string, unknown>,
-  ) {
-    return this.telegram.sendMessage({
+  ): Promise<void> {
+    const result = typeof reply === 'string' ? { text: reply } : reply
+    if (result.photos?.length) {
+      for (const [index, photo] of result.photos.entries()) {
+        await this.telegram.sendPhoto({
+          tokenRef,
+          chatId: message.chatId,
+          fileName: photo.fileName,
+          photo: photo.content,
+          ...(index === 0
+            ? {
+                caption: result.text,
+                replyToMessageId: message.messageId,
+                ...(result.parseMode ? { parseMode: result.parseMode } : {}),
+                ...((replyMarkup ?? result.replyMarkup)
+                  ? { replyMarkup: replyMarkup ?? result.replyMarkup }
+                  : {}),
+              }
+            : {}),
+        })
+      }
+      return
+    }
+    await this.telegram.sendMessage({
       tokenRef,
       chatId: message.chatId,
       replyToMessageId: message.messageId,
-      text,
-      ...(replyMarkup ? { replyMarkup } : {}),
+      text: result.text,
+      ...(result.parseMode ? { parseMode: result.parseMode } : {}),
+      ...((replyMarkup ?? result.replyMarkup)
+        ? { replyMarkup: replyMarkup ?? result.replyMarkup }
+        : {}),
     })
   }
 
@@ -326,6 +660,7 @@ export class TelegramRuntimeService {
     }
     return {
       chatId: String(chat.id),
+      callbackQueryId: typeof record.id === 'string' ? record.id : undefined,
       data: record.data,
       messageId: message.message_id,
       text: record.data,

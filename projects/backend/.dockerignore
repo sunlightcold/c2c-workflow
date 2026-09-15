@@ -7,6 +7,5 @@ output
 output.zip
 coverage
 doc
-server/backend/config/production.ts
 server/backend/logs
 server/backend/pm2logs

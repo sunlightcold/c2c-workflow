@@ -122,12 +122,12 @@ describe('C2cPlatformPaymentConfirmer', () => {
   }
   const secretResolver = { resolve: jest.fn() }
   const credentials = { create: jest.fn() }
-  const binance = { getOrderDetail: jest.fn(), markOrderAsPaid: jest.fn() }
-  const okx = {
+  const platformClient = {
     getOrderDetail: jest.fn(),
-    checkAntiFraud: jest.fn(),
     markOrderAsPaid: jest.fn(),
+    getMarkPaidPolicy: jest.fn(),
   }
+  const paymentProofs = { load: jest.fn() }
   let confirmer: C2cPlatformPaymentConfirmer
 
   beforeEach(() => {
@@ -141,28 +141,33 @@ describe('C2cPlatformPaymentConfirmer', () => {
       clientType: 'WEB',
       timeoutMs: 5000,
     })
-    binance.getOrderDetail.mockResolvedValueOnce(pendingPlatformOrder).mockResolvedValueOnce({
-      ...pendingPlatformOrder,
-      status: C2cBuyOrderStatus.PAID,
-      payable: false,
-    })
-    binance.markOrderAsPaid.mockResolvedValue(undefined)
+    platformClient.getMarkPaidPolicy.mockReturnValue({ paymentProof: 'NONE' })
+    platformClient.getOrderDetail
+      .mockResolvedValueOnce(pendingPlatformOrder)
+      .mockResolvedValueOnce({
+        ...pendingPlatformOrder,
+        status: C2cBuyOrderStatus.PAID,
+        payable: false,
+      })
+    platformClient.markOrderAsPaid.mockResolvedValue(undefined)
     confirmer = new C2cPlatformPaymentConfirmer(
       store,
       secretResolver,
       credentials as never,
-      binance as never,
-      okx as never,
+      platformClient as never,
+      paymentProofs as never,
     )
   })
 
   it('marks a Binance order paid with its numeric platform payment method and verifies the result', async () => {
     await expect(confirmer.confirmPaid(executable)).resolves.toBeUndefined()
 
-    expect(binance.markOrderAsPaid).toHaveBeenCalledWith(
+    expect(platformClient.markOrderAsPaid).toHaveBeenCalledWith(
+      MerchantPlatform.BINANCE,
       expect.objectContaining({ apiKey: 'key' }),
       'platform-order-1',
-      901,
+      '901',
+      undefined,
     )
     expect(store.transitionMerchantOrder.mock.calls).toEqual([
       [
@@ -183,7 +188,7 @@ describe('C2cPlatformPaymentConfirmer', () => {
 
     await expect(confirmer.confirmPaid(executable)).resolves.toBeUndefined()
 
-    expect(binance.markOrderAsPaid).toHaveBeenCalledTimes(1)
+    expect(platformClient.markOrderAsPaid).toHaveBeenCalledTimes(1)
     expect(store.transitionMerchantOrder).toHaveBeenLastCalledWith(
       'tenant-1',
       'merchant-order-1',
@@ -204,25 +209,114 @@ describe('C2cPlatformPaymentConfirmer', () => {
     credentials.create.mockReturnValue({
       cookie: 'cookie',
       authorization: 'authorization',
+      signaturePrivateKey: 'private-key',
       timeoutMs: 5000,
     })
-    okx.getOrderDetail.mockResolvedValueOnce(pendingPlatformOrder).mockResolvedValueOnce({
-      ...pendingPlatformOrder,
-      status: C2cBuyOrderStatus.PAID,
-      payable: false,
-    })
-    okx.checkAntiFraud.mockResolvedValue({ riskReviewRequired: false })
-    okx.markOrderAsPaid.mockResolvedValue(undefined)
-
+    platformClient.getMarkPaidPolicy.mockReturnValue({ paymentProof: 'SKIP' })
+    platformClient.getOrderDetail
+      .mockResolvedValueOnce(pendingPlatformOrder)
+      .mockResolvedValueOnce({
+        ...pendingPlatformOrder,
+        status: C2cBuyOrderStatus.PAID,
+        payable: false,
+      })
     await confirmer.confirmPaid(executable)
 
-    expect(okx.checkAntiFraud).not.toHaveBeenCalled()
-    expect(okx.markOrderAsPaid).toHaveBeenCalledWith(expect.anything(), 'platform-order-1', '901')
+    expect(paymentProofs.load).not.toHaveBeenCalled()
+    expect(platformClient.markOrderAsPaid).toHaveBeenCalledWith(
+      MerchantPlatform.OKX,
+      expect.anything(),
+      'platform-order-1',
+      '901',
+      { fiat: 'CNY', skipPaymentProofUpload: true },
+    )
+  })
+
+  it('loads and uploads the Alipay receipt when OKX proof skipping is disabled', async () => {
+    const okxContext = {
+      ...context,
+      merchant: { ...context.merchant, platform: MerchantPlatform.OKX },
+      merchantOrder: { ...context.merchantOrder, platform: MerchantPlatform.OKX },
+      credential: { ...context.credential, platform: MerchantPlatform.OKX, clientType: null },
+    }
+    const paymentProofImage = {
+      content: Buffer.from('receipt-jpeg'),
+      fileName: 'platform-order-1-1.jpg',
+      imageType: 'jpeg' as const,
+      width: 800,
+      height: 1200,
+    }
+    store.load.mockResolvedValue(okxContext)
+    secretResolver.resolve.mockResolvedValue({
+      cookie: 'cookie',
+      authorization: 'authorization',
+      signaturePrivateKey: 'private-key',
+      skipPaymentProofUpload: false,
+    })
+    credentials.create.mockReturnValue({
+      cookie: 'cookie',
+      authorization: 'authorization',
+      signaturePrivateKey: 'private-key',
+      skipPaymentProofUpload: false,
+      timeoutMs: 5000,
+    })
+    paymentProofs.load.mockResolvedValue([paymentProofImage])
+    platformClient.getMarkPaidPolicy.mockReturnValue({ paymentProof: 'REQUIRED' })
+    platformClient.getOrderDetail
+      .mockResolvedValueOnce(pendingPlatformOrder)
+      .mockResolvedValueOnce({
+        ...pendingPlatformOrder,
+        status: C2cBuyOrderStatus.PAID,
+        payable: false,
+      })
+    await expect(confirmer.confirmPaid(executable)).resolves.toBeUndefined()
+
+    expect(paymentProofs.load).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      merchantId: 'merchant-1',
+      paymentOrderId: 'payment-1',
+      platformOrderId: 'platform-order-1',
+    })
+    expect(platformClient.markOrderAsPaid).toHaveBeenCalledWith(
+      MerchantPlatform.OKX,
+      expect.anything(),
+      'platform-order-1',
+      '901',
+      {
+        fiat: 'CNY',
+        skipPaymentProofUpload: false,
+        paymentProofImages: [paymentProofImage],
+      },
+    )
+  })
+
+  it('does not mark the OKX order paid when its required receipt is unavailable', async () => {
+    const okxContext = {
+      ...context,
+      merchant: { ...context.merchant, platform: MerchantPlatform.OKX },
+      merchantOrder: { ...context.merchantOrder, platform: MerchantPlatform.OKX },
+      credential: { ...context.credential, platform: MerchantPlatform.OKX, clientType: null },
+    }
+    store.load.mockResolvedValue(okxContext)
+    credentials.create.mockReturnValue({
+      cookie: 'cookie',
+      authorization: 'authorization',
+      signaturePrivateKey: 'private-key',
+      skipPaymentProofUpload: false,
+      timeoutMs: 5000,
+    })
+    paymentProofs.load.mockRejectedValue(new Error('付款回单暂不可用：回单生成中'))
+    platformClient.getMarkPaidPolicy.mockReturnValue({ paymentProof: 'REQUIRED' })
+    platformClient.getOrderDetail.mockResolvedValueOnce(pendingPlatformOrder)
+
+    await expect(confirmer.confirmPaid(executable)).rejects.toThrow('付款回单暂不可用')
+
+    expect(platformClient.markOrderAsPaid).not.toHaveBeenCalled()
   })
 
   it('keeps the merchant order pending and never sends money again when verification is delayed', async () => {
-    binance.getOrderDetail.mockReset()
-    binance.getOrderDetail
+    platformClient.getOrderDetail.mockReset()
+    platformClient.getOrderDetail
       .mockResolvedValueOnce(pendingPlatformOrder)
       .mockResolvedValueOnce(pendingPlatformOrder)
 
@@ -233,13 +327,17 @@ describe('C2cPlatformPaymentConfirmer', () => {
   it.each([C2cBuyOrderStatus.CANCELLED, C2cBuyOrderStatus.EXPIRED, C2cBuyOrderStatus.DISPUTED])(
     'moves a paid order to funds exception when platform status is %s',
     async (status) => {
-      binance.getOrderDetail.mockReset()
-      binance.getOrderDetail.mockResolvedValue({ ...pendingPlatformOrder, status, payable: false })
+      platformClient.getOrderDetail.mockReset()
+      platformClient.getOrderDetail.mockResolvedValue({
+        ...pendingPlatformOrder,
+        status,
+        payable: false,
+      })
 
       await expect(confirmer.confirmPaid(executable)).rejects.toBeInstanceOf(
         PlatformFundsExceptionError,
       )
-      expect(binance.markOrderAsPaid).not.toHaveBeenCalled()
+      expect(platformClient.markOrderAsPaid).not.toHaveBeenCalled()
       expect(store.transitionMerchantOrder).toHaveBeenLastCalledWith(
         'tenant-1',
         'merchant-order-1',
@@ -250,13 +348,13 @@ describe('C2cPlatformPaymentConfirmer', () => {
   )
 
   it('does not mark paid when platform payment details changed after the Alipay success', async () => {
-    binance.getOrderDetail.mockReset()
-    binance.getOrderDetail.mockResolvedValue({
+    platformClient.getOrderDetail.mockReset()
+    platformClient.getOrderDetail.mockResolvedValue({
       ...pendingPlatformOrder,
       platformPaymentMethodId: '902',
     })
 
     await expect(confirmer.confirmPaid(executable)).rejects.toThrow('平台付款方式已变化')
-    expect(binance.markOrderAsPaid).not.toHaveBeenCalled()
+    expect(platformClient.markOrderAsPaid).not.toHaveBeenCalled()
   })
 })

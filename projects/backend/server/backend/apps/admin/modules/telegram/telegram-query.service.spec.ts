@@ -2,21 +2,30 @@ import { PaymentBatchStatus, PaymentOrderStatus } from '@admin/database'
 import { TelegramQueryService } from './telegram-query.service'
 
 describe('TelegramQueryService', () => {
-  const orders = { findOne: jest.fn() }
+  const batchItems = { find: jest.fn() }
+  const orders = { find: jest.fn(), findOne: jest.fn() }
   const batches = { findOne: jest.fn() }
-  const dataSource = { query: jest.fn() }
-  const balances = { queryMerchantAccounts: jest.fn() }
+  const receipts = { getReceipt: jest.fn() }
+  const downloader = { download: jest.fn() }
+  const receiptImages = { convert: jest.fn() }
+  const dataSource = {
+    getRepository: jest.fn().mockReturnValue(batchItems),
+    query: jest.fn(),
+  }
   const service = new TelegramQueryService(
     orders as never,
     batches as never,
     dataSource as never,
-    balances as never,
+    receipts as never,
+    downloader as never,
+    receiptImages as never,
   )
 
   beforeEach(() => jest.clearAllMocks())
 
-  it('queries an order only inside the authorized tenant and merchant', async () => {
+  it('queries every supported order identifier only inside the tenant and merchant', async () => {
     orders.findOne.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000001',
       paymentNo: 'PAY001',
       sourceBusinessNo: 'M001',
       amount: '100.00',
@@ -26,67 +35,153 @@ describe('TelegramQueryService', () => {
       status: PaymentOrderStatus.SUCCESS,
     })
 
-    await expect(service.query('tenant-1', 'merchant-1', 'PAY001')).resolves.toContain(
-      '支付单号：PAY001',
-    )
+    const reply = await service.query('tenant-1', 'merchant-1', 'PAY001', {
+      canReceipt: true,
+      canVoid: true,
+    })
+
+    expect(reply.text).toContain('<b>转账订单</b>')
+    expect(reply.replyMarkup?.inline_keyboard[0][0].text).toBe('获取回单')
     expect(orders.findOne).toHaveBeenCalledWith({
       where: [
         { tenantId: 'tenant-1', merchantId: 'merchant-1', paymentNo: 'PAY001' },
         { tenantId: 'tenant-1', merchantId: 'merchant-1', sourceBusinessNo: 'PAY001' },
+        { tenantId: 'tenant-1', merchantId: 'merchant-1', upstreamId: 'PAY001' },
       ],
     })
   })
 
-  it('falls back to a merchant-scoped batch query', async () => {
+  it('falls back to a scoped batch with child details and pagination', async () => {
     orders.findOne.mockResolvedValue(null)
     batches.findOne.mockResolvedValue({
+      id: 'batch-id',
       batchNo: 'BAT001',
-      totalCount: 2,
+      currency: 'CNY',
+      totalCount: 1,
       totalAmount: '30.00',
       successCount: 1,
       failedCount: 0,
-      processingCount: 1,
+      processingCount: 0,
       unknownCount: 0,
-      status: PaymentBatchStatus.PROCESSING,
+      status: PaymentBatchStatus.SUCCESS,
     })
+    batchItems.find.mockResolvedValue([
+      {
+        paymentOrderId: 'payment-id',
+        amount: '30.00',
+        status: 'SUCCESS',
+        errorMessage: null,
+      },
+    ])
+    orders.find.mockResolvedValue([
+      {
+        id: 'payment-id',
+        sourceBusinessNo: 'M001',
+        payeeName: '张三',
+        payeeIdentity: '13800138000',
+      },
+    ])
 
-    await expect(service.query('tenant-1', 'merchant-1', 'BAT001')).resolves.toContain(
-      '支付批次：BAT001',
-    )
+    const reply = await service.query('tenant-1', 'merchant-1', 'BAT001')
+
+    expect(reply.text).toContain('<b>转账批次</b>')
+    expect(reply.text).toContain('商户订单号：<code>M001</code>')
     expect(batches.findOne).toHaveBeenCalledWith({
-      where: { tenantId: 'tenant-1', merchantId: 'merchant-1', batchNo: 'BAT001' },
+      where: [
+        { tenantId: 'tenant-1', merchantId: 'merchant-1', batchNo: 'BAT001' },
+        { tenantId: 'tenant-1', merchantId: 'merchant-1', upstreamId: 'BAT001' },
+      ],
     })
   })
 
   it('returns today statistics scoped to the authorized merchant', async () => {
     dataSource.query.mockResolvedValue([
-      { totalCount: '3', totalAmount: '60.00', successCount: '2', successAmount: '50.00' },
+      {
+        totalCount: '3',
+        totalAmount: '60.00',
+        awaitSubmitCount: '0',
+        processingCount: '1',
+        successCount: '2',
+        failedCount: '0',
+        successAmount: '50.00',
+      },
     ])
 
-    await expect(service.todayStats('tenant-1', 'merchant-1')).resolves.toContain(
-      '成功：2 笔 / 50.00 CNY',
-    )
+    const reply = await service.todayStats('tenant-1', 'merchant-1')
+
+    expect(reply.text).toContain('成功笔数：<code>2</code> 笔')
     expect(dataSource.query).toHaveBeenCalledWith(expect.stringContaining('"merchantId" = $2'), [
       'tenant-1',
       'merchant-1',
+      expect.any(Date),
+      expect.any(Date),
     ])
   })
 
-  it('formats every payment account balance available to the merchant', async () => {
-    balances.queryMerchantAccounts.mockResolvedValue([
-      {
-        accountId: 'account-1',
-        accountName: '支付宝主账号',
-        availableAmount: '100.00',
-        freezeAmount: '20.00',
-        success: true,
-      },
-      { accountId: 'account-2', accountName: '支付宝备用账号', success: false },
+  it('builds a C2C daily report for an explicit business date', async () => {
+    dataSource.query.mockResolvedValue([
+      { status: 'COMPLETED', orderCount: '2', assetAmount: '20.5', fiatAmount: '143.50' },
     ])
 
-    await expect(service.balance('tenant-1', 'merchant-1')).resolves.toBe(
-      '支付账号余额\n支付宝主账号：可用 100.00 CNY，冻结 20.00 CNY\n支付宝备用账号：查询失败',
+    const reply = await service.dailyReport('tenant-1', 'merchant-1', '20260914')
+
+    expect(reply.text).toContain('<b>C2C 对账日报</b>')
+    expect(reply.text).toContain('USDT 总额：<code>20.5</code>')
+    expect(dataSource.query).toHaveBeenCalledWith(expect.stringContaining('merchant_order'), [
+      'tenant-1',
+      'merchant-1',
+      expect.any(Date),
+      expect.any(Date),
+    ])
+  })
+
+  it('downloads and converts a ready PDF receipt into JPG photos', async () => {
+    orders.findOne.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000001',
+      paymentNo: 'PAY001',
+      upstreamId: 'ALIPAY001',
+      status: PaymentOrderStatus.SUCCESS,
+    })
+    receipts.getReceipt.mockResolvedValue({
+      status: 'READY',
+      downloadUrl: 'https://example.test/receipt.pdf',
+      message: '回单已生成',
+    })
+    downloader.download.mockResolvedValue(Buffer.from('%PDF receipt'))
+    receiptImages.convert.mockResolvedValue([
+      {
+        content: Buffer.from('jpeg-page-1'),
+        fileName: 'PAY001-1.jpg',
+        height: 1800,
+        width: 1200,
+      },
+    ])
+    const reply = await service.receipt('tenant-1', 'merchant-1', 'PAY001')
+
+    expect(receipts.getReceipt).toHaveBeenCalledWith(
+      'tenant-1',
+      'merchant-1',
+      '00000000-0000-4000-8000-000000000001',
     )
-    expect(balances.queryMerchantAccounts).toHaveBeenCalledWith('tenant-1', 'merchant-1')
+    expect(downloader.download).toHaveBeenCalledWith('https://example.test/receipt.pdf')
+    expect(receiptImages.convert).toHaveBeenCalledWith(Buffer.from('%PDF receipt'), 'PAY001')
+    expect(reply.photos).toEqual([
+      { content: Buffer.from('jpeg-page-1'), fileName: 'PAY001-1.jpg' },
+    ])
+    expect(reply.replyMarkup).toBeUndefined()
+  })
+
+  it('does not claim that a failed receipt was generated', async () => {
+    orders.findOne.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000001',
+      paymentNo: 'PAY001',
+      status: PaymentOrderStatus.SUCCESS,
+    })
+    receipts.getReceipt.mockResolvedValue({ status: 'FAILED', message: '回单生成超时' })
+
+    const reply = await service.receipt('tenant-1', 'merchant-1', 'PAY001')
+
+    expect(reply).toEqual({ text: '回单：回单生成超时' })
+    expect(reply.text).not.toContain('回单已生成')
   })
 })

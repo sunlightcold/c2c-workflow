@@ -212,25 +212,14 @@ const businessMenuGroups: BusinessMenuGroupDefinition[] = [
 
 export const DEFAULT_ADMIN_MENUS: AdminMenuDefinition[] = [
   {
-    key: 'dashboard',
-    type: SysMenuType.FOLDER,
-    name: '概览',
-    path: '/dashboard',
-    permission: 'dashboard',
-    icon: 'ant-design:menu-outlined',
-    orderNo: 1000,
-    keepAlive: enabled,
-  },
-  {
     key: 'dashboard.workspace',
     type: SysMenuType.MENU,
-    parentKey: 'dashboard',
     name: '工作台',
     path: '/workspace',
     component: '/dashboard/workspace',
     permission: 'dashboard:workspace',
     icon: 'lucide:layout-dashboard',
-    orderNo: 10,
+    orderNo: 1000,
     keepAlive: enabled,
   },
   ...businessMenuGroups.map(({ icon, key, name, orderNo, path, permission }) => ({

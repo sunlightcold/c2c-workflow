@@ -4,25 +4,16 @@ import { $t } from '#/locales';
 
 const routes: RouteRecordRaw[] = [
   {
+    alias: ['/dashboard', '/dashboard/workspace'],
+    component: () => import('#/views/dashboard/workspace/index.vue'),
     meta: {
+      affixTab: true,
       icon: 'lucide:layout-dashboard',
       order: -1,
-      title: $t('page.dashboard.title'),
+      title: $t('page.dashboard.workspace'),
     },
-    name: 'Dashboard',
-    path: '/dashboard',
-    children: [
-      {
-        name: 'Workspace',
-        path: '/workspace',
-        component: () => import('#/views/dashboard/workspace/index.vue'),
-        meta: {
-          affixTab: true,
-          icon: 'lucide:area-chart',
-          title: $t('page.dashboard.workspace'),
-        },
-      },
-    ],
+    name: 'Workspace',
+    path: '/workspace',
   },
 ];
 

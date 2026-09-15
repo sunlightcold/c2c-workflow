@@ -119,8 +119,7 @@ describe('C2cPaymentPreflightVerifier', () => {
   const store: jest.Mocked<PaymentPreflightStore> = { load: jest.fn() }
   const secretResolver = { resolve: jest.fn() }
   const credentialFactory = { create: jest.fn() }
-  const binance = { getOrderDetail: jest.fn() }
-  const okx = { getOrderDetail: jest.fn() }
+  const platformClient = { getOrderDetail: jest.fn() }
   let verifier: C2cPaymentPreflightVerifier
 
   beforeEach(() => {
@@ -133,13 +132,12 @@ describe('C2cPaymentPreflightVerifier', () => {
       clientType: 'WEB',
       timeoutMs: 5000,
     })
-    binance.getOrderDetail.mockResolvedValue(platformOrder)
+    platformClient.getOrderDetail.mockResolvedValue(platformOrder)
     verifier = new C2cPaymentPreflightVerifier(
       store,
       secretResolver,
       credentialFactory as never,
-      binance as never,
-      okx as never,
+      platformClient as never,
     )
   })
 
@@ -152,8 +150,11 @@ describe('C2cPaymentPreflightVerifier', () => {
       },
     })
     expect(store.load).toHaveBeenCalledWith('tenant-1', 'payment-1')
-    expect(binance.getOrderDetail).toHaveBeenCalledTimes(1)
-    expect(okx.getOrderDetail).not.toHaveBeenCalled()
+    expect(platformClient.getOrderDetail).toHaveBeenCalledWith(
+      MerchantPlatform.BINANCE,
+      expect.any(Object),
+      'platform-order-1',
+    )
   })
 
   it('accepts an unchanged payable platform order before an Alipay password-protected batch claim', async () => {
@@ -200,16 +201,16 @@ describe('C2cPaymentPreflightVerifier', () => {
       authorization: 'authorization',
       timeoutMs: 5000,
     })
-    okx.getOrderDetail.mockResolvedValue(platformOrder)
+    platformClient.getOrderDetail.mockResolvedValue(platformOrder)
 
     await expect(verifier.verify('tenant-1', 'payment-1', now)).resolves.toMatchObject({
       platformOrder: { platformOrderId: 'platform-order-1' },
     })
-    expect(okx.getOrderDetail).toHaveBeenCalledWith(
+    expect(platformClient.getOrderDetail).toHaveBeenCalledWith(
+      MerchantPlatform.OKX,
       { cookie: 'cookie', authorization: 'authorization', timeoutMs: 5000 },
       'platform-order-1',
     )
-    expect(binance.getOrderDetail).not.toHaveBeenCalled()
   })
 
   it('classifies an unavailable platform secret as definitely not submitted', async () => {
@@ -218,7 +219,7 @@ describe('C2cPaymentPreflightVerifier', () => {
     await expect(verifier.verify('tenant-1', 'payment-1', now)).rejects.toEqual(
       new PaymentNotSubmittedError('Secret 引用未配置'),
     )
-    expect(binance.getOrderDetail).not.toHaveBeenCalled()
+    expect(platformClient.getOrderDetail).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -233,7 +234,7 @@ describe('C2cPaymentPreflightVerifier', () => {
       '平台订单付款截止时间已变化',
     ],
   ])('rejects before payment when %s', async (_case, change, message) => {
-    binance.getOrderDetail.mockResolvedValue({ ...platformOrder, ...change })
+    platformClient.getOrderDetail.mockResolvedValue({ ...platformOrder, ...change })
 
     await expect(verifier.verify('tenant-1', 'payment-1', now)).rejects.toEqual(
       new PaymentNotSubmittedError(message),
@@ -250,7 +251,7 @@ describe('C2cPaymentPreflightVerifier', () => {
     await expect(verifier.verify('tenant-1', 'payment-1', now)).rejects.toEqual(
       new PaymentNotSubmittedError('支付通道不支持即时商家转账'),
     )
-    expect(binance.getOrderDetail).not.toHaveBeenCalled()
+    expect(platformClient.getOrderDetail).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -280,7 +281,6 @@ describe('C2cPaymentPreflightVerifier', () => {
     await expect(verifier.verify('tenant-1', 'payment-1', now)).rejects.toEqual(
       new PaymentNotSubmittedError(message),
     )
-    expect(binance.getOrderDetail).not.toHaveBeenCalled()
-    expect(okx.getOrderDetail).not.toHaveBeenCalled()
+    expect(platformClient.getOrderDetail).not.toHaveBeenCalled()
   })
 })

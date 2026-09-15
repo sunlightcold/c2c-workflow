@@ -4,7 +4,6 @@ export interface AutomaticPaymentCandidate {
   tenantId: string
   merchantId: string
   merchantOrderId: string
-  executionMode: PaymentExecutionMode
   paymentOrderId: string | null
   paymentOrderStatus: PaymentOrderStatus | null
   paymentOrderExecutionMode: PaymentExecutionMode | null

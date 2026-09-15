@@ -33,6 +33,7 @@ export interface PaymentAccountListInput {
 }
 
 export interface CreatePaymentPlanInput {
+  automaticPaymentEnabled?: boolean
   batchPolicyId?: string | null
   merchantId: string
   paymentAccountId: string
@@ -44,6 +45,7 @@ export interface CreatePaymentPlanInput {
 }
 
 export interface UpdatePaymentPlanInput {
+  automaticPaymentEnabled?: boolean
   batchPolicyId?: string | null
   paymentAccountChannelId?: string
   paymentAccountId?: string
@@ -382,11 +384,12 @@ export class PaymentConfigService {
 
     const routeChanged =
       input.paymentAccountId !== undefined || input.paymentAccountChannelId !== undefined
+    let executionMode: PaymentExecutionMode | undefined
     if (routeChanged || input.batchPolicyId !== undefined) {
       if (!input.paymentAccountId || !input.paymentAccountChannelId) {
         if (routeChanged) throw new BadRequestException('支付账号与支付通道必须同时选择')
       }
-      await this.requireActivePlanRoute(
+      executionMode = await this.requireActivePlanRoute(
         tenantId,
         plan.merchantId,
         input.paymentAccountId ?? plan.paymentAccountId,
@@ -399,8 +402,21 @@ export class PaymentConfigService {
       }
       if (input.batchPolicyId !== undefined) plan.batchPolicyId = input.batchPolicyId
     }
+    if (input.automaticPaymentEnabled !== undefined) {
+      plan.automaticPaymentEnabled = input.automaticPaymentEnabled
+    }
     if (input.priority !== undefined) plan.priority = input.priority
     if (input.weight !== undefined) plan.weight = input.weight
+    if (plan.status === BusinessStatus.ACTIVE && plan.automaticPaymentEnabled) {
+      executionMode ??= await this.requireActivePlanRoute(
+        tenantId,
+        plan.merchantId,
+        plan.paymentAccountId,
+        plan.paymentAccountChannelId,
+        plan.batchPolicyId,
+      )
+      await this.requireCompatibleAutomaticMode(tenantId, plan.merchantId, executionMode, plan.id)
+    }
     return this.planRepository.save(plan)
   }
 
@@ -427,29 +443,36 @@ export class PaymentConfigService {
     const plan = await this.planRepository.findOne({ where: { id, tenantId } })
     if (!plan) throw new NotFoundException('支付方案不存在')
     if (status === BusinessStatus.ACTIVE) {
-      await this.requireActivePlanRoute(
+      const executionMode = await this.requireActivePlanRoute(
         tenantId,
         plan.merchantId,
         plan.paymentAccountId,
         plan.paymentAccountChannelId,
         plan.batchPolicyId,
       )
+      if (plan.automaticPaymentEnabled) {
+        await this.requireCompatibleAutomaticMode(tenantId, plan.merchantId, executionMode, plan.id)
+      }
     }
     plan.status = status
     return this.planRepository.save(plan)
   }
 
   async createPlan(tenantId: string, input: CreatePaymentPlanInput) {
-    await this.requireActivePlanRoute(
+    const executionMode = await this.requireActivePlanRoute(
       tenantId,
       input.merchantId,
       input.paymentAccountId,
       input.paymentAccountChannelId,
       input.batchPolicyId ?? null,
     )
+    if (input.automaticPaymentEnabled) {
+      await this.requireCompatibleAutomaticMode(tenantId, input.merchantId, executionMode)
+    }
     return this.planRepository.save(
       this.planRepository.create({
         ...input,
+        automaticPaymentEnabled: input.automaticPaymentEnabled ?? false,
         tenantId,
         status: BusinessStatus.ACTIVE,
       }),
@@ -462,7 +485,7 @@ export class PaymentConfigService {
     paymentAccountId: string,
     paymentAccountChannelId: string,
     batchPolicyId: string | null,
-  ): Promise<void> {
+  ): Promise<PaymentExecutionMode> {
     const [merchant, account, accountChannel] = await Promise.all([
       this.merchantRepository.findOne({ where: { id: merchantId, tenantId } }),
       this.accountRepository.findOne({ where: { id: paymentAccountId, tenantId } }),
@@ -492,6 +515,33 @@ export class PaymentConfigService {
       }
     } else if (batchPolicyId) {
       throw new BadRequestException('单笔支付方案不能选择批次策略')
+    }
+    return channel.executionMode
+  }
+
+  private async requireCompatibleAutomaticMode(
+    tenantId: string,
+    merchantId: string,
+    executionMode: PaymentExecutionMode,
+    excludedPlanId?: string,
+  ): Promise<void> {
+    const incompatible = await this.dataSource.query<Array<{ exists: number }>>(
+      `SELECT 1 AS "exists"
+       FROM merchant_payment_plan plan
+       INNER JOIN payment_account_channel account_channel
+         ON account_channel.id = plan."paymentAccountChannelId"
+       INNER JOIN payment_channel channel ON channel.id = account_channel."channelId"
+       WHERE plan."tenantId" = $1
+         AND plan."merchantId" = $2
+         AND plan.status = 'active'
+         AND plan."automaticPaymentEnabled" = true
+         AND ($3::uuid IS NULL OR plan.id <> $3::uuid)
+         AND channel."executionMode"::text <> $4
+       LIMIT 1`,
+      [tenantId, merchantId, excludedPlanId ?? null, executionMode],
+    )
+    if (incompatible.length > 0) {
+      throw new ConflictException('同一商家的自动付款方案必须使用相同付款模式')
     }
   }
 

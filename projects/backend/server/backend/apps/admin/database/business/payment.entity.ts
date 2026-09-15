@@ -124,6 +124,9 @@ export class MerchantPaymentPlanEntity extends CommonUuidEntity {
   @Column({ type: 'uuid', nullable: true })
   batchPolicyId: string | null
 
+  @Column({ type: 'boolean', default: false })
+  automaticPaymentEnabled: boolean
+
   @Column({ type: 'integer', default: 100 })
   priority: number
 

@@ -24,6 +24,19 @@ pnpm dev:mock
 curl http://127.0.0.1:13002/api/mock/health
 ```
 
+从仓库根目录重置 Binance Mock 并生成指定数量的待付款订单：
+
+```powershell
+.\scripts\Reset-BinanceMockOrders.ps1             # 默认 5 笔
+.\scripts\Reset-BinanceMockOrders.ps1 -Count 20   # 指定 20 笔
+.\scripts\Reset-BinanceMockOrders.ps1 -Count 0    # 只清空
+.\scripts\Reset-BinanceMockOrders.ps1 -Count 5 -ExternalMerchantId mock-agent-binance
+```
+
+每次执行都会先清空 Binance Mock 的旧内存订单，再创建全新的 BUY/USDT/CNY、支付宝、实名/KYC
+一致的待付款订单。默认归属于总部币安商家账号 `mock-hq-binance`；Mock 根据请求的 `x-user-id`
+隔离商家账号。脚本只操作本地 Mock 控制接口，不调用真实币安接口。
+
 ## 已实现上游
 
 | 上游              | 说明               | 渠道文档                                                                                   |

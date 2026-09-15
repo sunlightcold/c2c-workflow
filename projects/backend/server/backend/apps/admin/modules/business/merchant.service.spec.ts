@@ -3,7 +3,6 @@ import {
   MerchantEntity,
   MerchantPlatform,
   MerchantPlatformCredentialEntity,
-  PaymentExecutionMode,
   PaymentSourceType,
   TelegramBotEntity,
   TelegramBotType,
@@ -88,8 +87,6 @@ describe('MerchantService', () => {
     expect(JSON.stringify(saved)).not.toContain('binance-secret-key')
     expect(merchantTxRepository.save).toHaveBeenCalledWith(
       expect.objectContaining({
-        automaticPaymentEnabled: false,
-        automaticPaymentExecutionMode: PaymentExecutionMode.INSTANT,
         c2cChatOrderCreatedMessage: expect.stringContaining(
           '原则上不接受亲友、公司、员工、客户或其他第三方账户代收',
         ),

@@ -5,13 +5,14 @@ Controller：`PaymentOrderController`。基础路径：`/v1/sys/payment-orders`�
 
 ## 接口
 
-| Method | Path | 权限 | Request | data 来源 |
-| --- | --- | --- | --- | --- |
-| GET | `/` | `payment:order:read` | Query `{ tenantId?, merchantId?, orderNo?, executionMode?, sourceType?, status?, page?, pageSize? }` | `{ items, total, page, pageSize }` |
-| GET | `/{id}` | `payment:order:read` | Query `{ tenantId? }` | 支付订单、状态历史和关联批次明细 |
-| POST | `/` | `payment:order:create` | 创建机器人手工支付订单 | `PaymentOrderEntity` |
-| POST | `/{id}/rematch` | `payment:order:retry` | `{ tenantId? }` | `PaymentOrderEntity` |
-| POST | `/{id}/reconcile` | `payment:order:retry` | `{ tenantId? }` | 支付订单当前状态 |
+| Method | Path                   | 权限                   | Request                                                                                              | data 来源                                  |
+| ------ | ---------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| GET    | `/`                    | `payment:order:read`   | Query `{ tenantId?, merchantId?, orderNo?, executionMode?, sourceType?, status?, page?, pageSize? }` | `{ items, total, page, pageSize }`         |
+| GET    | `/{id}`                | `payment:order:read`   | Query `{ tenantId? }`                                                                                | 支付订单、状态历史和关联批次明细           |
+| POST   | `/`                    | `payment:order:create` | 创建机器人手工支付订单                                                                               | `PaymentOrderEntity`                       |
+| POST   | `/{id}/rematch`        | `payment:order:retry`  | `{ tenantId? }`                                                                                      | `PaymentOrderEntity`                       |
+| POST   | `/{id}/reconcile`      | `payment:order:retry`  | `{ tenantId? }`                                                                                      | 支付订单当前状态                           |
+| POST   | `/{id}/upstream-query` | `payment:order:read`   | `{ tenantId? }`                                                                                      | 本地订单及上游标准化状态、流水号和原始响应 |
 
 创建请求：
 
@@ -41,9 +42,11 @@ Controller：`PaymentOrderController`。基础路径：`/v1/sys/payment-orders`�
 - 匹配成功时把支付方案、支付账号和账号通道同时锁定到支付订单，状态为 `READY`。
 - 没有可用方案时仍创建支付订单，三个路由字段为空，状态为 `PENDING_CONFIG`。
 - `POST /{id}/rematch` 只处理 `PENDING_CONFIG`，匹配成功后进入 `READY`。
-- `POST /{id}/reconcile` 只处理 `PROCESSING` 或 `UNKNOWN`，使用原支付单号查询支付宝，不重新提交资金请求。
+- `POST /{id}/reconcile` 只处理 `SUBMITTING`、`PROCESSING` 或 `UNKNOWN`，使用原支付单号查询支付宝，不重新提交资金请求。
+- `POST /{id}/upstream-query` 查询上游支付结果并返回原始通道响应；订单处于提交中、处理中或结果未知时会同步本地状态，终态订单只读取上游结果，不会重新发起付款。
 - `tenantId + merchantId + BOT_MANUAL + sourceBusinessNo` 唯一；重复和并发创建返回已有订单。
 - 公开创建接口只创建机器人手工支付订单。C2C 买币支付由商家订单流程在重新核对平台订单后创建。
+- 机器人手工批量支付与 C2C 买币支付共用支付方案路由；`BOT_MANUAL` 仅作为订单来源留痕，不影响支付账号、通道或批次策略选择。
 - 退款支付本期未开放。
 
 ## C2C 买币提交前复核
@@ -65,10 +68,10 @@ C2C 买币支付订单进入实际付款前，系统按所属单位和商家重�
 
 ## 错误
 
-| HTTP | 场景 |
-| --- | --- |
-| 400 | DTO 格式错误、金额不是字符串、金额不大于零、商家不可用或不属于当前所属单位 |
-| 401 | 未登录或令牌失效 |
-| 403 | 缺少动作权限或所属单位范围不匹配 |
-| 404 | 支付订单不存在或不属于当前所属单位 |
-| 409 | 非待配置订单执行重新匹配、非处理中或结果未知订单执行回查 |
+| HTTP | 场景                                                                       |
+| ---- | -------------------------------------------------------------------------- |
+| 400  | DTO 格式错误、金额不是字符串、金额不大于零、商家不可用或不属于当前所属单位 |
+| 401  | 未登录或令牌失效                                                           |
+| 403  | 缺少动作权限或所属单位范围不匹配                                           |
+| 404  | 支付订单不存在或不属于当前所属单位                                         |
+| 409  | 非待配置订单执行重新匹配、非处理中或结果未知订单执行回查                   |

@@ -1,19 +1,16 @@
 import {
   BusinessStatus,
   MerchantOrderStatus,
-  MerchantPlatform,
   PaymentOrderStatus,
   PaymentSourceType,
 } from '@admin/database'
 import { Inject, Injectable } from '@nestjs/common'
 import {
-  BinanceC2cClient,
-  type BinanceCredentials,
+  C2cPlatformClient,
+  type C2cPlatformCredentials,
   C2cBuyOrderStatus,
   type C2cBuyOrderDetail,
   C2cPlatformCredentialFactory,
-  OkxWebPrivateClient,
-  type OkxWebPrivateCredentials,
 } from '../c2c-platform'
 import { C2C_SECRET_RESOLVER, type C2cSecretResolver } from '../c2c-order/c2c-secret-resolver'
 import {
@@ -23,6 +20,7 @@ import {
 } from './c2c-payment-preflight-verifier'
 import { PlatformFundsExceptionError } from './payment-execution.errors'
 import { normalizeCnyAmount } from './payment-adapter.types'
+import { C2cPaymentProofService } from './c2c-payment-proof.service'
 import type {
   ExecutablePaymentOrder,
   PlatformPaymentConfirmer,
@@ -43,8 +41,8 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
     @Inject(PAYMENT_PREFLIGHT_STORE) private readonly store: PlatformConfirmationStore,
     @Inject(C2C_SECRET_RESOLVER) private readonly secretResolver: C2cSecretResolver,
     private readonly credentialFactory: C2cPlatformCredentialFactory,
-    private readonly binance: BinanceC2cClient,
-    private readonly okx: OkxWebPrivateClient,
+    private readonly platformClient: C2cPlatformClient,
+    private readonly paymentProofs: C2cPaymentProofService,
   ) {}
 
   async confirmPaid(order: ExecutablePaymentOrder): Promise<void> {
@@ -107,25 +105,33 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
 
   private async markPaid(
     context: PaymentPreflightConfiguration,
-    credentials: BinanceCredentials | OkxWebPrivateCredentials,
+    credentials: C2cPlatformCredentials,
   ): Promise<void> {
     const orderId = context.merchantOrder.platformOrderId
     const paymentMethodId = context.merchantOrder.platformPaymentMethodId!
-    if (context.merchant.platform === MerchantPlatform.BINANCE) {
-      const payId = Number(paymentMethodId)
-      if (!Number.isSafeInteger(payId) || payId <= 0) throw new Error('币安平台付款方式 ID 无效')
-      await this.binance.markOrderAsPaid(credentials as BinanceCredentials, orderId, payId)
-      return
-    }
-    const okxCredentials = credentials as OkxWebPrivateCredentials
-    if (okxCredentials.signaturePrivateKey) {
-      await this.okx.markOrderAsPaid(okxCredentials, orderId, paymentMethodId, {
-        fiat: context.merchantOrder.fiatCurrency,
-        skipPaymentProofUpload: okxCredentials.skipPaymentProofUpload ?? true,
-      })
-    } else {
-      await this.okx.markOrderAsPaid(okxCredentials, orderId, paymentMethodId)
-    }
+    const policy = this.platformClient.getMarkPaidPolicy(context.merchant.platform, credentials)
+    const paymentProofImages =
+      policy.paymentProof !== 'REQUIRED'
+        ? undefined
+        : await this.paymentProofs.load({
+            tenantId: context.order.tenantId,
+            merchantId: context.order.merchantId,
+            paymentOrderId: context.order.id,
+            platformOrderId: orderId,
+          })
+    await this.platformClient.markOrderAsPaid(
+      context.merchant.platform,
+      credentials,
+      orderId,
+      paymentMethodId,
+      policy.paymentProof === 'NONE'
+        ? undefined
+        : {
+            fiat: context.merchantOrder.fiatCurrency,
+            skipPaymentProofUpload: policy.paymentProof === 'SKIP',
+            ...(paymentProofImages ? { paymentProofImages } : {}),
+          },
+    )
   }
 
   private verifyPlatformOrder(
@@ -149,19 +155,12 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
       throw new Error('平台付款方式已变化')
   }
 
-  private getOrder(
-    context: PaymentPreflightConfiguration,
-    credentials: BinanceCredentials | OkxWebPrivateCredentials,
-  ) {
-    return context.merchant.platform === MerchantPlatform.BINANCE
-      ? this.binance.getOrderDetail(
-          credentials as BinanceCredentials,
-          context.merchantOrder.platformOrderId,
-        )
-      : this.okx.getOrderDetail(
-          credentials as OkxWebPrivateCredentials,
-          context.merchantOrder.platformOrderId,
-        )
+  private getOrder(context: PaymentPreflightConfiguration, credentials: C2cPlatformCredentials) {
+    return this.platformClient.getOrderDetail(
+      context.merchant.platform,
+      credentials,
+      context.merchantOrder.platformOrderId,
+    )
   }
 
   private async finalizeKnownStatus(

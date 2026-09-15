@@ -1,18 +1,14 @@
 import { BadRequestException } from '@nestjs/common'
 
 export enum TelegramCapability {
-  BALANCE_QUERY = 'BALANCE_QUERY',
   ORDER_QUERY = 'ORDER_QUERY',
   RECEIPT_QUERY = 'RECEIPT_QUERY',
   PAYMENT_STATISTICS = 'PAYMENT_STATISTICS',
-  MANUAL_PAYMENT = 'MANUAL_PAYMENT',
   ALIPAY_BATCH_PAYMENT = 'ALIPAY_BATCH_PAYMENT',
   PAYMENT_BATCH_SUBMIT = 'PAYMENT_BATCH_SUBMIT',
   C2C_ORDER_PAYMENT = 'C2C_ORDER_PAYMENT',
-  PAYMENT_RESULT_NOTIFICATION = 'PAYMENT_RESULT_NOTIFICATION',
   C2C_APPEAL = 'C2C_APPEAL',
   C2C_DAILY_REPORT = 'C2C_DAILY_REPORT',
-  GROUP_MEMBER_MANAGE = 'GROUP_MEMBER_MANAGE',
   BOT_STATUS_MANAGE = 'BOT_STATUS_MANAGE',
 }
 
@@ -27,29 +23,23 @@ export enum TelegramBotType {
 }
 
 export const TELEGRAM_CAPABILITY_OPTIONS = [
-  [TelegramCapability.BALANCE_QUERY, '余额查询'],
   [TelegramCapability.ORDER_QUERY, '订单查询'],
   [TelegramCapability.RECEIPT_QUERY, '获取回单'],
   [TelegramCapability.PAYMENT_STATISTICS, '支付统计'],
-  [TelegramCapability.MANUAL_PAYMENT, '手工支付'],
   [TelegramCapability.ALIPAY_BATCH_PAYMENT, '支付宝批量支付'],
   [TelegramCapability.PAYMENT_BATCH_SUBMIT, '提交支付批次'],
   [TelegramCapability.C2C_ORDER_PAYMENT, 'C2C 买币订单支付'],
-  [TelegramCapability.PAYMENT_RESULT_NOTIFICATION, '付款结果通知'],
   [TelegramCapability.C2C_APPEAL, 'C2C 订单申诉'],
   [TelegramCapability.C2C_DAILY_REPORT, 'C2C 日报'],
-  [TelegramCapability.GROUP_MEMBER_MANAGE, '群成员管理'],
   [TelegramCapability.BOT_STATUS_MANAGE, '机器人状态管理'],
 ] as const
 
 const MEMBER_CAPABILITIES: Record<TelegramGroupRole, readonly TelegramCapability[]> = {
   [TelegramGroupRole.ADMIN]: Object.values(TelegramCapability),
   [TelegramGroupRole.OPERATOR]: [
-    TelegramCapability.BALANCE_QUERY,
     TelegramCapability.ORDER_QUERY,
     TelegramCapability.RECEIPT_QUERY,
     TelegramCapability.PAYMENT_STATISTICS,
-    TelegramCapability.MANUAL_PAYMENT,
     TelegramCapability.ALIPAY_BATCH_PAYMENT,
     TelegramCapability.PAYMENT_BATCH_SUBMIT,
     TelegramCapability.C2C_ORDER_PAYMENT,
@@ -57,7 +47,6 @@ const MEMBER_CAPABILITIES: Record<TelegramGroupRole, readonly TelegramCapability
     TelegramCapability.C2C_DAILY_REPORT,
   ],
   [TelegramGroupRole.VIEWER]: [
-    TelegramCapability.BALANCE_QUERY,
     TelegramCapability.ORDER_QUERY,
     TelegramCapability.RECEIPT_QUERY,
     TelegramCapability.PAYMENT_STATISTICS,

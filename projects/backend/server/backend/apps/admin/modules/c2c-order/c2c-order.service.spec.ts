@@ -40,11 +40,16 @@ describe('C2cOrderService', () => {
 
   it('filters one merchant scope and attaches the related payment summary', async () => {
     orderRepository.findAndCount.mockResolvedValue([
-      [{ id: 'order-1', platformOrderId: 'platform-1' }],
+      [{ id: 'order-1', merchantId: 'merchant-1', platformOrderId: 'platform-1' }],
       1,
     ])
     paymentRepository.find.mockResolvedValue([
-      { id: 'payment-1', sourceBusinessNo: 'platform-1', status: 'READY' },
+      {
+        id: 'payment-1',
+        merchantId: 'merchant-1',
+        sourceBusinessNo: 'platform-1',
+        status: 'READY',
+      },
     ])
 
     await expect(
@@ -67,6 +72,46 @@ describe('C2cOrderService', () => {
       where: {
         merchantId: 'merchant-1',
         sourceBusinessNo: In(['platform-1']),
+        sourceType: PaymentSourceType.C2C_BUY,
+        tenantId: 'tenant-1',
+      },
+    })
+  })
+
+  it('lists all merchant orders in the tenant when merchant filter is omitted', async () => {
+    orderRepository.findAndCount.mockResolvedValue([
+      [
+        { id: 'order-1', merchantId: 'merchant-1', platformOrderId: 'shared-platform-id' },
+        { id: 'order-2', merchantId: 'merchant-2', platformOrderId: 'shared-platform-id' },
+      ],
+      2,
+    ])
+    paymentRepository.find.mockResolvedValue([
+      {
+        id: 'payment-1',
+        merchantId: 'merchant-1',
+        sourceBusinessNo: 'shared-platform-id',
+      },
+      {
+        id: 'payment-2',
+        merchantId: 'merchant-2',
+        sourceBusinessNo: 'shared-platform-id',
+      },
+    ])
+
+    await expect(service.list('tenant-1', { page: 1, pageSize: 20 })).resolves.toMatchObject({
+      items: [
+        { id: 'order-1', paymentOrder: { id: 'payment-1' } },
+        { id: 'order-2', paymentOrder: { id: 'payment-2' } },
+      ],
+      total: 2,
+    })
+    expect(orderRepository.findAndCount).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId: 'tenant-1' } }),
+    )
+    expect(paymentRepository.find).toHaveBeenCalledWith({
+      where: {
+        sourceBusinessNo: In(['shared-platform-id', 'shared-platform-id']),
         sourceType: PaymentSourceType.C2C_BUY,
         tenantId: 'tenant-1',
       },

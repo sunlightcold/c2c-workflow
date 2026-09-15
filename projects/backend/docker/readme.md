@@ -1,41 +1,77 @@
-# Docker 部署
+# Docker 服务器部署
 
-生产镜像只由 `app` 分支的 GitHub Actions 发布：
+后端由 `.github/workflows/backend-image.yml` 在 `main` 更新后验证、构建并发布到 GHCR：
 
-- `ghcr.io/sunlightcold/tpl-backend:app-latest`
-- `ghcr.io/sunlightcold/tpl-backend:app-<commit SHA>`
+- `ghcr.io/sunlightcold/c2c-workflow-backend:latest`
+- `ghcr.io/sunlightcold/c2c-workflow-backend:sha-<40 位提交 SHA>`
+
+Actions 运行产物中还会生成 `c2c-backend-deploy-<SHA>` 部署文件包。镜像同时支持
+`linux/amd64` 和 `linux/arm64`。
+
+## 服务器前提
+
+- Linux 服务器已安装 Docker Engine 与 Docker Compose v2。
+- API 只绑定服务器 `127.0.0.1`，由 Nginx/OpenResty/Caddy 提供 HTTPS 反向代理。
+- GHCR 包若为 private，服务器需要一个仅有 `read:packages` 权限的 GitHub token。
+- PostgreSQL、Redis、上传文件和日志目录必须纳入服务器备份。
 
 ## 首次部署
 
-1. 将 `docker/compose.yaml` 和 `.env.docker.example` 放入服务器部署目录。
-2. 将 `.env.docker.example` 复制为 `.env`，填写 PostgreSQL、Redis 密码和端口。
-3. 将生产配置保存为 `volumes/config/production.js`。其中数据库、Redis 凭据必须与 `.env` 一致。
-4. 使用具备 `read:packages` 权限的 GitHub PAT 登录 GHCR。
+将 Actions 部署文件包解压到一个独立目录，确保该目录直接包含 `compose.yaml`、`backup.sh`、
+`.env.example` 和本说明，然后执行：
 
 ```bash
-echo "$GHCR_PAT" | docker login ghcr.io -u sunlightcold --password-stdin
-docker compose pull
-docker compose up -d
-docker compose ps
+cp .env.example .env
+chmod 600 .env
+mkdir -p volumes/logs volumes/static volumes/postgres_data volumes/redis_data
+sudo chown -R 1000:1000 volumes/logs volumes/static
 ```
 
-`migrate` 会在 PostgreSQL 健康后执行。只有迁移成功退出，`app` 才会启动。
+编辑 `.env`，至少替换以下值：
+
+- `C2C_BACKEND_IMAGE`：建议直接填写本次 Actions 产出的 `sha-<SHA>` 镜像。
+- `C2C_POSTGRES_PASSWORD`、`C2C_REDIS_PASSWORD`：使用独立随机强密码；Redis 建议使用
+  `openssl rand -hex 32` 生成 URL-safe 值。
+- `C2C_SUPER_ADMIN_PASSWORD`：首次超级管理员强密码。
+- `C2C_CREDENTIAL_MASTER_KEY`：至少 32 字节随机值，投入使用后不得直接更换。
+- `C2C_STATIC_SERVER_URL`：API 对外 HTTPS 地址。
+- 所有数据库 `env://NAME` Secret 引用对应的环境变量。
+
+登录 GHCR 并检查最终配置。不要把 token 写进命令历史或 `.env`：
+
+```bash
+echo "$GHCR_PAT" | docker login ghcr.io -u YOUR_GITHUB_USER --password-stdin
+docker compose --env-file .env config --quiet
+docker compose --env-file .env pull
+docker compose --env-file .env up -d --remove-orphans
+docker compose --env-file .env ps
+docker compose --env-file .env logs --tail=200 migrate app
+curl --fail --silent --show-error http://127.0.0.1:3000/v1/auth/captcha >/dev/null
+```
+
+`migrate` 在 PostgreSQL 健康后持有 advisory lock 并执行待运行的 TypeORM migrations。只有迁移
+成功退出且 Redis 健康，`app` 才会启动。`app` 的 Docker 健康检查同样请求真实 captcha 接口。
 
 ## 更新
 
+先执行 `bash ./backup.sh`，再把 `.env` 的镜像改为新 `sha-<SHA>` 标签：
+
 ```bash
-docker compose pull
-docker compose up -d
-docker compose ps
-docker compose logs --tail=200 migrate app
+bash ./backup.sh
+docker compose --env-file .env config --quiet
+docker compose --env-file .env pull
+docker compose --env-file .env up -d --remove-orphans
+docker compose --env-file .env ps
+docker compose --env-file .env logs --tail=200 migrate app
 ```
+
+确认健康后再清理旧镜像。不要在部署命令中使用 `docker compose down -v`，它会删除持久化数据。
 
 ## 回滚
 
-将 `.env` 中的 `TPL_BACKEND_IMAGE` 改为目标提交对应的不可变标签后重新部署：
+将 `C2C_BACKEND_IMAGE` 改回兼容当前数据库结构的旧 `sha-<SHA>` 标签，再重复更新命令。数据库
+migration 为 forward-only；若新版本包含不兼容迁移，不能只回滚镜像，必须按发布方案恢复数据库
+备份或执行专门的兼容迁移。
 
-```text
-TPL_BACKEND_IMAGE=ghcr.io/sunlightcold/tpl-backend:app-<commit SHA>
-```
-
-镜像内的应用代码和 `initJson` 不通过宿主机目录覆盖；运行配置、日志、PostgreSQL 和 Redis 数据保留在服务器卷目录中。
+`backup.sh` 默认把 PostgreSQL custom-format 备份写入 `./backups` 并保留 7 天。可通过
+`C2C_BACKUP_DIR` 和 `C2C_BACKUP_KEEP_DAYS` 覆盖，恢复演练应在独立数据库中定期执行。

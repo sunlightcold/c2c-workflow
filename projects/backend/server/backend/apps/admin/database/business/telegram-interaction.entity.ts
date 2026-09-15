@@ -10,6 +10,7 @@ export enum TelegramInteractionState {
 }
 
 export enum TelegramInteractionAction {
+  C2C_APPEAL_REASON = 'C2C_APPEAL_REASON',
   CREATE_MANUAL_PAYMENTS = 'CREATE_MANUAL_PAYMENTS',
   SUBMIT_PAYMENT_BATCHES = 'SUBMIT_PAYMENT_BATCHES',
 }

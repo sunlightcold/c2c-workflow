@@ -24,8 +24,7 @@ describe('MerchantPlatformCredentialService', () => {
   const transaction = jest.fn()
   const cipher = { encrypt: jest.fn().mockReturnValue('encrypted-value'), decrypt: jest.fn() }
   const credentialFactory = { create: jest.fn() }
-  const binance = { listOrders: jest.fn() }
-  const okx = { listOrders: jest.fn() }
+  const platformClient = { listOrders: jest.fn() }
   let service: MerchantPlatformCredentialService
 
   beforeEach(async () => {
@@ -45,8 +44,7 @@ describe('MerchantPlatformCredentialService', () => {
         if (typeof token === 'function' && token.name === 'CredentialCipherService') return cipher
         if (typeof token === 'function' && token.name === 'C2cPlatformCredentialFactory')
           return credentialFactory
-        if (typeof token === 'function' && token.name === 'BinanceC2cClient') return binance
-        if (typeof token === 'function' && token.name === 'OkxWebPrivateClient') return okx
+        if (typeof token === 'function' && token.name === 'C2cPlatformClient') return platformClient
         return undefined
       })
       .compile()
@@ -201,16 +199,16 @@ describe('MerchantPlatformCredentialService', () => {
       baseUrl: 'http://127.0.0.1:13002/upstreams/binance',
     }
     credentialFactory.create.mockReturnValue(resolved)
-    binance.listOrders.mockResolvedValue({ items: [], total: 0 })
+    platformClient.listOrders.mockResolvedValue({ items: [], total: 0 })
 
     await expect(service.testConnection(tenantId, merchantId)).resolves.toEqual({
       success: true,
       platform: MerchantPlatform.BINANCE,
     })
-    expect(binance.listOrders).toHaveBeenCalledWith(
+    expect(platformClient.listOrders).toHaveBeenCalledWith(
+      MerchantPlatform.BINANCE,
       resolved,
       expect.objectContaining({ rows: 1, orderStatusList: [1] }),
     )
-    expect(okx.listOrders).not.toHaveBeenCalled()
   })
 })

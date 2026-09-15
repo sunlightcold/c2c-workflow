@@ -55,6 +55,7 @@ describe('PaymentConfigService', () => {
     paymentBatch: { exists: jest.fn() },
   }
   const dataSource = {
+    query: jest.fn(),
     transaction: jest.fn((work) =>
       work({
         getRepository: (entity: unknown) => {
@@ -75,6 +76,7 @@ describe('PaymentConfigService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks()
+    dataSource.query.mockResolvedValue([])
     repositories.merchant.findOne.mockResolvedValue({ id: merchantId, tenantId })
     repositories.account.findOne.mockResolvedValue({ id: accountId, tenantId, status: 'active' })
     repositories.accountChannel.findOne.mockResolvedValue({
@@ -128,6 +130,7 @@ describe('PaymentConfigService', () => {
 
   it('persists the account and its enabled channel as one routing target', async () => {
     await service.createPlan(tenantId, {
+      automaticPaymentEnabled: true,
       merchantId,
       paymentAccountId: accountId,
       paymentAccountChannelId: accountChannelId,
@@ -143,7 +146,30 @@ describe('PaymentConfigService', () => {
         merchantId,
         paymentAccountId: accountId,
         paymentAccountChannelId: accountChannelId,
+        automaticPaymentEnabled: true,
       }),
+    )
+  })
+
+  it('rejects automatic payment plans that mix instant and batch channels', async () => {
+    dataSource.query.mockResolvedValue([{ exists: 1 }])
+
+    await expect(
+      service.createPlan(tenantId, {
+        automaticPaymentEnabled: true,
+        merchantId,
+        paymentAccountId: accountId,
+        paymentAccountChannelId: accountChannelId,
+        scene: 'C2C_BUY',
+        currency: 'CNY',
+        priority: 10,
+        weight: 100,
+      }),
+    ).rejects.toThrow('同一商家的自动付款方案必须使用相同付款模式')
+    expect(repositories.plan.save).not.toHaveBeenCalled()
+    expect(dataSource.query).toHaveBeenCalledWith(
+      expect.stringContaining('channel."executionMode"::text <> $4'),
+      [tenantId, merchantId, null, PaymentExecutionMode.INSTANT],
     )
   })
 

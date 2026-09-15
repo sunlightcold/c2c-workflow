@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common'
-import { C2C_SECRET_RESOLVER, type C2cSecretResolver } from '../c2c-order/c2c-secret-resolver'
+import { SECRET_RESOLVER, type SecretResolver } from '../system/credential'
 import { AlipayGatewayFactory, type AlipayCredential } from './alipay-gateway.factory'
 import type { AlipayGateway } from './payment-adapter.types'
 
@@ -12,7 +12,7 @@ export const ALIPAY_ACCOUNT_GATEWAY_FACTORY = Symbol('ALIPAY_ACCOUNT_GATEWAY_FAC
 @Injectable()
 export class AlipayAccountGatewayProvider implements AlipayAccountGatewayFactory {
   constructor(
-    @Inject(C2C_SECRET_RESOLVER) private readonly secretResolver: C2cSecretResolver,
+    @Inject(SECRET_RESOLVER) private readonly secretResolver: SecretResolver,
     private readonly factory: AlipayGatewayFactory,
   ) {}
 

@@ -41,14 +41,13 @@ describe('C2cOrderSyncService', () => {
     persistWindow: jest.fn().mockResolvedValue({ created: 1, updated: 0 }),
     recordFailure: jest.fn().mockResolvedValue(undefined),
   }
-  const binance = { listOrders: jest.fn(), getOrderDetail: jest.fn() }
-  const okx = { listOrders: jest.fn(), getOrderDetail: jest.fn() }
+  const platformClient = { listOrders: jest.fn(), getOrderDetail: jest.fn() }
   const eventEmitter = { emit: jest.fn() }
 
   beforeEach(() => jest.clearAllMocks())
 
   it('persists all pages and advances the checkpoint only after every detail succeeds', async () => {
-    binance.listOrders
+    platformClient.listOrders
       .mockResolvedValueOnce({
         items: [
           {
@@ -63,6 +62,7 @@ describe('C2cOrderSyncService', () => {
           },
         ],
         total: 2,
+        hasMore: true,
       })
       .mockResolvedValueOnce({
         items: [
@@ -78,8 +78,9 @@ describe('C2cOrderSyncService', () => {
           },
         ],
         total: 2,
+        hasMore: false,
       })
-    binance.getOrderDetail.mockImplementation((_credential, id) =>
+    platformClient.getOrderDetail.mockImplementation((_platform, _credential, id) =>
       Promise.resolve({
         platformOrderId: id,
         side: 'BUY',
@@ -103,8 +104,7 @@ describe('C2cOrderSyncService', () => {
       credentials as never,
       secretResolver,
       credentialFactory as never,
-      binance as never,
-      okx as never,
+      platformClient as never,
       store,
       eventEmitter as never,
     )
@@ -114,8 +114,12 @@ describe('C2cOrderSyncService', () => {
       created: 1,
       updated: 0,
     })
-    expect(binance.listOrders).toHaveBeenCalledTimes(2)
-    expect(okx.listOrders).not.toHaveBeenCalled()
+    expect(platformClient.listOrders).toHaveBeenCalledTimes(2)
+    expect(platformClient.listOrders).toHaveBeenCalledWith(
+      MerchantPlatform.BINANCE,
+      expect.any(Object),
+      expect.objectContaining({ tradeType: 'BUY' }),
+    )
     expect(store.persistWindow).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId, merchantId, platform: MerchantPlatform.BINANCE }),
       expect.arrayContaining([
@@ -127,14 +131,13 @@ describe('C2cOrderSyncService', () => {
   })
 
   it('records a failed attempt without asking the store to advance the successful window', async () => {
-    binance.listOrders.mockRejectedValue(new Error('upstream unavailable'))
+    platformClient.listOrders.mockRejectedValue(new Error('upstream unavailable'))
     const service = new C2cOrderSyncService(
       merchantRepository as never,
       credentials as never,
       secretResolver,
       credentialFactory as never,
-      binance as never,
-      okx as never,
+      platformClient as never,
       store,
       eventEmitter as never,
     )
@@ -146,6 +149,40 @@ describe('C2cOrderSyncService', () => {
       merchantId,
       now,
       'upstream unavailable',
+    )
+  })
+
+  it('continues to the next upstream page when a filtered OKX page has no buy orders', async () => {
+    merchantRepository.findOne.mockResolvedValueOnce({
+      id: merchantId,
+      tenantId,
+      platform: MerchantPlatform.OKX,
+      status: BusinessStatus.ACTIVE,
+      pageSize: 20,
+      overlapSeconds: 120,
+      orderStatusList: [1],
+    })
+    platformClient.listOrders
+      .mockResolvedValueOnce({ items: [], total: 40, hasMore: true })
+      .mockResolvedValueOnce({ items: [], total: 40, hasMore: false })
+    const service = new C2cOrderSyncService(
+      merchantRepository as never,
+      credentials as never,
+      secretResolver,
+      credentialFactory as never,
+      platformClient as never,
+      store,
+      eventEmitter as never,
+    )
+
+    await service.sync(tenantId, merchantId, now)
+
+    expect(platformClient.listOrders).toHaveBeenCalledTimes(2)
+    expect(platformClient.listOrders).toHaveBeenNthCalledWith(
+      2,
+      MerchantPlatform.OKX,
+      expect.any(Object),
+      expect.objectContaining({ page: 2 }),
     )
   })
 })

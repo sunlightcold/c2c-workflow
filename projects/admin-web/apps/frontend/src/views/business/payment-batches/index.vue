@@ -14,7 +14,7 @@ import {
   getPaymentBatchApi,
   getPaymentBatchesApi,
   getPaymentOrdersApi,
-  reconcilePaymentBatchApi,
+  queryPaymentBatchUpstreamApi,
   submitPaymentBatchApi,
 } from '#/api';
 import {
@@ -41,6 +41,7 @@ import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 type BatchDetail = {
   batch: BusinessApi.PaymentBatch;
   items: BusinessApi.PaymentBatchItem[];
+  upstream?: BusinessApi.PaymentBatchUpstreamQueryResult['upstream'];
 };
 type SearchValues = {
   merchantId?: string;
@@ -61,6 +62,8 @@ const detailOpen = ref(false);
 const detail = ref<BatchDetail>();
 
 const statusOptions = [
+  'DRAFT',
+  'PENDING_REVIEW',
   'READY',
   'SUBMITTING',
   'PROCESSING',
@@ -312,6 +315,18 @@ async function openDetail(batch: BusinessApi.PaymentBatch) {
   detailOpen.value = true;
 }
 
+async function queryUpstream(batch: BusinessApi.PaymentBatch) {
+  const result = await queryPaymentBatchUpstreamApi(batch.id, {
+    tenantId: selectedTenantId.value,
+  });
+  const local = await getPaymentBatchApi(batch.id, {
+    tenantId: selectedTenantId.value,
+  });
+  detail.value = { ...local, batch: result.batch, upstream: result.upstream };
+  detailOpen.value = true;
+  await gApi.query();
+}
+
 function submitBatch(batch: BusinessApi.PaymentBatch) {
   confirmResourceAction({
     action: () =>
@@ -320,17 +335,6 @@ function submitBatch(batch: BusinessApi.PaymentBatch) {
     onSuccess: () => gApi.query(),
     successMessage: '支付批次已提交',
     title: '确认提交该支付批次？',
-  });
-}
-
-async function reconcileBatch(batch: BusinessApi.PaymentBatch) {
-  await runResourceAction({
-    action: () =>
-      reconcilePaymentBatchApi(batch.id, {
-        tenantId: selectedTenantId.value,
-      }),
-    onSuccess: () => gApi.query(),
-    successMessage: '支付批次回查完成',
   });
 }
 
@@ -422,14 +426,13 @@ onMounted(async () => {
             提交
           </AButton>
           <AButton
-            v-access:code="['payment:batch:retry']"
+            v-access:code="['payment:batch:read']"
             class="px-1"
-            :disabled="!['PROCESSING', 'UNKNOWN'].includes(row.status)"
             size="small"
             type="link"
-            @click="reconcileBatch(row)"
+            @click="queryUpstream(row)"
           >
-            回查
+            上游查询
           </AButton>
         </div>
       </template>
@@ -478,6 +481,12 @@ onMounted(async () => {
             {{ detail.batch.lastError }}
           </ADescriptionsItem>
         </ADescriptions>
+        <template v-if="detail.upstream">
+          <ADivider orientation="left">上游批次参数</ADivider>
+          <pre class="bg-muted max-h-80 overflow-auto rounded p-3 text-xs">{{
+            JSON.stringify(detail.upstream.raw, null, 2)
+          }}</pre>
+        </template>
         <ADivider orientation="left">批次明细</ADivider>
         <ATable
           :data-source="detail.items"

@@ -4,15 +4,41 @@ import { CredentialCipherService } from '../system/credential/credential-cipher.
 
 export interface TelegramSendMessageInput {
   chatId: string
+  parseMode?: 'HTML' | 'MarkdownV2'
   replyMarkup?: Record<string, unknown>
   replyToMessageId?: number
   text: string
   tokenRef: string
 }
 
+export interface TelegramSendPhotoInput {
+  caption?: string
+  chatId: string
+  fileName: string
+  parseMode?: 'HTML' | 'MarkdownV2'
+  photo: Buffer
+  replyMarkup?: Record<string, unknown>
+  replyToMessageId?: number
+  tokenRef: string
+}
+
 export interface TelegramBotProfile {
   id: number
   username?: string
+}
+
+export interface TelegramCallbackAnswerInput {
+  callbackQueryId: string
+  showAlert?: boolean
+  text?: string
+  tokenRef: string
+}
+
+export interface TelegramEditReplyMarkupInput {
+  chatId: string
+  messageId: number
+  replyMarkup?: Record<string, unknown>
+  tokenRef: string
 }
 
 export interface TelegramUpdatePage {
@@ -32,6 +58,7 @@ export class TelegramApiClient {
         {
           chat_id: input.chatId,
           text: input.text,
+          ...(input.parseMode ? { parse_mode: input.parseMode } : {}),
           ...(input.replyToMessageId
             ? {
                 reply_parameters: {
@@ -49,8 +76,58 @@ export class TelegramApiClient {
     }
   }
 
+  async sendPhoto(input: TelegramSendPhotoInput): Promise<void> {
+    const token = this.resolveToken(input.tokenRef)
+    const form = new FormData()
+    form.append('chat_id', input.chatId)
+    form.append(
+      'photo',
+      new Blob([new Uint8Array(input.photo)], { type: 'image/jpeg' }),
+      input.fileName,
+    )
+    if (input.caption) form.append('caption', input.caption)
+    if (input.parseMode) form.append('parse_mode', input.parseMode)
+    if (input.replyToMessageId) {
+      form.append(
+        'reply_parameters',
+        JSON.stringify({
+          allow_sending_without_reply: true,
+          message_id: input.replyToMessageId,
+        }),
+      )
+    }
+    if (input.replyMarkup) form.append('reply_markup', JSON.stringify(input.replyMarkup))
+
+    try {
+      const response = await axios.post<{ ok: boolean }>(
+        `https://api.telegram.org/bot${token}/sendPhoto`,
+        form,
+        { timeout: 30_000 },
+      )
+      if (!response.data.ok) throw new Error('Telegram API rejected photo')
+    } catch {
+      throw new ServiceUnavailableException('Telegram 图片发送失败')
+    }
+  }
+
   async getMe(tokenRef: string): Promise<TelegramBotProfile> {
     return this.call<TelegramBotProfile>(tokenRef, 'getMe')
+  }
+
+  async answerCallbackQuery(input: TelegramCallbackAnswerInput): Promise<void> {
+    await this.call(input.tokenRef, 'answerCallbackQuery', {
+      callback_query_id: input.callbackQueryId,
+      ...(input.text ? { text: input.text } : {}),
+      ...(input.showAlert ? { show_alert: true } : {}),
+    })
+  }
+
+  async editMessageReplyMarkup(input: TelegramEditReplyMarkupInput): Promise<void> {
+    await this.call(input.tokenRef, 'editMessageReplyMarkup', {
+      chat_id: input.chatId,
+      message_id: input.messageId,
+      reply_markup: input.replyMarkup ?? { inline_keyboard: [] },
+    })
   }
 
   async getUpdates(

@@ -3,8 +3,14 @@ import { Inject, Injectable } from '@nestjs/common'
 import {
   C2C_HTTP_TRANSPORT,
   type C2cCapabilities,
+  type C2cComplaintPayload,
+  type C2cComplaintReason,
+  type C2cComplaintUpload,
   type C2cHttpTransport,
   type C2cListInput,
+  type C2cMarkPaidOptions,
+  type C2cMarkPaidPolicy,
+  type C2cPlatformAdapter,
 } from './c2c-platform.types'
 import { normalizeBinanceDetail, normalizeBinanceSummary } from './c2c-order-normalizer'
 
@@ -29,26 +35,12 @@ interface BinanceListEnvelope<T> extends BinanceEnvelope<T> {
   total?: number
 }
 
-export interface BinanceComplaintReason {
-  reasonCode: number
-  reasonDesc: string
-}
-
-export interface BinanceComplaintUpload {
-  filePath: string
-  uploadUrl: string
-}
-
-export interface BinanceComplaintPayload {
-  description: string
-  fileUrls: string[]
-  orderNo: string
-  reason: string
-  reasonCode: number
-}
+export type BinanceComplaintReason = C2cComplaintReason
+export type BinanceComplaintUpload = C2cComplaintUpload
+export type BinanceComplaintPayload = C2cComplaintPayload
 
 @Injectable()
-export class BinanceC2cClient {
+export class BinanceC2cClient implements C2cPlatformAdapter<BinanceCredentials> {
   constructor(@Inject(C2C_HTTP_TRANSPORT) private readonly http: C2cHttpTransport) {}
 
   async listOrders(credentials: BinanceCredentials, input: C2cListInput) {
@@ -58,9 +50,14 @@ export class BinanceC2cClient {
       '/sapi/v1/c2c/orderMatch/listOrders',
       input,
     )
+    const hasUpstreamTotal = response.total !== undefined && Number.isFinite(Number(response.total))
+    const total = hasUpstreamTotal ? Number(response.total) : response.data.length
     return {
       items: response.data.map(normalizeBinanceSummary),
-      total: Number(response.total ?? response.data.length),
+      total,
+      hasMore:
+        response.data.length > 0 &&
+        (hasUpstreamTotal ? input.page * input.rows < total : response.data.length === input.rows),
     }
   }
 
@@ -73,7 +70,13 @@ export class BinanceC2cClient {
     return normalizeBinanceDetail(response.data, orderNumber)
   }
 
-  markOrderAsPaid(credentials: BinanceCredentials, orderNumber: string, payId: number) {
+  markOrderAsPaid(
+    credentials: BinanceCredentials,
+    orderNumber: string,
+    paymentMethodId: number | string,
+    _options?: C2cMarkPaidOptions,
+  ) {
+    const payId = Number(paymentMethodId)
     if (!Number.isSafeInteger(payId) || payId <= 0) throw new Error('币安 payId 无效')
     return this.post(credentials, '/sapi/v1/c2c/orderMatch/markOrderAsPaid', {
       orderNumber,
@@ -120,11 +123,20 @@ export class BinanceC2cClient {
   getCapabilities(): C2cCapabilities {
     return {
       appeal: true,
+      cancelOrder: false,
+      chat: false,
+      checkAntiFraud: false,
       listOrders: true,
+      listReportOrders: false,
       getOrderDetail: true,
       markOrderAsPaid: true,
+      releaseCrypto: false,
       sellOrders: false,
     }
+  }
+
+  getMarkPaidPolicy(_credentials: BinanceCredentials): C2cMarkPaidPolicy {
+    return { paymentProof: 'NONE' }
   }
 
   private async post<T>(credentials: BinanceCredentials, path: string, body: unknown) {

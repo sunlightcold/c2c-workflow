@@ -29,6 +29,9 @@ describe('merchant account form schemas', () => {
     expect(
       rules?.find(({ field }) => field === 'c2cChatOrderCreatedMessage')?.col,
     ).toEqual({ md: 12, xs: 24 });
+    expect(
+      rules?.find(({ field }) => field === 'c2cChatOrderCreatedMessage')?.col,
+    ).toEqual({ md: 12, xs: 24 });
   });
 
   it('collects credentials and operational settings without unrelated fields', () => {
@@ -49,6 +52,22 @@ describe('merchant account form schemas', () => {
     );
     expect(names).not.toEqual(
       expect.arrayContaining(['code', 'currency', 'timezone', 'riskLevel']),
+    );
+    expect(names).not.toEqual(
+      expect.arrayContaining([
+        'automaticPaymentEnabled',
+        'automaticPaymentExecutionMode',
+        'orderStatusList',
+      ]),
+    );
+  });
+
+  it('keeps the fixed pending-order sync status out of create and edit forms', () => {
+    expect(fields(createMerchantAccountModalOptions('BINANCE'))).not.toContain(
+      'orderStatusList',
+    );
+    expect(fields(editMerchantAccountModalOptions('BINANCE'))).not.toContain(
+      'orderStatusList',
     );
   });
 
@@ -116,16 +135,12 @@ describe('merchant account form schemas', () => {
       rules?.find(({ field }) => field === 'c2cChatOrderCreatedMessage')
         ?.hidden,
     ).toBe(false);
-    expect(
-      rules?.find(({ field }) => field === 'automaticPaymentEnabled')?.hidden,
-    ).toBe(false);
-    expect(
-      rules?.find(({ field }) => field === 'automaticPaymentExecutionMode')
-        ?.options,
-    ).toEqual([
-      { label: '单笔付款（订单逐笔提交）', value: 'INSTANT' },
-      { label: '批次付款（按批次策略提交）', value: 'BATCH' },
-    ]);
+    expect(rules?.map(({ field }) => field)).not.toEqual(
+      expect.arrayContaining([
+        'automaticPaymentEnabled',
+        'automaticPaymentExecutionMode',
+      ]),
+    );
   });
 
   it('does not preselect a platform for a new merchant account', () => {
@@ -191,8 +206,20 @@ describe('merchant account form schemas', () => {
     expect(fields(edit)).toEqual([
       'routeKey',
       'batchPolicyId',
+      'automaticPaymentEnabled',
       'priority',
       'weight',
     ]);
+    expect(
+      edit.formProps?.rule?.find(
+        ({ field }) => field === 'automaticPaymentEnabled',
+      ),
+    ).toMatchObject({
+      children: ['启用自动付款'],
+      modelField: 'checked',
+      title: '自动付款',
+      type: 'aCheckbox',
+      value: false,
+    });
   });
 });

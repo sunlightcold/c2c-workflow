@@ -417,7 +417,6 @@ describe('business api', () => {
     requestMocks.post.mockResolvedValue({ id: 'payment-1' });
 
     await createMerchantOrderPaymentApi('order-1', {
-      executionMode: 'INSTANT',
       merchantId: 'merchant-1',
       tenantId: 'tenant-1',
     });
@@ -435,7 +434,6 @@ describe('business api', () => {
       1,
       '/sys/merchant-orders/order-1/payment',
       {
-        executionMode: 'INSTANT',
         merchantId: 'merchant-1',
         tenantId: 'tenant-1',
       },
@@ -464,7 +462,7 @@ describe('business api', () => {
 
     await createTelegramBotApi({
       botType: 'PAYMENT',
-      capabilities: ['MANUAL_PAYMENT'],
+      capabilities: ['ALIPAY_BATCH_PAYMENT'],
       name: '支付机器人',
       tenantId: 'tenant-1',
       token: '1234567890:AAabcdefghijklmnopQRST_uvwx',
@@ -477,7 +475,7 @@ describe('business api', () => {
     await deleteTelegramBotApi('bot-1', 'tenant-1');
     await createTelegramGroupApi({
       botId: 'bot-1',
-      capabilities: ['MANUAL_PAYMENT'],
+      capabilities: ['ALIPAY_BATCH_PAYMENT'],
       merchantId: 'merchant-1',
       name: '支付一群',
       paymentScene: 'BOT_MANUAL',
@@ -496,7 +494,7 @@ describe('business api', () => {
 
     expect(requestMocks.post).toHaveBeenNthCalledWith(1, '/sys/tg/bots', {
       botType: 'PAYMENT',
-      capabilities: ['MANUAL_PAYMENT'],
+      capabilities: ['ALIPAY_BATCH_PAYMENT'],
       name: '支付机器人',
       tenantId: 'tenant-1',
       token: '1234567890:AAabcdefghijklmnopQRST_uvwx',
@@ -518,7 +516,7 @@ describe('business api', () => {
     });
     expect(requestMocks.post).toHaveBeenNthCalledWith(2, '/sys/tg/groups', {
       botId: 'bot-1',
-      capabilities: ['MANUAL_PAYMENT'],
+      capabilities: ['ALIPAY_BATCH_PAYMENT'],
       merchantId: 'merchant-1',
       name: '支付一群',
       paymentScene: 'BOT_MANUAL',

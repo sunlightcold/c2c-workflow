@@ -113,13 +113,10 @@ describe('Telegram notification database isolation', () => {
     )
 
     await notifyMerchant(service, ids.tenantA, ids.merchantA, ids.orderA, ids.paymentA)
-    expect(sendMessage).toHaveBeenCalledTimes(2)
-    expect(sendMessage.mock.calls.map(([message]) => message.chatId)).toEqual(['-10001', '-10001'])
-    expect(sendMessage.mock.calls.map(([message]) => message.tokenRef)).toEqual([
-      'env://TG_TEST_A',
-      'env://TG_TEST_A',
-    ])
-    expect(sendMessage.mock.calls.map(([message]) => message.text).join('\n')).toContain('ORDER-A')
+    expect(sendMessage).toHaveBeenCalledTimes(1)
+    expect(sendMessage.mock.calls.map(([message]) => message.chatId)).toEqual(['-10001'])
+    expect(sendMessage.mock.calls.map(([message]) => message.tokenRef)).toEqual(['env://TG_TEST_A'])
+    expect(sendMessage.mock.calls.map(([message]) => message.text).join('\n')).toContain('PAY-A')
     expect(sendMessage.mock.calls.map(([message]) => message.text).join('\n')).not.toContain(
       'ORDER-B',
     )
@@ -129,17 +126,15 @@ describe('Telegram notification database isolation', () => {
 
     sendMessage.mockClear()
     await notifyMerchant(service, ids.tenantA, ids.merchantB, ids.orderB, ids.paymentB)
-    expect(sendMessage).toHaveBeenCalledTimes(2)
+    expect(sendMessage).toHaveBeenCalledTimes(1)
     expect(sendMessage.mock.calls.map(([message]) => [message.chatId, message.tokenRef])).toEqual([
-      ['-10002', 'env://TG_TEST_B'],
       ['-10002', 'env://TG_TEST_B'],
     ])
 
     sendMessage.mockClear()
     await notifyMerchant(service, ids.tenantB, ids.merchantC, ids.orderC, ids.paymentC)
-    expect(sendMessage).toHaveBeenCalledTimes(2)
+    expect(sendMessage).toHaveBeenCalledTimes(1)
     expect(sendMessage.mock.calls.map(([message]) => [message.chatId, message.tokenRef])).toEqual([
-      ['-20001', 'env://TG_TEST_C'],
       ['-20001', 'env://TG_TEST_C'],
     ])
   })

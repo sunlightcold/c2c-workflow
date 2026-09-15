@@ -10,6 +10,18 @@
 - `templates/*` 仅为临时只读参考，始终由根 `.gitignore` 排除，后续可整体删除。
 - 根目录不建立第三个 pnpm workspace，也不提升或合并两个项目的业务依赖。
 
+## Windows 本地开发环境（不可违反）
+
+- 本仓库在 Windows 主机上的容器运行时固定为 WSL2；所有 Docker/Compose 命令必须通过
+  `wsl.exe` 执行。Windows `PATH` 中找不到 `docker.exe` 不代表 Docker 不可用。
+- 本地 PostgreSQL 与 Redis 只能使用 WSL 容器 `c2c-postgres-dev`、`c2c-redis-dev`，宿主机端口
+  固定为 `15433`、`16380`。禁止回退到 Windows 服务的 `5432`、`6379`，也禁止临时启动原生或
+  其他数据库实例替代容器。
+- 启动后端前必须先运行 `scripts/Start-LocalInfra.ps1`。不得通过修改 `C2C_POSTGRES_PORT` 或
+  `C2C_REDIS_URL` 绕过容器检查。
+- “后端启动成功”的判据是 `GET /v1/auth/captcha` 返回成功响应，且启动日志不存在数据库或 Redis
+  连接错误；仅端口监听、进程存在或根路径返回 404 均不算成功。
+
 ## 固定读取顺序
 
 1. 读取 `projects.json`，确认项目路径、依赖和标准命令。

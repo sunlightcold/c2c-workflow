@@ -6,7 +6,12 @@ import { getBinanceC2cState } from '@mock/upstreams/binance-c2c/state'
 
 const secretKey = 'mock-binance-secret-key'
 
-function request(path: string, body: Record<string, unknown>, extraQuery: Record<string, string> = {}) {
+function request(
+  path: string,
+  body: Record<string, unknown>,
+  extraQuery: Record<string, string> = {},
+  externalMerchantId?: string,
+) {
   const timestamp = String(Date.now())
   const recvWindow = '5000'
   const queryParams = { ...extraQuery, recvWindow, timestamp }
@@ -15,7 +20,11 @@ function request(path: string, body: Record<string, unknown>, extraQuery: Record
     path,
     body,
     query: { ...queryParams, signature },
-    headers: new Headers({ 'X-MBX-APIKEY': 'mock-binance-api-key', clientType: 'WEB' }),
+    headers: new Headers({
+      'X-MBX-APIKEY': 'mock-binance-api-key',
+      clientType: 'WEB',
+      ...(externalMerchantId ? { 'x-user-id': externalMerchantId } : {}),
+    }),
   }
 }
 
@@ -53,6 +62,44 @@ describe('Binance C2C mock', () => {
 
     expect(result.body).toMatchObject({ code: '000000', success: true, total: 1 })
     expect((result.body as any).data[0]).toMatchObject({ orderNumber: 'ORDER_BUY', totalPrice: '133.00' })
+  })
+
+  it('isolates orders by the merchant account carried in x-user-id', () => {
+    addOrder({ orderNumber: 'HQ_ORDER', externalMerchantId: 'mock-hq-binance' })
+    addOrder({ orderNumber: 'AGENT_ORDER', externalMerchantId: 'mock-agent-binance' })
+
+    const headquarters = getBinanceC2cPlugin().handle(
+      request(
+        '/sapi/v1/c2c/orderMatch/listOrders',
+        {
+          asset: 'USDT',
+          tradeType: 'BUY',
+          orderStatusList: [1],
+          page: 1,
+          rows: 20,
+          startDate: 0,
+          endDate: Date.now() + 60_000,
+        },
+        {},
+        'mock-hq-binance',
+      ),
+    )
+    expect((headquarters.body as any).data).toEqual([
+      expect.objectContaining({ orderNumber: 'HQ_ORDER' }),
+    ])
+
+    const hiddenDetail = getBinanceC2cPlugin().handle(
+      request(
+        '/sapi/v1/c2c/orderMatch/getUserOrderDetail',
+        { adOrderNo: 'HQ_ORDER' },
+        {},
+        'mock-agent-binance',
+      ),
+    )
+    expect(hiddenDetail).toMatchObject({
+      status: 404,
+      body: { code: '400002', message: '订单不存在' },
+    })
   })
 
   it('lists report orders by trade type and serves complaint reasons', () => {

@@ -19,6 +19,13 @@ export interface PaymentExecutionResult<T = unknown> {
   raw: T
 }
 
+export interface PaymentReconciliationPolicy {
+  enabled: boolean
+  initialDelaySeconds: number
+  intervalSeconds: number
+  maxAttempts: number
+}
+
 export interface AlipayPayee {
   amount: string
   payeeIdentity: string

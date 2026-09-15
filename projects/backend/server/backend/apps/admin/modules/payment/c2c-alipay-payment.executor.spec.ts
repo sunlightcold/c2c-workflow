@@ -1,4 +1,12 @@
-import { PaymentExecutionMode, PaymentOrderStatus, PaymentSourceType } from '@admin/database'
+import {
+  PaymentAdapterCode,
+  PaymentExecutionMode,
+  PaymentOrderStatus,
+  PaymentSourceType,
+} from '@admin/database'
+import { AlipayBatchAdapter } from './alipay-batch.adapter'
+import { AlipayMerchantTransferAdapter } from './alipay-merchant-transfer.adapter'
+import { AlipayReceiptAdapter } from './alipay-receipt.adapter'
 import { C2cAlipayPaymentExecutor } from './c2c-alipay-payment.executor'
 import { PaymentExecutionStatus, type AlipayGateway } from './payment-adapter.types'
 import { PaymentNotSubmittedError } from './payment-execution-coordinator'
@@ -32,7 +40,10 @@ describe('C2cAlipayPaymentExecutor', () => {
     loadContext: jest.fn(),
   }
   const gateway: AlipayGateway = { execute: jest.fn() }
-  const gatewayProvider = { create: jest.fn() }
+  const channelFactory = {
+    create: jest.fn(),
+    getReconciliationPolicies: jest.fn(),
+  }
   let executor: C2cAlipayPaymentExecutor
 
   beforeEach(() => {
@@ -46,8 +57,12 @@ describe('C2cAlipayPaymentExecutor', () => {
       order: { ...paymentOrder, status: PaymentOrderStatus.UNKNOWN },
       account: { credentialRef: 'env://ALIPAY_ACCOUNT_1' },
     })
-    gatewayProvider.create.mockResolvedValue(gateway)
-    executor = new C2cAlipayPaymentExecutor(preflight as never, gatewayProvider)
+    channelFactory.create.mockResolvedValue({
+      batch: new AlipayBatchAdapter(gateway),
+      order: new AlipayMerchantTransferAdapter(gateway),
+      receipt: new AlipayReceiptAdapter(gateway),
+    })
+    executor = new C2cAlipayPaymentExecutor(preflight as never, channelFactory)
   })
 
   it('submits an unchanged C2C order through Alipay merchant transfer using the payment number', async () => {
@@ -63,7 +78,10 @@ describe('C2cAlipayPaymentExecutor', () => {
       upstreamId: 'ALIPAY001',
     })
     expect(preflight.verify).toHaveBeenCalledWith('tenant-1', 'payment-1')
-    expect(gatewayProvider.create).toHaveBeenCalledWith('env://ALIPAY_ACCOUNT_1')
+    expect(channelFactory.create).toHaveBeenCalledWith(
+      PaymentAdapterCode.ALIPAY_MERCHANT_TRANSFER,
+      'env://ALIPAY_ACCOUNT_1',
+    )
     expect(gateway.execute).toHaveBeenCalledWith(
       'alipay.fund.trans.uni.transfer',
       expect.objectContaining({
@@ -75,7 +93,7 @@ describe('C2cAlipayPaymentExecutor', () => {
   })
 
   it('classifies gateway preparation failures as definitely not submitted', async () => {
-    gatewayProvider.create.mockRejectedValue(new Error('支付宝应用私钥未配置'))
+    channelFactory.create.mockRejectedValue(new Error('支付宝应用私钥未配置'))
 
     await expect(executor.submit(executable)).rejects.toEqual(
       new PaymentNotSubmittedError('支付宝应用私钥未配置'),

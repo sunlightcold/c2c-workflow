@@ -8,13 +8,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, Repository } from 'typeorm'
 import { CredentialCipherService } from '../system/credential/credential-cipher.service'
-import {
-  BinanceC2cClient,
-  type BinanceCredentials,
-  C2cPlatformCredentialFactory,
-  OkxWebPrivateClient,
-  type OkxWebPrivateCredentials,
-} from '../c2c-platform'
+import { C2cPlatformClient, C2cPlatformCredentialFactory } from '../c2c-platform'
 
 export interface RotateMerchantPlatformCredentialInput {
   apiKey?: string
@@ -59,8 +53,7 @@ export class MerchantPlatformCredentialService {
     private readonly dataSource: DataSource,
     private readonly cipher: CredentialCipherService,
     private readonly credentialFactory: C2cPlatformCredentialFactory,
-    private readonly binance: BinanceC2cClient,
-    private readonly okx: OkxWebPrivateClient,
+    private readonly platformClient: C2cPlatformClient,
   ) {}
 
   async list(tenantId: string, merchantId: string): Promise<MerchantPlatformCredentialView[]> {
@@ -167,11 +160,7 @@ export class MerchantPlatformCredentialService {
       rows: 1,
       orderStatusList: merchant.orderStatusList,
     }
-    if (merchant.platform === MerchantPlatform.BINANCE) {
-      await this.binance.listOrders(credentials as BinanceCredentials, input)
-    } else {
-      await this.okx.listOrders(credentials as OkxWebPrivateCredentials, input)
-    }
+    await this.platformClient.listOrders(merchant.platform, credentials, input)
     return { success: true, platform: merchant.platform }
   }
 

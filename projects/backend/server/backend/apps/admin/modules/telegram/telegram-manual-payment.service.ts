@@ -13,7 +13,6 @@ import {
   PAYMENT_PLAN_RESOLVER,
   type PaymentPlanResolverPort,
 } from '../payment/payment-plan-resolver'
-import { sumCnyAmounts } from '../payment/payment-adapter.types'
 import { PaymentOrderService } from '../payment/payment-order.service'
 import type { TelegramAuthorizationResult } from './telegram-authorization.service'
 import {
@@ -22,6 +21,12 @@ import {
 } from './telegram-message-parser'
 import { TelegramCapability } from './telegram-policy'
 import { TelegramInteractionService } from './telegram-interaction.service'
+import type { TelegramBotReply } from './telegram-query.formatter'
+import {
+  formatManualPaymentAcceptedMessage,
+  formatManualPaymentConfirmation,
+} from './telegram-notification.formatter'
+import { escapeTelegramHtml } from './telegram-query.formatter'
 
 interface TelegramMessageIdentity {
   chatId: string
@@ -35,10 +40,7 @@ interface ManualPaymentContext {
   message: TelegramMessageIdentity
 }
 
-export interface TelegramManualPaymentReply {
-  replyMarkup?: Record<string, unknown>
-  text: string
-}
+export type TelegramManualPaymentReply = TelegramBotReply
 
 @Injectable()
 export class TelegramManualPaymentService {
@@ -84,14 +86,8 @@ export class TelegramManualPaymentService {
       payload: { payments: accepted },
     })
     return {
-      text: [
-        `待确认 ${accepted.length} 笔，合计 ${sumCnyAmounts(accepted.map(({ amount }) => amount))} CNY`,
-        ...accepted.map(
-          (payment, index) =>
-            `${index + 1}. ${payment.sourceBusinessNo} | ${payment.amount} | ${payment.payeeName} | ${payment.payeeIdentity}`,
-        ),
-        ...errors,
-      ].join('\n'),
+      parseMode: 'HTML',
+      text: formatManualPaymentConfirmation(accepted),
       replyMarkup: {
         inline_keyboard: [
           [
@@ -128,6 +124,7 @@ export class TelegramManualPaymentService {
   }
 
   cancel(input: ManualPaymentContext & { interactionId: string }) {
+    if (!this.canCreate(input.authorization)) return Promise.resolve(false)
     return this.interactions.cancel({
       action: TelegramInteractionAction.CREATE_MANUAL_PAYMENTS,
       id: input.interactionId,
@@ -138,10 +135,7 @@ export class TelegramManualPaymentService {
   }
 
   private canCreate(authorization: Extract<TelegramAuthorizationResult, { allowed: true }>) {
-    return (
-      authorization.group.paymentScene === PaymentSourceType.BOT_MANUAL &&
-      authorization.capabilities.includes(TelegramCapability.MANUAL_PAYMENT)
-    )
+    return authorization.capabilities.includes(TelegramCapability.ALIPAY_BATCH_PAYMENT)
   }
 
   private async validatePayment(
@@ -165,7 +159,7 @@ export class TelegramManualPaymentService {
       amount: payment.amount,
       paymentMethod: 'ALIPAY',
       executionMode: PaymentExecutionMode.BATCH,
-      routingKey: `${PaymentSourceType.BOT_MANUAL}:${payment.sourceBusinessNo}`,
+      routingKey: payment.sourceBusinessNo,
     })
     return route ? null : '未匹配到可用的支付宝批量支付方案'
   }
@@ -204,12 +198,33 @@ export class TelegramManualPaymentService {
         errors.length ? errors.join('; ').slice(0, 500) : null,
       )
     }
+    const actionButtons = created.flatMap((order) => {
+      const buttons: Array<{ text: string; callback_data: string }> = [
+        { text: '查询订单', callback_data: `query:order:${order.id}` },
+      ]
+      if (['PENDING_CONFIG', 'CREATED', 'READY'].includes(order.status)) {
+        buttons.push({ text: '作废订单', callback_data: `query:void:${order.id}` })
+      }
+      return buttons
+    })
     return {
-      text: [
-        `已创建 ${created.length} 笔支付订单`,
-        ...created.map((order) => `${order.paymentNo}：${order.status}`),
-        ...errors,
-      ].join('\n'),
+      parseMode: 'HTML' as const,
+      text:
+        [
+          ...created.map((order) =>
+            formatManualPaymentAcceptedMessage({
+              id: order.id,
+              paymentNo: order.paymentNo,
+              sourceBusinessNo: order.sourceBusinessNo,
+              amount: order.amount,
+              payeeName: order.payeeName,
+              payeeIdentity: order.payeeIdentity,
+              status: order.status,
+            }),
+          ),
+          ...errors.map((item) => `<b>订单提交失败</b>\n${escapeTelegramHtml(item)}`),
+        ].join('\n\n') || '<b>订单提交失败</b>',
+      ...(actionButtons.length ? { replyMarkup: { inline_keyboard: [actionButtons] } } : {}),
     }
   }
 }

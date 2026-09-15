@@ -1016,31 +1016,6 @@ export function createPaymentBatchModalOptions({
   };
 }
 
-export function createMerchantOrderPaymentModalOptions(): FormModalOptions {
-  return {
-    props: businessModalProps('创建支付', 520),
-    formProps: {
-      option: businessFormOption,
-      rule: layoutBusinessFormRules(
-        [
-          {
-            field: 'executionMode',
-            options: [
-              { label: '支付宝商家转账', value: 'INSTANT' },
-              { label: '支付宝批量有密', value: 'BATCH' },
-            ],
-            title: '支付方式',
-            type: 'radio',
-            validate: required('请选择支付方式'),
-            value: 'INSTANT',
-          },
-        ],
-        ['executionMode'],
-      ),
-    },
-  };
-}
-
 export function cancelMerchantOrderModalOptions(): FormModalOptions {
   return {
     props: businessModalProps('作废商家订单', 520),
@@ -1071,7 +1046,6 @@ export function cancelMerchantOrderModalOptions(): FormModalOptions {
 
 export function createMerchantOrderAppealModalOptions(
   reasons: Array<{ reasonCode: number; reasonDesc: string }>,
-  onReceipt: (file: File | undefined) => void,
 ): FormModalOptions {
   return {
     props: businessModalProps('提交订单申诉', 680),
@@ -1091,46 +1065,8 @@ export function createMerchantOrderAppealModalOptions(
             validate: required('请选择申诉原因'),
             value: reasons[0]?.reasonCode,
           },
-          {
-            field: 'description',
-            props: {
-              maxlength: 500,
-              placeholder: '请说明已付款及卖家未放行的情况',
-              rows: 4,
-              showCount: true,
-            },
-            title: '申诉说明',
-            type: 'textarea',
-            validate: required('请输入申诉说明'),
-            value: '',
-          },
-          {
-            field: 'receipt',
-            props: {
-              accept: 'image/png,image/jpeg,image/webp',
-              beforeUpload: (file: File) => {
-                onReceipt(file);
-                return false;
-              },
-              listType: 'picture',
-              maxCount: 1,
-            },
-            on: { remove: () => onReceipt(undefined) },
-            title: '付款回单',
-            type: 'upload',
-            validate: [
-              {
-                message: '请选择一张付款回单图片',
-                min: 1,
-                required: true,
-                trigger: 'change',
-                type: 'array',
-              },
-            ],
-            value: [],
-          },
         ],
-        ['description', 'reasonCode', 'receipt'],
+        ['reasonCode'],
       ),
     },
   };

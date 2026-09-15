@@ -4,6 +4,7 @@ import { BinanceC2cClient } from './binance-c2c.client'
 import { C2C_HTTP_TRANSPORT } from './c2c-platform.types'
 import { OkxWebPrivateClient } from './okx-web-private.client'
 import { C2cPlatformCredentialFactory } from './c2c-platform-credential.factory'
+import { C2cPlatformClient } from './c2c-platform.client'
 
 @Module({
   providers: [
@@ -12,7 +13,8 @@ import { C2cPlatformCredentialFactory } from './c2c-platform-credential.factory'
     BinanceC2cClient,
     OkxWebPrivateClient,
     C2cPlatformCredentialFactory,
+    C2cPlatformClient,
   ],
-  exports: [BinanceC2cClient, C2cPlatformCredentialFactory, OkxWebPrivateClient],
+  exports: [C2cPlatformClient, C2cPlatformCredentialFactory],
 })
 export class C2cPlatformModule {}

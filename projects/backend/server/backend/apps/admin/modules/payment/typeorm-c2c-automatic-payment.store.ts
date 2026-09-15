@@ -19,7 +19,6 @@ export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore
         SELECT merchant_order."tenantId" AS "tenantId",
                merchant_order."merchantId" AS "merchantId",
                merchant_order.id AS "merchantOrderId",
-               merchant."automaticPaymentExecutionMode" AS "executionMode",
                payment_order.id AS "paymentOrderId",
                payment_order.status AS "paymentOrderStatus",
                payment_order."executionMode" AS "paymentOrderExecutionMode"
@@ -36,7 +35,6 @@ export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore
          AND payment_order."sourceBusinessNo" = merchant_order."platformOrderId"
         WHERE tenant.status = 'active'
           AND merchant.status = 'active'
-          AND merchant."automaticPaymentEnabled" = true
           AND merchant_order.status = 'PENDING_PAYMENT'
           AND merchant_order.payable = true
           AND merchant_order."identityMatched" = true
@@ -45,6 +43,41 @@ export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore
           AND merchant_order."payeeIdentity" IS NOT NULL
           AND merchant_order."payeeName" IS NOT NULL
           AND merchant_order."paymentDeadline" > $2
+          AND EXISTS (
+            SELECT 1
+            FROM merchant_payment_plan plan
+            INNER JOIN payment_account account
+              ON account.id = plan."paymentAccountId"
+             AND account."tenantId" = plan."tenantId"
+            INNER JOIN payment_account_channel account_channel
+              ON account_channel.id = plan."paymentAccountChannelId"
+             AND account_channel."paymentAccountId" = account.id
+            INNER JOIN payment_channel channel ON channel.id = account_channel."channelId"
+            INNER JOIN payment_platform platform
+              ON platform.id = account."platformId"
+             AND platform.id = channel."platformId"
+            LEFT JOIN payment_batch_policy batch_policy
+              ON batch_policy.id = plan."batchPolicyId"
+             AND batch_policy."tenantId" = plan."tenantId"
+             AND (batch_policy."merchantId" IS NULL OR batch_policy."merchantId" = plan."merchantId")
+            WHERE plan."tenantId" = merchant_order."tenantId"
+              AND plan."merchantId" = merchant_order."merchantId"
+              AND plan.scene = 'C2C_BUY'
+              AND plan.currency = merchant_order."fiatCurrency"
+              AND plan.status = 'active'
+              AND plan."automaticPaymentEnabled" = true
+              AND account.status = 'active'
+              AND account_channel.status = 'active'
+              AND channel.status = 'active'
+              AND platform.status = 'active'
+              AND platform.code = merchant_order."paymentMethod"
+              AND (account_channel."minimumAmount" IS NULL OR account_channel."minimumAmount" <= merchant_order."fiatAmount")
+              AND (account_channel."maximumAmount" IS NULL OR account_channel."maximumAmount" >= merchant_order."fiatAmount")
+              AND (
+                (channel."executionMode" = 'INSTANT' AND plan."batchPolicyId" IS NULL)
+                OR (channel."executionMode" = 'BATCH' AND batch_policy.status = 'active')
+              )
+          )
           AND (
             payment_order.id IS NULL
             OR payment_order.status IN ('PENDING_CONFIG', 'READY')
@@ -66,15 +99,13 @@ export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore
           ON merchant.id = payment_order."merchantId"
          AND merchant."tenantId" = payment_order."tenantId"
         WHERE merchant.status = 'active'
-          AND merchant."automaticPaymentEnabled" = true
-          AND payment_order."sourceType" = $1
           AND payment_order.status = 'READY'
           AND payment_order."executionMode" = 'BATCH'
         GROUP BY payment_order."tenantId", payment_order."merchantId"
         ORDER BY MIN(payment_order."createdAt") ASC
-        LIMIT $2
+        LIMIT $1
       `,
-      [PaymentSourceType.C2C_BUY, limit],
+      [limit],
     )
   }
 
@@ -86,8 +117,7 @@ export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore
                payment_order.status,
                payment_order."upstreamId" AS "upstreamId"
         FROM payment_order
-        WHERE payment_order."sourceType" = $1
-          AND payment_order.status = ANY($2::payment_order_status_enum[])
+        WHERE payment_order.status = ANY($1::payment_order_status_enum[])
           AND (
             payment_order.status = 'PLATFORM_CONFIRM_PENDING'
             OR NOT EXISTS (
@@ -97,10 +127,9 @@ export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore
             )
           )
         ORDER BY payment_order."updatedAt" ASC, payment_order.id ASC
-        LIMIT $3
+        LIMIT $2
       `,
       [
-        PaymentSourceType.C2C_BUY,
         [
           PaymentOrderStatus.SUBMITTING,
           PaymentOrderStatus.PROCESSING,
@@ -118,6 +147,10 @@ export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore
         SELECT id, "tenantId" AS "tenantId", status
         FROM payment_batch
         WHERE status = ANY($1::payment_batch_status_enum[])
+          AND (
+            "nextReconcileAt" <= NOW()
+            OR (status = 'SUBMITTING' AND "nextReconcileAt" IS NULL)
+          )
         ORDER BY "updatedAt" ASC, id ASC
         LIMIT $2
       `,

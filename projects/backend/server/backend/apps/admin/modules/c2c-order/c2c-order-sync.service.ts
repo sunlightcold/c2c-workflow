@@ -10,13 +10,10 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { MerchantPlatformCredentialService } from '../business/merchant-platform-credential.service'
 import {
-  BinanceC2cClient,
-  type BinanceCredentials,
+  C2cPlatformClient,
+  type C2cPlatformCredentials,
   C2cPlatformCredentialFactory,
   type C2cBuyOrderDetail,
-  type C2cBuyOrderPage,
-  OkxWebPrivateClient,
-  type OkxWebPrivateCredentials,
 } from '../c2c-platform'
 import { C2C_SECRET_RESOLVER, type C2cSecretResolver } from './c2c-secret-resolver'
 import type { C2cOrderSyncStore } from './c2c-order-sync.types'
@@ -33,8 +30,7 @@ export class C2cOrderSyncService {
     private readonly credentialService: MerchantPlatformCredentialService,
     @Inject(C2C_SECRET_RESOLVER) private readonly secretResolver: C2cSecretResolver,
     private readonly credentialFactory: C2cPlatformCredentialFactory,
-    private readonly binance: BinanceC2cClient,
-    private readonly okx: OkxWebPrivateClient,
+    private readonly platformClient: C2cPlatformClient,
     @Inject(C2C_ORDER_SYNC_STORE) private readonly store: C2cOrderSyncStore,
     @Optional() private readonly eventEmitter?: EventEmitterService,
   ) {}
@@ -63,9 +59,9 @@ export class C2cOrderSyncService {
         orders,
         now,
       )
-      const orderIds = [
-        ...new Set([...(result.createdOrderIds ?? []), ...(result.changedOrderIds ?? [])]),
-      ]
+      // "discovered" is a first-seen event. Status refreshes are persisted for
+      // reconciliation but must not spam Telegram on every polling interval.
+      const orderIds = [...new Set(result.createdOrderIds ?? [])]
       if (orderIds.length) {
         this.eventEmitter?.emit(EVENT_KEYS.TELEGRAM_ORDER_DISCOVERED, {
           tenantId,
@@ -88,7 +84,7 @@ export class C2cOrderSyncService {
 
   private async fetchAll(
     platform: MerchantPlatform,
-    credentials: BinanceCredentials | OkxWebPrivateCredentials,
+    credentials: C2cPlatformCredentials,
     startDate: number,
     endDate: number,
     pageSize: number,
@@ -96,9 +92,9 @@ export class C2cOrderSyncService {
   ): Promise<C2cBuyOrderDetail[]> {
     const result: C2cBuyOrderDetail[] = []
     let page = 1
-    let response: C2cBuyOrderPage
+    let response
     do {
-      response = await this.list(platform, credentials, {
+      response = await this.platformClient.listOrders(platform, credentials, {
         tradeType: 'BUY',
         asset: 'USDT',
         startDate,
@@ -108,32 +104,16 @@ export class C2cOrderSyncService {
         orderStatusList,
       })
       for (const summary of response.items) {
-        const detail = await this.detail(platform, credentials, summary.platformOrderId)
+        const detail = await this.platformClient.getOrderDetail(
+          platform,
+          credentials,
+          summary.platformOrderId,
+        )
         result.push({ ...detail, assetAmount: detail.assetAmount ?? summary.assetAmount })
       }
       page += 1
-    } while (result.length < response.total && response.items.length > 0)
+    } while (response.hasMore)
     return result
-  }
-
-  private list(
-    platform: MerchantPlatform,
-    credentials: BinanceCredentials | OkxWebPrivateCredentials,
-    input: Parameters<BinanceC2cClient['listOrders']>[1],
-  ) {
-    return platform === MerchantPlatform.BINANCE
-      ? this.binance.listOrders(credentials as BinanceCredentials, input)
-      : this.okx.listOrders(credentials as OkxWebPrivateCredentials, input)
-  }
-
-  private detail(
-    platform: MerchantPlatform,
-    credentials: BinanceCredentials | OkxWebPrivateCredentials,
-    orderId: string,
-  ) {
-    return platform === MerchantPlatform.BINANCE
-      ? this.binance.getOrderDetail(credentials as BinanceCredentials, orderId)
-      : this.okx.getOrderDetail(credentials as OkxWebPrivateCredentials, orderId)
   }
 
   private errorMessage(error: unknown): string {

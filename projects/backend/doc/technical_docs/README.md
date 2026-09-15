@@ -14,3 +14,4 @@
 - [07-architecture-review-main.md](07-architecture-review-main.md)
 - [08-testing-strategy.md](08-testing-strategy.md)
 - [09-recent-feature-branch-audit.md](09-recent-feature-branch-audit.md)
+- [10-c2c-platform-provider.md](10-c2c-platform-provider.md)

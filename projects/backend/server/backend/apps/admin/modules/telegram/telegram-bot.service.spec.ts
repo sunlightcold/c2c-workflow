@@ -12,7 +12,7 @@ describe('TelegramBotService', () => {
     name: 'Main bot',
     tokenRef: 'env://BOT_TOKEN',
     webhookSecretRef: null,
-    capabilities: [TelegramCapability.ORDER_QUERY, TelegramCapability.MANUAL_PAYMENT],
+    capabilities: [TelegramCapability.ORDER_QUERY, TelegramCapability.ALIPAY_BATCH_PAYMENT],
     status: BusinessStatus.ACTIVE,
   }
   const queryBuilder = {
@@ -29,7 +29,7 @@ describe('TelegramBotService', () => {
     find: jest.fn().mockResolvedValue([
       {
         bindingState: TelegramGroupBindingState.ACTIVE,
-        capabilities: [TelegramCapability.MANUAL_PAYMENT],
+        capabilities: [TelegramCapability.ALIPAY_BATCH_PAYMENT],
       },
     ]),
   }

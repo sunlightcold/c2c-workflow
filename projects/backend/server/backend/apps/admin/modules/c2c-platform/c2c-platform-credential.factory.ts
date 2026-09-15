@@ -31,21 +31,24 @@ export class C2cPlatformCredentialFactory {
         ...(reference.xUserId ? { xUserId: reference.xUserId } : {}),
       }
     }
-    const cookie = this.text(secret.cookie)
-    const authorization = this.text(secret.authorization)
-    const signaturePrivateKey = this.text(secret.signaturePrivateKey)
-    if (!cookie || !authorization || !signaturePrivateKey)
-      throw new Error('欧易 Secret 缺少 cookie、authorization 或 signaturePrivateKey')
-    return {
-      cookie,
-      authorization,
-      signaturePrivateKey,
-      ...(typeof secret.skipPaymentProofUpload === 'boolean'
-        ? { skipPaymentProofUpload: secret.skipPaymentProofUpload }
-        : {}),
-      baseUrl: reference.apiBaseUrl ?? 'https://www.okx.com',
-      timeoutMs: reference.requestTimeoutMs,
+    if (platform === MerchantPlatform.OKX) {
+      const cookie = this.text(secret.cookie)
+      const authorization = this.text(secret.authorization)
+      const signaturePrivateKey = this.text(secret.signaturePrivateKey)
+      if (!cookie || !authorization || !signaturePrivateKey)
+        throw new Error('欧易 Secret 缺少 cookie、authorization 或 signaturePrivateKey')
+      return {
+        cookie,
+        authorization,
+        signaturePrivateKey,
+        ...(typeof secret.skipPaymentProofUpload === 'boolean'
+          ? { skipPaymentProofUpload: secret.skipPaymentProofUpload }
+          : {}),
+        baseUrl: reference.apiBaseUrl ?? 'https://www.okx.com',
+        timeoutMs: reference.requestTimeoutMs,
+      }
     }
+    throw new Error(`不支持的 C2C 平台: ${String(platform)}`)
   }
 
   private text(value: unknown): string {

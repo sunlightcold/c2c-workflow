@@ -1,6 +1,6 @@
 import { MerchantOrderStatus } from '@admin/database'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { Type } from 'class-transformer'
+import { Transform, Type } from 'class-transformer'
 import {
   IsDateString,
   IsEnum,
@@ -15,9 +15,11 @@ import {
 import { TenantContextDto } from '../business/business.dto'
 
 export class MerchantOrderListDto extends TenantContextDto {
-  @ApiProperty()
+  @ApiPropertyOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
+  @IsOptional()
   @IsUUID()
-  merchantId: string
+  merchantId?: string
 
   @ApiPropertyOptional({ enum: MerchantOrderStatus })
   @IsOptional()
@@ -72,9 +74,4 @@ export class MerchantOrderAppealSubmitDto extends MerchantOrderDetailDto {
   @IsInt()
   @Min(1)
   reasonCode: number
-
-  @ApiProperty({ description: '申诉说明', maxLength: 500 })
-  @IsString()
-  @MaxLength(500)
-  description: string
 }

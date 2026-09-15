@@ -65,6 +65,7 @@
     "nanoid": "catalog:",
     "nest-winston": "catalog:",
     "nestjs-typeorm-paginate": "catalog:",
+    "node-poppler": "catalog:",
     "otplib": "catalog:",
     "passport-jwt": "catalog:",
     "pg": "catalog:",

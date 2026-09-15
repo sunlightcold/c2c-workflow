@@ -16,7 +16,6 @@ import {
   PaymentChannelEntity,
   PaymentOrderEntity,
   PaymentOrderStatusHistoryEntity,
-  PaymentSourceType,
   PaymentPlatformEntity,
 } from '@/apps/admin/database'
 import {
@@ -28,6 +27,9 @@ import { migrateC2cMerchantOrders } from '@/apps/admin/database/migrations/c2c-m
 import { migrateC2cMerchantOrderAppeals } from '@/apps/admin/database/migrations/c2c-merchant-order-appeals.migration'
 import { migrateC2cPaymentBatches } from '@/apps/admin/database/migrations/c2c-payment-batches.migration'
 import { migrateC2cPaymentBatchPolicies } from '@/apps/admin/database/migrations/c2c-payment-batch-policies.migration'
+import { migrateC2cPaymentReconciliationPolicy } from '@/apps/admin/database/migrations/c2c-payment-reconciliation-policy.migration'
+import { migrateC2cAutomaticPayments } from '@/apps/admin/database/migrations/c2c-automatic-payments.migration'
+import { migrateC2cPaymentPlanAutomation } from '@/apps/admin/database/migrations/c2c-payment-plan-automation.migration'
 import { migrateC2cPaymentOrders } from '@/apps/admin/database/migrations/c2c-payment-orders.migration'
 import { migrateC2cPaymentRouting } from '@/apps/admin/database/migrations/c2c-payment-routing.migration'
 import { migratePaymentAccountCredentials } from '@/apps/admin/database/migrations/payment-account-credentials.migration'
@@ -105,7 +107,10 @@ describe('Payment batch migration database integration', () => {
       await migrateC2cMerchantOrders(manager)
       await migrateC2cMerchantOrderAppeals(manager)
       await migrateC2cPaymentBatches(manager)
+      await migrateC2cAutomaticPayments(manager)
       await migrateC2cPaymentBatchPolicies(manager)
+      await migrateC2cPaymentReconciliationPolicy(manager)
+      await migrateC2cPaymentPlanAutomation({ query: manager.query.bind(manager) })
       await manager.query(
         `INSERT INTO merchant (id, "tenantId", code, name, platform)
          VALUES ($1, $2, 'merchant-1', 'Merchant 1', 'BINANCE')`,
@@ -240,9 +245,7 @@ describe('Payment batch migration database integration', () => {
   })
 
   it('offers only unbatched ready orders to automatic batch submission', async () => {
-    await expect(
-      service.findReadyGroups(tenantId, merchantId, PaymentSourceType.BOT_MANUAL),
-    ).resolves.toEqual([
+    await expect(service.findReadyGroups(tenantId, merchantId)).resolves.toEqual([
       expect.objectContaining({
         batchPolicyId,
         paymentOrderIds: [orderId],
@@ -251,15 +254,11 @@ describe('Payment batch migration database integration', () => {
     ])
     const created = await service.create(tenantId, [orderId])
 
-    await expect(
-      service.findReadyGroups(tenantId, merchantId, PaymentSourceType.BOT_MANUAL),
-    ).resolves.toEqual([])
+    await expect(service.findReadyGroups(tenantId, merchantId)).resolves.toEqual([])
     await dataSource.query(`UPDATE payment_batch_item SET status = 'FAILED' WHERE "batchId" = $1`, [
       created.batch.id,
     ])
-    await expect(
-      service.findReadyGroups(tenantId, merchantId, PaymentSourceType.BOT_MANUAL),
-    ).resolves.toEqual([
+    await expect(service.findReadyGroups(tenantId, merchantId)).resolves.toEqual([
       expect.objectContaining({
         batchPolicyId,
         paymentOrderIds: [orderId],

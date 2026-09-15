@@ -31,6 +31,16 @@ export interface PaymentExecutor {
   query: (order: ExecutablePaymentOrder) => Promise<PaymentExecutionResult>
 }
 
+export interface PaymentUpstreamQueryResult {
+  order: ExecutablePaymentOrder
+  upstream: {
+    status: PaymentExecutionStatus | 'UNKNOWN'
+    upstreamId?: string
+    errorMessage?: string
+    raw: unknown
+  }
+}
+
 export interface PlatformPaymentConfirmer {
   confirmPaid: (order: ExecutablePaymentOrder) => Promise<void>
 }
@@ -68,7 +78,6 @@ export class PaymentExecutionCoordinator {
       return failed
     }
     const paid = await this.applyPaymentResult(claimed, result)
-    this.emitStatus(paid)
     if (paid.status !== PaymentOrderState.SUCCESS) return paid
     return this.confirmPlatform(paid)
   }
@@ -95,9 +104,59 @@ export class PaymentExecutionCoordinator {
       return unknown
     }
     const paid = await this.applyPaymentResult(order, result)
-    this.emitStatus(paid)
     if (paid.status !== PaymentOrderState.SUCCESS) return paid
     return this.confirmPlatform(paid)
+  }
+
+  /** Query the channel and expose its normalized result and raw response for the admin UI. */
+  async queryUpstream(tenantId: string, orderId: string): Promise<PaymentUpstreamQueryResult> {
+    const order = await this.store.get(tenantId, orderId)
+    try {
+      const result = await this.executor.query(order)
+      let current = order
+      if (
+        [
+          PaymentOrderState.SUBMITTING,
+          PaymentOrderState.PROCESSING,
+          PaymentOrderState.UNKNOWN,
+        ].includes(order.status)
+      ) {
+        current = await this.applyPaymentResult(order, result)
+        if (current.status === PaymentOrderState.SUCCESS)
+          current = await this.confirmPlatform(current)
+      }
+      return {
+        order: current,
+        upstream: {
+          status: result.status,
+          upstreamId: result.upstreamId,
+          errorMessage: result.errorMessage,
+          raw: result.raw,
+        },
+      }
+    } catch (error) {
+      let current = order
+      if (
+        [
+          PaymentOrderState.SUBMITTING,
+          PaymentOrderState.PROCESSING,
+          PaymentOrderState.UNKNOWN,
+        ].includes(order.status)
+      ) {
+        current = await this.store.transition(order, PaymentOrderState.UNKNOWN, {
+          errorMessage: this.errorMessage(error),
+        })
+        this.emitStatus(current, this.errorMessage(error))
+      }
+      return {
+        order: current,
+        upstream: {
+          status: PaymentExecutionStatus.UNKNOWN,
+          errorMessage: this.errorMessage(error),
+          raw: null,
+        },
+      }
+    }
   }
 
   async confirmPlatform(order: ExecutablePaymentOrder): Promise<ExecutablePaymentOrder> {

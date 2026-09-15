@@ -89,7 +89,7 @@ describe('Telegram administration API contract (e2e)', () => {
         name: '主支付机器人',
         botType: 'PAYMENT',
         token: '1234567890:AAabcdefghijklmnopQRST_uvwx',
-        capabilities: ['ORDER_QUERY', 'MANUAL_PAYMENT'],
+        capabilities: ['ORDER_QUERY', 'ALIPAY_BATCH_PAYMENT'],
         paymentOrderRequireConfirmation: true,
         batchSubmitRequireConfirmation: true,
       })
@@ -180,7 +180,7 @@ describe('Telegram administration API contract (e2e)', () => {
         merchantId: '00000000-0000-4000-8000-000000000030',
         name: '支付一群',
         paymentScene: 'BOT_MANUAL',
-        capabilities: ['ORDER_QUERY', 'MANUAL_PAYMENT'],
+        capabilities: ['ORDER_QUERY', 'ALIPAY_BATCH_PAYMENT'],
       })
       .expect(201)
     expectWrappedSuccess(created.body)

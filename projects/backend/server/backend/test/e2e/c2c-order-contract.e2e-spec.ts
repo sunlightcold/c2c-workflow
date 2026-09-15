@@ -153,7 +153,7 @@ describe('C2C merchant order API contract (e2e)', () => {
     )
   })
 
-  it('submits one appeal with a validated receipt upload', async () => {
+  it('submits one appeal and delegates automatic receipt handling to the service', async () => {
     appeals.submit.mockResolvedValue({
       complaintNo: '30006788',
       orderNo: 'BIN-1',
@@ -162,13 +162,10 @@ describe('C2C merchant order API contract (e2e)', () => {
     })
     const response = await request(app.getHttpServer())
       .post('/v1/sys/merchant-orders/00000000-0000-4000-8000-000000000030/appeal')
-      .field('tenantId', '00000000-0000-4000-8000-000000000010')
-      .field('merchantId', '00000000-0000-4000-8000-000000000020')
-      .field('reasonCode', '6')
-      .field('description', '我已付款给卖家，卖家未放行')
-      .attach('receipt', Buffer.from('receipt'), {
-        filename: 'receipt.png',
-        contentType: 'image/png',
+      .send({
+        tenantId: '00000000-0000-4000-8000-000000000010',
+        merchantId: '00000000-0000-4000-8000-000000000020',
+        reasonCode: 6,
       })
       .expect(201)
 
@@ -177,12 +174,7 @@ describe('C2C merchant order API contract (e2e)', () => {
       'tenant-1',
       '00000000-0000-4000-8000-000000000020',
       '00000000-0000-4000-8000-000000000030',
-      {
-        description: '我已付款给卖家，卖家未放行',
-        fileName: 'receipt.png',
-        receipt: expect.any(Buffer),
-        reasonCode: 6,
-      },
+      { reasonCode: 6 },
     )
   })
 })

@@ -42,9 +42,14 @@ export class TelegramAuthorizationService {
     private readonly superAdmins: Repository<TelegramSuperAdminEntity>,
   ) {}
 
-  async isActiveSuperAdmin(tenantId: string, telegramUserId: string): Promise<boolean> {
+  async canBindGroups(tenantId: string, telegramUserId: string): Promise<boolean> {
     const admin = await this.superAdmins.findOne({
-      where: { tenantId, telegramUserId, status: BusinessStatus.ACTIVE },
+      where: {
+        tenantId,
+        telegramUserId,
+        status: BusinessStatus.ACTIVE,
+        scopeType: TelegramSuperAdminScopeType.ALL_GROUPS,
+      },
     })
     return Boolean(admin)
   }

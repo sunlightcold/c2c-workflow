@@ -59,9 +59,7 @@ describe('PaymentBatchService ready groups', () => {
     const dataSource = { getRepository: jest.fn().mockReturnValue(repository) }
     const service = new PaymentBatchService(dataSource as never)
 
-    await expect(
-      service.findReadyGroups('tenant-1', 'merchant-1', PaymentSourceType.BOT_MANUAL),
-    ).resolves.toEqual([
+    await expect(service.findReadyGroups('tenant-1', 'merchant-1')).resolves.toEqual([
       {
         batchPolicyId: 'policy-1',
         currency: 'CNY',
@@ -92,6 +90,10 @@ describe('PaymentBatchService ready groups', () => {
     expect(query.andWhere).toHaveBeenCalledWith(expect.stringContaining('NOT EXISTS'), {
       activeItemStatuses: ['QUEUED', 'SUBMITTING', 'PROCESSING', 'UNKNOWN'],
     })
+    expect(query.andWhere).not.toHaveBeenCalledWith(
+      'payment_order."sourceType" = :sourceType',
+      expect.anything(),
+    )
   })
 
   it('finds a global policy ready groups across merchants without mixing them', async () => {
@@ -111,12 +113,7 @@ describe('PaymentBatchService ready groups', () => {
     const dataSource = { getRepository: jest.fn().mockReturnValue(repository) }
     const service = new PaymentBatchService(dataSource as never)
 
-    const groups = await service.findReadyGroups(
-      'tenant-1',
-      null,
-      PaymentSourceType.C2C_BUY,
-      'policy-1',
-    )
+    const groups = await service.findReadyGroups('tenant-1', null, 'policy-1')
 
     expect(
       groups.map(({ merchantId, paymentOrderIds }) => ({ merchantId, paymentOrderIds })),
@@ -128,6 +125,35 @@ describe('PaymentBatchService ready groups', () => {
       'payment_order."merchantId" = :merchantId',
       expect.anything(),
     )
+  })
+
+  it('groups manual and C2C orders together when their locked payment dimensions match', async () => {
+    const query = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([
+        order('order-manual', 'account-1', 'channel-1', '10.00'),
+        {
+          ...order('order-c2c', 'account-1', 'channel-1', '20.00'),
+          sourceType: PaymentSourceType.C2C_BUY,
+        },
+      ]),
+    }
+    const dataSource = {
+      getRepository: jest
+        .fn()
+        .mockReturnValue({ createQueryBuilder: jest.fn().mockReturnValue(query) }),
+    }
+    const service = new PaymentBatchService(dataSource as never)
+
+    await expect(service.findReadyGroups('tenant-1', 'merchant-1')).resolves.toEqual([
+      expect.objectContaining({
+        paymentOrderIds: ['order-manual', 'order-c2c'],
+        totalAmount: '30.00',
+      }),
+    ])
   })
 })
 

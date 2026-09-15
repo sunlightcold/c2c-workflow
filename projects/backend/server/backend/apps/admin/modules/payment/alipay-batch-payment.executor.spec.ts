@@ -1,4 +1,7 @@
-import { PaymentBatchStatus, PaymentSourceType } from '@admin/database'
+import { PaymentAdapterCode, PaymentBatchStatus, PaymentSourceType } from '@admin/database'
+import { AlipayBatchAdapter } from './alipay-batch.adapter'
+import { AlipayMerchantTransferAdapter } from './alipay-merchant-transfer.adapter'
+import { AlipayReceiptAdapter } from './alipay-receipt.adapter'
 import { PaymentExecutionStatus } from './payment-adapter.types'
 import { AlipayBatchPaymentExecutor } from './alipay-batch-payment.executor'
 import { PaymentNotSubmittedError } from './payment-execution.errors'
@@ -10,6 +13,8 @@ describe('AlipayBatchPaymentExecutor', () => {
     batchNo: 'BAT-1',
     status: PaymentBatchStatus.SUBMITTING,
     credentialRef: 'secret://alipay/account-1',
+    reconciliationAttempts: 0,
+    nextReconcileAt: null,
     items: [
       {
         id: 'item-1',
@@ -23,13 +28,23 @@ describe('AlipayBatchPaymentExecutor', () => {
     ],
   }
   const gateway = { execute: jest.fn() }
-  const gateways = { create: jest.fn() }
+  const channels = {
+    create: jest.fn(),
+    getReconciliationPolicies: jest.fn().mockReturnValue({
+      batch: { enabled: true, initialDelaySeconds: 10, intervalSeconds: 5, maxAttempts: 12 },
+      order: { enabled: false, initialDelaySeconds: 0, intervalSeconds: 0, maxAttempts: 0 },
+    }),
+  }
   let executor: AlipayBatchPaymentExecutor
 
   beforeEach(() => {
     jest.clearAllMocks()
-    gateways.create.mockResolvedValue(gateway)
-    executor = new AlipayBatchPaymentExecutor(gateways)
+    channels.create.mockResolvedValue({
+      batch: new AlipayBatchAdapter(gateway),
+      order: new AlipayMerchantTransferAdapter(gateway),
+      receipt: new AlipayReceiptAdapter(gateway),
+    })
+    executor = new AlipayBatchPaymentExecutor(channels)
   })
 
   it('uses the batch number and payment numbers as stable Alipay idempotency keys', async () => {
@@ -51,10 +66,14 @@ describe('AlipayBatchPaymentExecutor', () => {
         trans_order_list: [expect.objectContaining({ out_biz_no: 'PAY-1' })],
       }),
     )
+    expect(channels.create).toHaveBeenCalledWith(
+      PaymentAdapterCode.ALIPAY_BATCH,
+      'secret://alipay/account-1',
+    )
   })
 
   it('classifies credential resolution failure as definitely not submitted', async () => {
-    gateways.create.mockRejectedValue(new Error('Secret missing'))
+    channels.create.mockRejectedValue(new Error('Secret missing'))
 
     await expect(executor.submit(batch)).rejects.toEqual(
       new PaymentNotSubmittedError('Secret missing'),
@@ -78,5 +97,14 @@ describe('AlipayBatchPaymentExecutor', () => {
       'alipay.fund.batch.detail.query',
       expect.objectContaining({ out_batch_no: 'BAT-1' }),
     )
+  })
+
+  it('exposes the reconciliation policy defined by the payment channel', () => {
+    expect(executor.getReconciliationPolicy()).toEqual({
+      enabled: true,
+      initialDelaySeconds: 10,
+      intervalSeconds: 5,
+      maxAttempts: 12,
+    })
   })
 })

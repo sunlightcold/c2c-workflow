@@ -11,16 +11,12 @@ export namespace BusinessApi {
   export type PaymentSourceType = 'BOT_MANUAL' | 'C2C_BUY' | 'REFUND';
   export type TelegramCapability =
     | 'ALIPAY_BATCH_PAYMENT'
-    | 'BALANCE_QUERY'
     | 'BOT_STATUS_MANAGE'
     | 'C2C_APPEAL'
     | 'C2C_DAILY_REPORT'
     | 'C2C_ORDER_PAYMENT'
-    | 'GROUP_MEMBER_MANAGE'
-    | 'MANUAL_PAYMENT'
     | 'ORDER_QUERY'
     | 'PAYMENT_BATCH_SUBMIT'
-    | 'PAYMENT_RESULT_NOTIFICATION'
     | 'PAYMENT_STATISTICS'
     | 'RECEIPT_QUERY';
   export type TelegramBotType = 'PAYMENT';
@@ -51,8 +47,6 @@ export namespace BusinessApi {
 
   export interface Merchant {
     apiBaseUrl: string;
-    automaticPaymentEnabled: boolean;
-    automaticPaymentExecutionMode: PaymentExecutionMode;
     authMode: 'API_KEY' | 'WEB_COOKIE' | null;
     autoAppealDelayMinutes: number;
     autoAppealEnabled: boolean;
@@ -142,6 +136,7 @@ export namespace BusinessApi {
   }
 
   export interface PaymentPlan {
+    automaticPaymentEnabled: boolean;
     batchPolicyId: null | string;
     currency: string;
     id: string;
@@ -156,6 +151,7 @@ export namespace BusinessApi {
   }
 
   export interface UpdatePaymentPlanInput extends TenantContext {
+    automaticPaymentEnabled?: boolean;
     batchPolicyId?: null | string;
     paymentAccountChannelId?: string;
     paymentAccountId?: string;
@@ -400,8 +396,6 @@ export namespace BusinessApi {
   export interface CreateMerchantInput extends TenantContext {
     apiBaseUrl?: string;
     apiKey?: string;
-    automaticPaymentEnabled?: boolean;
-    automaticPaymentExecutionMode?: PaymentExecutionMode;
     authorization?: string;
     autoAppealDelayMinutes?: number;
     autoAppealEnabled?: boolean;
@@ -725,6 +719,7 @@ export const createPaymentPlanApi = (
   data: BusinessApi.TenantContext &
     Pick<
       BusinessApi.PaymentPlan,
+      | 'automaticPaymentEnabled'
       | 'batchPolicyId'
       | 'currency'
       | 'merchantId'
@@ -845,7 +840,6 @@ export const syncMerchantOrdersApi = (
 export const createMerchantOrderPaymentApi = (
   id: string,
   data: BusinessApi.TenantContext & {
-    executionMode: BusinessApi.PaymentExecutionMode;
     merchantId: string;
   },
 ) =>

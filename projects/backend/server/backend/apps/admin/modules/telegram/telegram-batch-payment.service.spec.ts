@@ -51,7 +51,9 @@ describe('TelegramBatchPaymentService', () => {
 
     const result = await service.prepare(context as never)
 
-    expect(result.text).toContain('待确认 3 笔，分为 2 个支付批次')
+    expect(result.text).toContain('<b>请确认提交批次</b>')
+    expect(result.text).toContain('待提交订单：<code>3</code> 笔')
+    expect(result.text).toContain('批次组：<code>2</code> 组')
     expect(interactions.create).toHaveBeenCalledWith(
       expect.objectContaining({
         action: TelegramInteractionAction.SUBMIT_PAYMENT_BATCHES,
@@ -63,6 +65,22 @@ describe('TelegramBatchPaymentService', () => {
         },
       }),
     )
+    expect(batches.findReadyGroups).toHaveBeenCalledWith('tenant-1', 'merchant-1')
+  })
+
+  it('finds bot manual orders even when the bound group handles C2C notifications', async () => {
+    batches.findReadyGroups.mockResolvedValue([])
+    const c2cContext = {
+      ...context,
+      authorization: {
+        ...context.authorization,
+        group: { ...context.authorization.group, paymentScene: PaymentSourceType.C2C_BUY },
+      },
+    }
+
+    await service.prepare(c2cContext as never)
+
+    expect(batches.findReadyGroups).toHaveBeenCalledWith('tenant-1', 'merchant-1')
   })
 
   it('reaquires the matching action and submits every snapshotted group', async () => {
@@ -78,7 +96,7 @@ describe('TelegramBatchPaymentService', () => {
     const confirmation = { ...context, interactionId: 'interaction-1' }
 
     await expect(service.confirm(confirmation as never)).resolves.toMatchObject({
-      text: expect.stringContaining('BAT001'),
+      text: expect.stringContaining('已提交批次：<code>1</code>'),
     })
     expect(interactions.acquire).toHaveBeenCalledWith(
       expect.objectContaining({ action: TelegramInteractionAction.SUBMIT_PAYMENT_BATCHES }),
@@ -90,5 +108,19 @@ describe('TelegramBatchPaymentService', () => {
       TelegramInteractionState.COMPLETED,
       null,
     )
+  })
+
+  it('does not cancel a batch interaction after submit permission is revoked', async () => {
+    const revokedAuthorization = {
+      ...context.authorization,
+      capabilities: [],
+    }
+    const revokedContext = {
+      ...context,
+      authorization: revokedAuthorization,
+      interactionId: 'interaction-1',
+    }
+    await expect(service.cancel(revokedContext as never)).resolves.toBe(false)
+    expect(interactions.cancel).not.toHaveBeenCalled()
   })
 })

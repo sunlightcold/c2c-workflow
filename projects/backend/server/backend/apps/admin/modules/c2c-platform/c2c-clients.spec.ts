@@ -22,6 +22,61 @@ describe('C2C buy-order clients', () => {
     okx = module.get(OkxWebPrivateClient)
   })
 
+  it('declares every supported and unsupported provider capability explicitly', () => {
+    expect(binance.getCapabilities()).toEqual({
+      appeal: true,
+      cancelOrder: false,
+      chat: false,
+      checkAntiFraud: false,
+      getOrderDetail: true,
+      listOrders: true,
+      listReportOrders: false,
+      markOrderAsPaid: true,
+      releaseCrypto: false,
+      sellOrders: false,
+    })
+    expect(okx.getCapabilities()).toEqual({
+      appeal: false,
+      cancelOrder: false,
+      chat: false,
+      checkAntiFraud: true,
+      getOrderDetail: true,
+      listOrders: true,
+      listReportOrders: false,
+      markOrderAsPaid: true,
+      releaseCrypto: false,
+      sellOrders: false,
+    })
+    expect(
+      binance.getMarkPaidPolicy({
+        apiKey: 'key',
+        secretKey: 'secret',
+        clientType: 'WEB',
+        timeoutMs: 5000,
+      }),
+    ).toEqual({ paymentProof: 'NONE' })
+    expect(
+      okx.getMarkPaidPolicy({
+        cookie: 'cookie',
+        authorization: 'token',
+        timeoutMs: 5000,
+        skipPaymentProofUpload: true,
+      }),
+    ).toEqual({
+      paymentProof: 'SKIP',
+    })
+    expect(
+      okx.getMarkPaidPolicy({
+        cookie: 'cookie',
+        authorization: 'token',
+        timeoutMs: 5000,
+        skipPaymentProofUpload: false,
+      }),
+    ).toEqual({
+      paymentProof: 'REQUIRED',
+    })
+  })
+
   it('signs the Binance list request against the configured API gateway and permits BUY orders only', async () => {
     http.request.mockResolvedValue({ success: true, code: '000000', data: [], total: 0 })
     await binance.listOrders(
@@ -316,6 +371,7 @@ describe('C2C buy-order clients', () => {
         }),
       ],
       total: 1,
+      hasMore: false,
     })
     await expect(binance.getOrderDetail(credentials, 'BIN-1')).resolves.toMatchObject({
       platformOrderId: 'BIN-1',
@@ -401,6 +457,7 @@ describe('C2C buy-order clients', () => {
         }),
       ],
       total: 1,
+      hasMore: false,
     })
     expect(http.request.mock.calls[0][0].params).toEqual(
       expect.objectContaining({ orderType: 'pending', startTime: '1', endTime: '2' }),
@@ -415,6 +472,166 @@ describe('C2C buy-order clients', () => {
       identityName: 'Li Si',
       payable: true,
     })
+  })
+
+  it('rejects OKX list records without an explicit buy side', async () => {
+    http.request.mockResolvedValue({
+      code: 0,
+      data: [
+        {
+          id: 'OKX-DIRECTION-MISSING',
+          orderStatus: 'new',
+          paymentStatus: 'unpaid',
+          baseAmount: '10.00',
+          baseCurrency: 'usdt',
+          quoteAmount: '70.00',
+          quoteCurrency: 'cny',
+          createdDate: 1_787_586_752_664,
+        },
+      ],
+    })
+
+    await expect(
+      okx.listOrders(
+        {
+          cookie: 'session',
+          authorization: 'token',
+          timeoutMs: 5000,
+          baseUrl: 'https://www.okx.com',
+        },
+        {
+          tradeType: 'BUY',
+          asset: 'USDT',
+          startDate: 1,
+          endDate: 2,
+          page: 1,
+          rows: 20,
+          orderStatusList: [],
+        },
+      ),
+    ).resolves.toEqual({ items: [], total: 1, hasMore: false })
+  })
+
+  it('rejects OKX list records without the internal endpoint order id', async () => {
+    http.request.mockResolvedValue({
+      code: 0,
+      data: [
+        {
+          publicOrderId: 'OKX-PUBLIC-ONLY',
+          publicTradingOrderId: 'OKX-TRADING-ONLY',
+          side: 'buy',
+          orderStatus: 'new',
+          paymentStatus: 'unpaid',
+          baseAmount: '10.00',
+          baseCurrency: 'usdt',
+          quoteAmount: '70.00',
+          quoteCurrency: 'cny',
+          createdDate: 1_787_586_752_664,
+        },
+      ],
+    })
+
+    await expect(
+      okx.listOrders(
+        {
+          cookie: 'session',
+          authorization: 'token',
+          timeoutMs: 5000,
+          baseUrl: 'https://www.okx.com',
+        },
+        {
+          tradeType: 'BUY',
+          asset: 'USDT',
+          startDate: 1,
+          endDate: 2,
+          page: 1,
+          rows: 20,
+          orderStatusList: [],
+        },
+      ),
+    ).rejects.toThrow('欧易订单 ID为空')
+  })
+
+  it('keeps paging after an OKX page that contains only sell orders', async () => {
+    http.request.mockResolvedValue({
+      code: 0,
+      data: {
+        items: [
+          {
+            id: 'OKX-SELL-1',
+            side: 'sell',
+            orderStatus: 'new',
+            paymentStatus: 'unpaid',
+            baseAmount: '1',
+            baseCurrency: 'USDT',
+            quoteAmount: '7',
+            quoteCurrency: 'CNY',
+            createdDate: 1_787_586_752_664,
+          },
+        ],
+        pageInfo: { totalItemCount: 40 },
+      },
+    })
+
+    await expect(
+      okx.listOrders(
+        {
+          cookie: 'session',
+          authorization: 'token',
+          timeoutMs: 5000,
+        },
+        {
+          tradeType: 'BUY',
+          asset: 'USDT',
+          startDate: 1,
+          endDate: 2,
+          page: 1,
+          rows: 20,
+          orderStatusList: [1],
+        },
+      ),
+    ).resolves.toEqual({ items: [], total: 40, hasMore: true })
+  })
+
+  it('blocks OKX payment when the platform disables marking or the order is in appeal', async () => {
+    const base = {
+      id: 'OKX-BLOCKED-1',
+      side: 'buy',
+      orderStatus: 'new',
+      paymentStatus: 'unpaid',
+      baseAmount: '1',
+      baseCurrency: 'USDT',
+      quoteAmount: '7',
+      quoteCurrency: 'CNY',
+      createdDate: 1_787_586_752_664,
+      receiptAccountId: '1',
+      detailUser: {
+        realName: 'Payee',
+        kycVerified: true,
+        sellerSelectedReceiptAccount: {
+          id: '1',
+          accountName: 'Payee',
+          accountNo: 'payee@example.com',
+          bankCode: 'ALIPAY',
+        },
+      },
+    }
+    http.request
+      .mockResolvedValueOnce({ code: 0, data: { ...base, markAsPaidDisabled: true } })
+      .mockResolvedValueOnce({ code: 0, data: { ...base, appeal: true } })
+
+    await expect(
+      okx.getOrderDetail(
+        { cookie: 'session', authorization: 'token', timeoutMs: 5000 },
+        'OKX-BLOCKED-1',
+      ),
+    ).resolves.toMatchObject({ payable: false })
+    await expect(
+      okx.getOrderDetail(
+        { cookie: 'session', authorization: 'token', timeoutMs: 5000 },
+        'OKX-BLOCKED-1',
+      ),
+    ).resolves.toMatchObject({ status: C2cBuyOrderStatus.DISPUTED, payable: false })
   })
 
   it('keeps expired orders distinct from cancelled orders', async () => {

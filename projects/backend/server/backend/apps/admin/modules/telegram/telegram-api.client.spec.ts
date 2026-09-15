@@ -47,6 +47,35 @@ describe('TelegramApiClient', () => {
     ).rejects.toEqual(new ServiceUnavailableException('Telegram 消息发送失败'))
   })
 
+  it('uploads a JPG receipt as a Telegram photo', async () => {
+    const post = jest.spyOn(axios, 'post').mockResolvedValue({ data: { ok: true } })
+    const client = new TelegramApiClient()
+
+    await client.sendPhoto({
+      tokenRef: 'env://TG_TEST_TOKEN',
+      caption: '<b>回单已生成</b>',
+      chatId: '-1001',
+      fileName: 'PAY001-1.jpg',
+      parseMode: 'HTML',
+      photo: Buffer.from('jpeg-content'),
+      replyToMessageId: 9,
+    })
+
+    const [url, body, options] = post.mock.calls[0] ?? []
+    expect(url).toBe(`https://api.telegram.org/bot${token}/sendPhoto`)
+    expect(body).toBeInstanceOf(FormData)
+    expect((body as FormData).get('chat_id')).toBe('-1001')
+    expect((body as FormData).get('caption')).toBe('<b>回单已生成</b>')
+    expect((body as FormData).get('parse_mode')).toBe('HTML')
+    expect((body as FormData).get('reply_parameters')).toBe(
+      JSON.stringify({ allow_sending_without_reply: true, message_id: 9 }),
+    )
+    const photo = (body as FormData).get('photo')
+    expect(photo).toBeInstanceOf(Blob)
+    expect((photo as File).name).toBe('PAY001-1.jpg')
+    expect(options).toEqual({ timeout: 30_000 })
+  })
+
   it('decrypts encrypted bot token references before calling Telegram', async () => {
     const post = jest.spyOn(axios, 'post').mockResolvedValue({ data: { ok: true } })
     const cipher = { decrypt: jest.fn().mockReturnValue(token) }
@@ -92,6 +121,35 @@ describe('TelegramApiClient', () => {
       `https://api.telegram.org/bot${token}/getUpdates`,
       expect.objectContaining({ offset: 42, timeout: 25 }),
       { timeout: 35_000 },
+    )
+  })
+
+  it('answers callbacks and removes processed inline keyboards through fixed endpoints', async () => {
+    const post = jest.spyOn(axios, 'post').mockResolvedValue({ data: { ok: true, result: true } })
+    const client = new TelegramApiClient()
+
+    await client.answerCallbackQuery({
+      tokenRef: 'env://TG_TEST_TOKEN',
+      callbackQueryId: 'callback-1',
+      text: 'C2C订单已创建',
+    })
+    await client.editMessageReplyMarkup({
+      tokenRef: 'env://TG_TEST_TOKEN',
+      chatId: '-1001',
+      messageId: 12,
+    })
+
+    expect(post).toHaveBeenNthCalledWith(
+      1,
+      `https://api.telegram.org/bot${token}/answerCallbackQuery`,
+      { callback_query_id: 'callback-1', text: 'C2C订单已创建' },
+      { timeout: 10_000 },
+    )
+    expect(post).toHaveBeenNthCalledWith(
+      2,
+      `https://api.telegram.org/bot${token}/editMessageReplyMarkup`,
+      { chat_id: '-1001', message_id: 12, reply_markup: { inline_keyboard: [] } },
+      { timeout: 10_000 },
     )
   })
 

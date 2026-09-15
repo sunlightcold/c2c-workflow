@@ -28,6 +28,7 @@ import type {
   ExecutablePaymentBatch,
   ExecutablePaymentBatchItem,
   PaymentBatchApplyOutcome,
+  PaymentBatchReconciliationSchedule,
   PaymentBatchStore,
 } from './payment-batch-execution-coordinator'
 
@@ -35,12 +36,18 @@ import type {
 export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
   constructor(private readonly dataSource: DataSource) {}
 
-  async prepare(tenantId: string, batchId: string): Promise<ExecutablePaymentBatch> {
+  async prepare(
+    tenantId: string,
+    batchId: string,
+    options: { allowTerminal?: boolean } = {},
+  ): Promise<ExecutablePaymentBatch> {
+    const allowTerminal = options.allowTerminal === true
     const batch = await this.dataSource.getRepository(PaymentBatchEntity).findOne({
       where: { id: batchId, tenantId },
     })
     if (!batch) throw new ConflictException('支付批次不存在或不属于当前所属单位')
     if (
+      !allowTerminal &&
       ![
         PaymentBatchStatus.READY,
         PaymentBatchStatus.SUBMITTING,
@@ -101,8 +108,14 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
       status: batch.status,
       credentialRef: account.credentialRef,
       upstreamId: batch.upstreamId,
+      reconciliationAttempts: batch.reconciliationAttempts,
+      nextReconcileAt: batch.nextReconcileAt,
       items: items.map((item) => this.toExecutableItem(item, orderMap.get(item.paymentOrderId)!)),
     }
+  }
+
+  async prepareForQuery(tenantId: string, batchId: string): Promise<ExecutablePaymentBatch> {
+    return this.prepare(tenantId, batchId, { allowTerminal: true })
   }
 
   claim(input: ExecutablePaymentBatch): Promise<ExecutablePaymentBatch> {
@@ -140,6 +153,7 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
     input: ExecutablePaymentBatch,
     status: PaymentBatchStatus.PROCESSING,
     upstreamId?: string,
+    schedule?: PaymentBatchReconciliationSchedule,
   ): Promise<ExecutablePaymentBatch> {
     return this.dataSource.transaction(async (manager) => {
       const batch = await this.lockBatch(manager, input, [PaymentBatchStatus.SUBMITTING])
@@ -151,6 +165,7 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
       await manager.save(items)
       Object.assign(batch, this.countItems(items), {
         upstreamId: upstreamId ?? batch.upstreamId,
+        ...(schedule ?? {}),
       })
       await this.transitionBatch(manager, batch, status)
       for (const order of orders) {
@@ -161,13 +176,20 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
         await manager.save(order)
         await this.paymentHistory(manager, order, previous, order.status)
       }
-      return { ...input, status, upstreamId: batch.upstreamId }
+      return {
+        ...input,
+        status,
+        upstreamId: batch.upstreamId,
+        reconciliationAttempts: batch.reconciliationAttempts,
+        nextReconcileAt: batch.nextReconcileAt,
+      }
     })
   }
 
   markUnknown(
     input: ExecutablePaymentBatch,
     errorMessage?: string,
+    schedule?: PaymentBatchReconciliationSchedule,
   ): Promise<ExecutablePaymentBatch> {
     return this.moveActiveBatch(
       input,
@@ -175,6 +197,7 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
       PaymentBatchItemStatus.UNKNOWN,
       PaymentOrderStatus.UNKNOWN,
       errorMessage,
+      schedule,
     )
   }
 
@@ -195,6 +218,10 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
       upstreamId?: string
       errorMessage?: string
       raw: AlipayBatchResponse
+    },
+    schedule: PaymentBatchReconciliationSchedule = {
+      reconciliationAttempts: input.reconciliationAttempts,
+      nextReconcileAt: input.nextReconcileAt,
     },
   ): Promise<PaymentBatchApplyOutcome> {
     return this.dataSource.transaction(async (manager) => {
@@ -239,14 +266,32 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
           await this.processItem(manager, item, order)
         }
       }
+      const exhaustedMessage = await this.applyExhaustedReconciliation(
+        manager,
+        items,
+        orderByItemId,
+        schedule,
+      )
       const counts = this.countItems(items)
       Object.assign(batch, counts, {
         upstreamId: result.upstreamId ?? result.raw.batchTransId ?? batch.upstreamId,
-        lastError: result.errorMessage ?? null,
+        lastError: exhaustedMessage ?? result.errorMessage ?? null,
+        reconciliationAttempts: schedule.reconciliationAttempts,
+        nextReconcileAt: schedule.nextReconcileAt,
       })
       const next = this.aggregateStatus(items)
-      await this.transitionBatch(manager, batch, next, result.errorMessage)
-      return { batch: { ...input, status: next, upstreamId: batch.upstreamId }, paymentsToConfirm }
+      batch.nextReconcileAt = this.resolveNextReconcileAt(next, schedule.nextReconcileAt)
+      await this.transitionBatch(manager, batch, next, exhaustedMessage ?? result.errorMessage)
+      return {
+        batch: {
+          ...input,
+          status: next,
+          upstreamId: batch.upstreamId,
+          reconciliationAttempts: batch.reconciliationAttempts,
+          nextReconcileAt: batch.nextReconcileAt,
+        },
+        paymentsToConfirm,
+      }
     })
   }
 
@@ -256,6 +301,7 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
     itemStatus: PaymentBatchItemStatus,
     orderStatus: PaymentOrderStatus,
     errorMessage?: string,
+    schedule?: PaymentBatchReconciliationSchedule,
   ): Promise<ExecutablePaymentBatch> {
     return this.dataSource.transaction(async (manager) => {
       const batch = await this.lockBatch(manager, input, [
@@ -270,7 +316,13 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
         item.errorMessage = errorMessage ?? null
       }
       await manager.save(items)
-      Object.assign(batch, this.countItems(items), { lastError: errorMessage ?? null })
+      Object.assign(batch, this.countItems(items), {
+        lastError: errorMessage ?? null,
+        ...(schedule ?? {}),
+        ...(!schedule && ![PaymentBatchStatus.UNKNOWN].includes(batchStatus)
+          ? { nextReconcileAt: null }
+          : {}),
+      })
       await this.transitionBatch(manager, batch, batchStatus, errorMessage)
       for (const order of orders) {
         if (!this.isActivePayment(order.status)) continue
@@ -282,8 +334,51 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
         if (orderStatus === PaymentOrderStatus.FAILED)
           await this.restoreMerchantOrder(manager, order, errorMessage)
       }
-      return { ...input, status: batchStatus }
+      return {
+        ...input,
+        status: batchStatus,
+        reconciliationAttempts: batch.reconciliationAttempts,
+        nextReconcileAt: batch.nextReconcileAt,
+      }
     })
+  }
+
+  private async applyExhaustedReconciliation(
+    manager: EntityManager,
+    items: PaymentBatchItemEntity[],
+    orderByItemId: Map<string, PaymentOrderEntity>,
+    schedule: PaymentBatchReconciliationSchedule,
+  ): Promise<string | null> {
+    if (
+      schedule.nextReconcileAt !== null ||
+      !items.some((item) => !this.isFinalItem(item.status))
+    ) {
+      return null
+    }
+    const message = `支付批次自动回查已达到最大次数（${schedule.reconciliationAttempts} 次），请人工核实`
+    for (const item of items) {
+      if (this.isFinalItem(item.status)) continue
+      item.status = PaymentBatchItemStatus.UNKNOWN
+      item.errorMessage = message
+      const order = orderByItemId.get(item.id)!
+      if (!this.isActivePayment(order.status)) continue
+      const previous = order.status
+      order.status = PaymentOrderStatus.UNKNOWN
+      order.lastError = message
+      await manager.save(order)
+      await this.paymentHistory(manager, order, previous, order.status, message)
+    }
+    await manager.save(items)
+    return message
+  }
+
+  private resolveNextReconcileAt(
+    status: PaymentBatchStatus,
+    scheduledAt: Date | null,
+  ): Date | null {
+    return [PaymentBatchStatus.PROCESSING, PaymentBatchStatus.UNKNOWN].includes(status)
+      ? scheduledAt
+      : null
   }
 
   private async applyDetail(

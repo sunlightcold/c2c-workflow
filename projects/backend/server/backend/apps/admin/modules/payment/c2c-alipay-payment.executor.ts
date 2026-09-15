@@ -1,11 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common'
-import {
-  ALIPAY_ACCOUNT_GATEWAY_FACTORY,
-  type AlipayAccountGatewayFactory,
-} from './alipay-account-gateway.provider'
-import { AlipayMerchantTransferAdapter } from './alipay-merchant-transfer.adapter'
+import { PaymentAdapterCode } from '@admin/database'
 import { C2cPaymentPreflightVerifier } from './c2c-payment-preflight-verifier'
 import type { PaymentExecutionResult } from './payment-adapter.types'
+import {
+  PAYMENT_CHANNEL_CAPABILITY_FACTORY,
+  type PaymentChannelCapabilityFactory,
+} from './payment-channel-capability.factory'
 import {
   type ExecutablePaymentOrder,
   type PaymentExecutor,
@@ -16,19 +16,22 @@ import {
 export class C2cAlipayPaymentExecutor implements PaymentExecutor {
   constructor(
     private readonly preflight: C2cPaymentPreflightVerifier,
-    @Inject(ALIPAY_ACCOUNT_GATEWAY_FACTORY)
-    private readonly gateways: AlipayAccountGatewayFactory,
+    @Inject(PAYMENT_CHANNEL_CAPABILITY_FACTORY)
+    private readonly channels: PaymentChannelCapabilityFactory,
   ) {}
 
   async submit(order: ExecutablePaymentOrder): Promise<PaymentExecutionResult> {
     const verified = await this.preflight.verify(order.tenantId, order.id)
     let gateway
     try {
-      gateway = await this.createGateway(verified.paymentAccountCredentialRef)
+      gateway = await this.channels.create(
+        PaymentAdapterCode.ALIPAY_MERCHANT_TRANSFER,
+        verified.paymentAccountCredentialRef,
+      )
     } catch (error) {
       throw this.notSubmitted(error)
     }
-    return new AlipayMerchantTransferAdapter(gateway).create({
+    return gateway.order.create({
       businessNo: verified.order.paymentNo,
       amount: verified.order.amount,
       payeeIdentity: verified.order.payeeIdentity,
@@ -38,12 +41,11 @@ export class C2cAlipayPaymentExecutor implements PaymentExecutor {
 
   async query(order: ExecutablePaymentOrder): Promise<PaymentExecutionResult> {
     const context = await this.preflight.loadContext(order.tenantId, order.id)
-    const gateway = await this.createGateway(context.account.credentialRef)
-    return new AlipayMerchantTransferAdapter(gateway).query(context.order.paymentNo)
-  }
-
-  private createGateway(reference: string) {
-    return this.gateways.create(reference)
+    const channel = await this.channels.create(
+      PaymentAdapterCode.ALIPAY_MERCHANT_TRANSFER,
+      context.account.credentialRef,
+    )
+    return channel.order.query(context.order.paymentNo)
   }
 
   private notSubmitted(error: unknown): PaymentNotSubmittedError {

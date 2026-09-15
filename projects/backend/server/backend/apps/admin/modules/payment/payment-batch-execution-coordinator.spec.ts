@@ -14,6 +14,8 @@ describe('PaymentBatchExecutionCoordinator', () => {
     batchNo: 'BAT-1',
     status: PaymentBatchStatus.READY,
     credentialRef: 'secret://alipay/account-1',
+    reconciliationAttempts: 0,
+    nextReconcileAt: null,
     items: [
       {
         id: 'item-1',
@@ -34,7 +36,16 @@ describe('PaymentBatchExecutionCoordinator', () => {
     fail: jest.fn(),
     applyQuery: jest.fn(),
   }
-  const executor = { submit: jest.fn(), query: jest.fn() }
+  const executor = {
+    submit: jest.fn(),
+    query: jest.fn(),
+    getReconciliationPolicy: jest.fn().mockReturnValue({
+      enabled: true,
+      initialDelaySeconds: 10,
+      intervalSeconds: 5,
+      maxAttempts: 12,
+    }),
+  }
   const preflight = { verifyBatch: jest.fn() }
   const payments = { confirmPlatform: jest.fn() }
   const eventEmitter = { emit: jest.fn() }
@@ -61,21 +72,45 @@ describe('PaymentBatchExecutionCoordinator', () => {
     )
   })
 
-  it('preflights C2C items, submits once, queries the original batch, and confirms successful payments', async () => {
+  afterEach(() => jest.restoreAllMocks())
+
+  it('preflights and submits once without immediately querying the batch', async () => {
     executor.submit.mockResolvedValue({ status: PaymentExecutionStatus.PROCESSING, raw: {} })
-    executor.query.mockResolvedValue({ status: PaymentExecutionStatus.SUCCESS, raw: {} })
 
     await expect(coordinator.submit('tenant-1', 'batch-1')).resolves.toMatchObject({
-      status: PaymentBatchStatus.SUCCESS,
+      status: PaymentBatchStatus.PROCESSING,
     })
     expect(preflight.verifyBatch).toHaveBeenCalledWith('tenant-1', 'order-1')
     expect(executor.submit).toHaveBeenCalledTimes(1)
-    expect(executor.query).toHaveBeenCalledWith(
-      expect.objectContaining({ batchNo: 'BAT-1', status: PaymentBatchStatus.PROCESSING }),
+    expect(executor.getReconciliationPolicy).toHaveBeenCalledWith(
+      expect.objectContaining({ batchNo: 'BAT-1' }),
     )
-    expect(payments.confirmPlatform).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'order-1', status: 'SUCCESS' }),
+    expect(store.markSubmitted).toHaveBeenCalledWith(
+      expect.objectContaining({ batchNo: 'BAT-1' }),
+      PaymentBatchStatus.PROCESSING,
+      undefined,
+      expect.objectContaining({ reconciliationAttempts: 0, nextReconcileAt: expect.any(Date) }),
     )
+    expect(executor.query).not.toHaveBeenCalled()
+    expect(payments.confirmPlatform).not.toHaveBeenCalled()
+  })
+
+  it('starts the initial delay after the upstream submission response', async () => {
+    const now = jest.spyOn(Date, 'now').mockReturnValueOnce(1_000).mockReturnValueOnce(20_000)
+    executor.submit.mockImplementation(async () => {
+      Date.now()
+      return { status: PaymentExecutionStatus.PROCESSING, raw: {} }
+    })
+
+    await coordinator.submit('tenant-1', 'batch-1')
+
+    expect(store.markSubmitted).toHaveBeenCalledWith(
+      expect.any(Object),
+      PaymentBatchStatus.PROCESSING,
+      undefined,
+      { reconciliationAttempts: 0, nextReconcileAt: new Date(30_000) },
+    )
+    now.mockRestore()
   })
 
   it('keeps a transport failure unknown and never resubmits it during reconciliation', async () => {
@@ -96,6 +131,11 @@ describe('PaymentBatchExecutionCoordinator', () => {
 
     expect(executor.submit).toHaveBeenCalledTimes(1)
     expect(executor.query).toHaveBeenCalledTimes(1)
+    expect(store.applyQuery).toHaveBeenCalledWith(
+      expect.objectContaining({ status: PaymentBatchStatus.UNKNOWN }),
+      expect.objectContaining({ status: PaymentExecutionStatus.PROCESSING }),
+      expect.objectContaining({ reconciliationAttempts: 1, nextReconcileAt: expect.any(Date) }),
+    )
   })
 
   it('recovers a batch submission interrupted before its local status was advanced', async () => {
@@ -113,6 +153,22 @@ describe('PaymentBatchExecutionCoordinator', () => {
     expect(executor.query).toHaveBeenCalledWith(
       expect.objectContaining({ status: PaymentBatchStatus.SUBMITTING }),
     )
+  })
+
+  it('stops scheduling after the channel reconciliation attempt limit', async () => {
+    store.prepare.mockResolvedValue({
+      ...batch,
+      status: PaymentBatchStatus.PROCESSING,
+      reconciliationAttempts: 11,
+    })
+    executor.query.mockResolvedValue({ status: PaymentExecutionStatus.PROCESSING, raw: {} })
+
+    await coordinator.reconcile('tenant-1', 'batch-1')
+
+    expect(store.applyQuery).toHaveBeenCalledWith(expect.any(Object), expect.any(Object), {
+      reconciliationAttempts: 12,
+      nextReconcileAt: null,
+    })
   })
 
   it('fails without querying when the request was definitely not submitted', async () => {
@@ -139,6 +195,7 @@ describe('PaymentBatchExecutionCoordinator', () => {
     expect(store.markUnknown).toHaveBeenCalledWith(
       expect.objectContaining({ status: PaymentBatchStatus.PROCESSING }),
       '支付宝批次包含未知支付明细',
+      expect.objectContaining({ reconciliationAttempts: 1 }),
     )
   })
 })

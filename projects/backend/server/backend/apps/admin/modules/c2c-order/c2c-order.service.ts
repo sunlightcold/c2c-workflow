@@ -27,7 +27,7 @@ export class C2cOrderService {
     const [items, total] = await this.orderRepository.findAndCount({
       where: {
         tenantId,
-        merchantId: input.merchantId,
+        ...(input.merchantId ? { merchantId: input.merchantId } : {}),
         ...(input.status ? { status: input.status } : {}),
         ...(input.platformOrderId ? { platformOrderId: ILike(`%${input.platformOrderId}%`) } : {}),
         ...(input.paymentMethod ? { paymentMethod: input.paymentMethod } : {}),
@@ -41,17 +41,19 @@ export class C2cOrderService {
       ? await this.paymentRepository.find({
           where: {
             tenantId,
-            merchantId: input.merchantId,
+            ...(input.merchantId ? { merchantId: input.merchantId } : {}),
             sourceType: PaymentSourceType.C2C_BUY,
             sourceBusinessNo: In(items.map(({ platformOrderId }) => platformOrderId)),
           },
         })
       : []
-    const paymentBySource = new Map(payments.map((payment) => [payment.sourceBusinessNo, payment]))
+    const paymentBySource = new Map(
+      payments.map((payment) => [`${payment.merchantId}:${payment.sourceBusinessNo}`, payment]),
+    )
     return {
       items: items.map((item) => ({
         ...item,
-        paymentOrder: paymentBySource.get(item.platformOrderId) ?? null,
+        paymentOrder: paymentBySource.get(`${item.merchantId}:${item.platformOrderId}`) ?? null,
       })),
       total,
       page: input.page,

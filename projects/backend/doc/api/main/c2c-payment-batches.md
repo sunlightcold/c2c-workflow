@@ -7,6 +7,7 @@ Controller：`PaymentBatchController`。基础路径：`/v1/sys/payment-batches`
 
 - `GET /v1/sys/payment-batches`，权限：`payment:batch:read`。Query 支持 `tenantId?`、`merchantId?`、`paymentAccountId?`、`status?`、`page?`、`pageSize?`，返回 `{ items, total, page, pageSize }`。
 - `GET /v1/sys/payment-batches/{id}`，权限：`payment:batch:read`。Query 支持 `tenantId?`，返回 `{ batch, items }`。
+- `POST /v1/sys/payment-batches/{id}/upstream-query`，权限：`payment:batch:read`。Body 支持 `{ tenantId? }`，返回本地批次、上游标准化状态、流水号和原始响应；活动批次会同步逐笔结果。
 - 列表默认第 1 页、每页 20 条，`pageSize` 最大 100，按创建时间倒序。详情不存在或跨所属单位均返回 `404`。
 
 ## 创建批次
@@ -53,6 +54,9 @@ Controller：`PaymentBatchController`。基础路径：`/v1/sys/payment-batches`
 - 未知明细、重复明细、金额不一致或成功批次缺少明细时，批次保持结果未知，支付订单结果不变。
 - 成功明细记录支付宝流水号；机器人手工支付直接完成，C2C 买币支付继续执行交易平台“已付款”确认。
 - C2C 买币明细已经支付成功但交易平台确认尚未完成时，后续批次回查仍会重新触发平台确认，不会再次发起支付宝支付。
+- 批次提交成功后不会立即回查。支付通道 Adapter 以代码定义首次延迟、回查间隔和最大次数；支付宝批量有密当前为首次延迟 10 秒、间隔 5 秒、最多 12 次。
+- 系统固定每 15 秒扫描一次到期批次，只有 `nextReconcileAt` 已到期的批次才会自动回查。15 秒任务是调度心跳，不覆盖通道策略。
+- 人工“上游查询”不受自动调度到期时间限制，可立即查询当前上游状态。
 - 明确失败明细恢复对应 C2C 商家订单为待支付；处理中和未知明细禁止再次付款。
 - 全部明细终结后才可汇总为全部成功、部分成功或全部失败。
 

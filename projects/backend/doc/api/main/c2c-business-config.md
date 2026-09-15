@@ -51,13 +51,15 @@ Telegram 群组成员和超级管理员通过 Telegram User ID 识别，属于�
 | PATCH | `/payment-accounts/{id}/channels/{bindingId}/status` | `payment:account:bind` | Query `{ tenantId? }`；Body `{ status }` | 脱敏后的 `PaymentAccountChannelEntity` |
 | DELETE | `/payment-accounts/{id}/channels/{bindingId}` | `payment:account:bind` | Query `{ tenantId? }` | 无 |
 | GET | `/payment-plans` | `payment:account:read` | Query `{ tenantId?, merchantId? }` | 当前所属单位的 `MerchantPaymentPlanEntity[]` |
-| POST | `/payment-plans` | `payment:account:bind` | `{ tenantId?, merchantId, paymentAccountId, paymentAccountChannelId, scene, currency, priority, weight }` | `MerchantPaymentPlanEntity` |
-| PUT | `/payment-plans/{id}` | `payment:account:bind` | `{ tenantId?, paymentAccountId?, paymentAccountChannelId?, priority?, weight? }` | `MerchantPaymentPlanEntity` |
+| POST | `/payment-plans` | `payment:account:bind` | `{ tenantId?, merchantId, paymentAccountId, paymentAccountChannelId, batchPolicyId?, automaticPaymentEnabled?, scene, currency, priority, weight }` | `MerchantPaymentPlanEntity` |
+| PUT | `/payment-plans/{id}` | `payment:account:bind` | `{ tenantId?, paymentAccountId?, paymentAccountChannelId?, batchPolicyId?, automaticPaymentEnabled?, priority?, weight? }` | `MerchantPaymentPlanEntity` |
 | PATCH | `/payment-plans/{id}/status` | `payment:account:bind` | Query `{ tenantId? }`；Body `{ status }` | `MerchantPaymentPlanEntity` |
 | DELETE | `/payment-plans/{id}` | `payment:account:bind` | Query `{ tenantId? }` | 无 |
 
 支付方案中的 `paymentAccountChannelId` 必须属于 `paymentAccountId` 且已启用；商家和支付账号
-必须属于同一所属单位。一个支付账号有且只有一套当前凭据，不存在多套凭据、凭据列表或通道级凭据。创建账号时必须同时提交完整凭据；后续更新通过 `/credential` 接口整套覆盖，不能局部合并。凭据中的 `gateway` 为完整的 HTTP/HTTPS API 网关地址，支持支付宝官方地址、自定义代理网关和本地 Mock，不限制固定域名。
+必须属于同一所属单位。开启 `automaticPaymentEnabled` 的方案可被自动付款任务选择；关闭时仍可由操作员
+从商家订单发起支付。同一商家的自动付款方案必须使用相同付款模式，付款模式由方案绑定的支付通道决定。
+一个支付账号有且只有一套当前凭据，不存在多套凭据、凭据列表或通道级凭据。创建账号时必须同时提交完整凭据；后续更新通过 `/credential` 接口整套覆盖，不能局部合并。凭据中的 `gateway` 为完整的 HTTP/HTTPS API 网关地址，支持支付宝官方地址、自定义代理网关和本地 Mock，不限制固定域名。
 
 支付宝凭据支持两种模式：`KEY` 提交应用 ID、应用私钥、支付宝公钥和 API 网关地址；`CERT` 提交应用 ID、应用私钥、应用公钥证书、支付宝公钥证书、支付宝根证书和 API 网关地址。前端读取用户选择的本地密钥或证书文件内容后提交；服务端使用凭据主密钥加密保存。任何创建、更新、查询、导出、日志和错误响应均不返回私钥、公钥、证书内容或内部密文。
 

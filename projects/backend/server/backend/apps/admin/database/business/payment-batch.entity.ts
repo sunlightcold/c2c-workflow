@@ -48,6 +48,8 @@ export class PaymentBatchEntity extends CommonUuidEntity {
   @Column({ type: 'varchar', length: 512, nullable: true }) lastError: string | null
   @Column({ type: 'jsonb', default: () => "'[]'::jsonb" }) triggerRuleIds: string[]
   @Column({ type: 'varchar', length: 32, default: 'MANUAL' }) triggerSource: string
+  @Column({ type: 'integer', default: 0 }) reconciliationAttempts: number
+  @Column({ type: 'timestamptz', nullable: true }) nextReconcileAt: Date | null
   @VersionColumn() version: number
 }
 

@@ -9,13 +9,11 @@ import {
 } from '@admin/database'
 import { Inject, Injectable } from '@nestjs/common'
 import {
-  BinanceC2cClient,
-  type BinanceCredentials,
+  C2cPlatformClient,
+  type C2cPlatformCredentials,
   C2cPlatformCredentialFactory,
   C2cBuyOrderStatus,
   type C2cBuyOrderDetail,
-  OkxWebPrivateClient,
-  type OkxWebPrivateCredentials,
 } from '../c2c-platform'
 import { C2C_SECRET_RESOLVER, type C2cSecretResolver } from '../c2c-order/c2c-secret-resolver'
 import { normalizeCnyAmount } from './payment-adapter.types'
@@ -123,8 +121,7 @@ export class C2cPaymentPreflightVerifier {
     @Inject(PAYMENT_PREFLIGHT_STORE) private readonly store: PaymentPreflightStore,
     @Inject(C2C_SECRET_RESOLVER) private readonly secretResolver: C2cSecretResolver,
     private readonly credentialFactory: C2cPlatformCredentialFactory,
-    private readonly binance: BinanceC2cClient,
-    private readonly okx: OkxWebPrivateClient,
+    private readonly platformClient: C2cPlatformClient,
   ) {}
 
   async verify(tenantId: string, orderId: string, now = new Date()): Promise<VerifiedC2cPayment> {
@@ -283,17 +280,13 @@ export class C2cPaymentPreflightVerifier {
 
   private getPlatformOrder(
     context: PaymentPreflightConfiguration,
-    credentials: BinanceCredentials | OkxWebPrivateCredentials,
+    credentials: C2cPlatformCredentials,
   ): Promise<C2cBuyOrderDetail> {
-    return context.merchant.platform === MerchantPlatform.BINANCE
-      ? this.binance.getOrderDetail(
-          credentials as BinanceCredentials,
-          context.order.sourceBusinessNo,
-        )
-      : this.okx.getOrderDetail(
-          credentials as OkxWebPrivateCredentials,
-          context.order.sourceBusinessNo,
-        )
+    return this.platformClient.getOrderDetail(
+      context.merchant.platform,
+      credentials,
+      context.order.sourceBusinessNo,
+    )
   }
 
   private sameAmount(left: string, right: string): boolean {

@@ -31,6 +31,9 @@ describe('admin migration registry', () => {
       'C2cTelegramBotRuntime1789016000000',
       'C2cPaymentBatchPolicies1789017000000',
       'C2cTelegramIdentities1789018000000',
+      'C2cTelegramCapabilityCleanup1789019000000',
+      'C2cPaymentReconciliationPolicy1789020000000',
+      'C2cPaymentPlanAutomation1789021000000',
     ])
   })
 })

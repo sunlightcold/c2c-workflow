@@ -163,12 +163,6 @@ const gridOptions: VxeTableGridOptions<BusinessApi.Merchant> = {
       width: 110,
     },
     {
-      field: 'automaticPayment',
-      slots: { default: 'automaticPayment' },
-      title: '自动支付',
-      width: 150,
-    },
-    {
       field: 'status',
       slots: { default: 'status' },
       title: '状态',
@@ -508,6 +502,7 @@ function createPaymentPlan() {
       onOk: async (api) => {
         await api.validate();
         const data = api.formData() as {
+          automaticPaymentEnabled: boolean;
           batchPolicyId?: string;
           priority: number;
           routeKey: string;
@@ -518,6 +513,7 @@ function createPaymentPlan() {
         await runResourceAction({
           action: () =>
             createPaymentPlanApi({
+              automaticPaymentEnabled: data.automaticPaymentEnabled,
               batchPolicyId: data.batchPolicyId || null,
               currency: 'CNY',
               merchantId: merchant.id,
@@ -588,6 +584,7 @@ async function editPaymentPlan(plan: BusinessApi.PaymentPlan) {
       onOk: async (api) => {
         await api.validate();
         const data = api.formData() as {
+          automaticPaymentEnabled: boolean;
           batchPolicyId?: string;
           priority: number;
           routeKey: string;
@@ -598,6 +595,7 @@ async function editPaymentPlan(plan: BusinessApi.PaymentPlan) {
         await runResourceAction({
           action: () =>
             updatePaymentPlanApi(plan.id, {
+              automaticPaymentEnabled: data.automaticPaymentEnabled,
               batchPolicyId: data.batchPolicyId || null,
               paymentAccountChannelId: paymentAccountChannelId!,
               paymentAccountId: paymentAccountId!,
@@ -615,6 +613,7 @@ async function editPaymentPlan(plan: BusinessApi.PaymentPlan) {
     },
   );
   formApi?.setValue({
+    automaticPaymentEnabled: plan.automaticPaymentEnabled,
     batchPolicyId: plan.batchPolicyId ?? '',
     priority: plan.priority,
     routeKey: `${plan.paymentAccountId}:${plan.paymentAccountChannelId}`,
@@ -632,6 +631,21 @@ function changePaymentPlanStatus(
       setPaymentPlanStatusApi(plan.id, status, selectedTenantId.value),
     onSuccess: reloadPaymentPlans,
     successMessage: status === 'active' ? '支付方案已启用' : '支付方案已停用',
+  });
+}
+
+function changePaymentPlanAutomation(
+  plan: BusinessApi.PaymentPlan,
+  checked: boolean,
+) {
+  return runResourceAction({
+    action: () =>
+      updatePaymentPlanApi(plan.id, {
+        automaticPaymentEnabled: checked,
+        tenantId: selectedTenantId.value,
+      }),
+    onSuccess: reloadPaymentPlans,
+    successMessage: checked ? '自动付款已开启' : '自动付款已关闭',
   });
 }
 
@@ -699,16 +713,6 @@ onMounted(async () => {
         <ATag :color="row.credentialConfigured ? 'success' : 'warning'">
           {{ row.credentialConfigured ? '已配置' : '未配置' }}
         </ATag>
-      </template>
-      <template #automaticPayment="{ row }">
-        <ATag v-if="row.automaticPaymentEnabled" color="success">
-          {{
-            row.automaticPaymentExecutionMode === 'BATCH'
-              ? '批次付款'
-              : '单笔付款'
-          }}
-        </ATag>
-        <ATag v-else>未开启</ATag>
       </template>
       <template #status="{ row }">
         <AsyncStatusSwitch
@@ -779,10 +783,137 @@ onMounted(async () => {
       :title="
         selectedMerchant ? `${selectedMerchant.name} · 账号配置` : '账号配置'
       "
-      width="min(760px, 94vw)"
+      width="min(1400px, calc(100vw - 48px))"
     >
       <ASpin :spinning="configLoading">
         <ATabs>
+          <ATabPane key="payment-plans" tab="支付方案">
+            <div class="mb-3 flex justify-end">
+              <AButton
+                v-access:code="['payment:account:bind']"
+                :disabled="paymentAccounts.length === 0"
+                size="small"
+                type="primary"
+                @click="createPaymentPlan"
+              >
+                新增方案
+              </AButton>
+            </div>
+            <AAlert
+              v-if="paymentAccounts.length === 0"
+              class="mb-3"
+              message="请先创建支付账号并开通支付通道"
+              show-icon
+              type="info"
+            />
+            <ATable
+              :data-source="paymentPlans"
+              data-testid="payment-plan-table"
+              :pagination="false"
+              row-key="id"
+              size="small"
+              :scroll="{ x: 1160 }"
+            >
+              <ATableColumn key="account" title="支付账号" :width="180">
+                <template #default="{ record }">
+                  {{ paymentAccountName(record.paymentAccountId) }}
+                </template>
+              </ATableColumn>
+              <ATableColumn key="channel" title="支付通道" :width="180">
+                <template #default="{ record }">
+                  {{
+                    paymentChannelName(
+                      record.paymentAccountId,
+                      record.paymentAccountChannelId,
+                    )
+                  }}
+                </template>
+              </ATableColumn>
+              <ATableColumn key="mode" title="付款模式" :width="110">
+                <template #default="{ record }">
+                  {{
+                    paymentAccounts
+                      .find((item) => item.id === record.paymentAccountId)
+                      ?.channels.find(
+                        (item) => item.id === record.paymentAccountChannelId,
+                      )?.executionMode === 'BATCH'
+                      ? '批次付款'
+                      : '单笔付款'
+                  }}
+                </template>
+              </ATableColumn>
+              <ATableColumn key="batchPolicy" title="批次策略" :width="150">
+                <template #default="{ record }">
+                  {{ paymentBatchPolicyName(record.batchPolicyId) }}
+                </template>
+              </ATableColumn>
+              <ATableColumn key="automatic" title="自动付款" :width="100">
+                <template #default="{ record }">
+                  <AsyncStatusSwitch
+                    v-access:code="['payment:account:bind']"
+                    :checked="record.automaticPaymentEnabled"
+                    checked-label="开启"
+                    :label="`${paymentAccountName(record.paymentAccountId)}自动付款`"
+                    :request="
+                      (checked) => changePaymentPlanAutomation(record, checked)
+                    "
+                    unchecked-label="关闭"
+                  />
+                </template>
+              </ATableColumn>
+              <ATableColumn
+                data-index="priority"
+                title="使用顺序"
+                :width="100"
+              />
+              <ATableColumn data-index="weight" title="分配比例" :width="100" />
+              <ATableColumn key="status" title="状态" :width="90">
+                <template #default="{ record }">
+                  <AsyncStatusSwitch
+                    v-access:code="['payment:account:bind']"
+                    :checked="record.status === 'active'"
+                    :label="`${paymentAccountName(record.paymentAccountId)}支付方案状态`"
+                    :request="
+                      (checked) => changePaymentPlanStatus(record, checked)
+                    "
+                  />
+                </template>
+              </ATableColumn>
+              <ATableColumn
+                align="center"
+                key="action"
+                fixed="right"
+                title="操作"
+                :width="150"
+              >
+                <template #default="{ record }">
+                  <div
+                    class="flex w-full flex-nowrap items-center justify-center gap-1 px-1"
+                  >
+                    <AButton
+                      v-access:code="['payment:account:bind']"
+                      class="px-1"
+                      size="small"
+                      type="link"
+                      @click="editPaymentPlan(record)"
+                    >
+                      编辑
+                    </AButton>
+                    <AButton
+                      v-access:code="['payment:account:bind']"
+                      class="px-1"
+                      danger
+                      size="small"
+                      type="link"
+                      @click="removePaymentPlan(record)"
+                    >
+                      删除
+                    </AButton>
+                  </div>
+                </template>
+              </ATableColumn>
+            </ATable>
+          </ATabPane>
           <ATabPane key="credentials" tab="平台凭据">
             <div class="mb-3 flex justify-end">
               <AButton
@@ -843,119 +974,6 @@ onMounted(async () => {
                       size="small"
                       type="link"
                       @click="removeCredential(record)"
-                    >
-                      删除
-                    </AButton>
-                  </div>
-                </template>
-              </ATableColumn>
-            </ATable>
-          </ATabPane>
-          <ATabPane key="payment-plans" tab="支付方案">
-            <div class="mb-3 flex justify-end">
-              <AButton
-                v-access:code="['payment:account:bind']"
-                :disabled="paymentAccounts.length === 0"
-                size="small"
-                type="primary"
-                @click="createPaymentPlan"
-              >
-                新增方案
-              </AButton>
-            </div>
-            <AAlert
-              v-if="paymentAccounts.length === 0"
-              class="mb-3"
-              message="请先创建支付账号并开通支付通道"
-              show-icon
-              type="info"
-            />
-            <ATable
-              :data-source="paymentPlans"
-              data-testid="payment-plan-table"
-              :pagination="false"
-              row-key="id"
-              size="small"
-              :scroll="{ x: 1040 }"
-            >
-              <ATableColumn key="account" title="支付账号" :width="180">
-                <template #default="{ record }">
-                  {{ paymentAccountName(record.paymentAccountId) }}
-                </template>
-              </ATableColumn>
-              <ATableColumn key="channel" title="支付通道" :width="180">
-                <template #default="{ record }">
-                  {{
-                    paymentChannelName(
-                      record.paymentAccountId,
-                      record.paymentAccountChannelId,
-                    )
-                  }}
-                </template>
-              </ATableColumn>
-              <ATableColumn key="mode" title="付款模式" :width="110">
-                <template #default="{ record }">
-                  {{
-                    paymentAccounts
-                      .find((item) => item.id === record.paymentAccountId)
-                      ?.channels.find(
-                        (item) => item.id === record.paymentAccountChannelId,
-                      )?.executionMode === 'BATCH'
-                      ? '批次付款'
-                      : '单笔付款'
-                  }}
-                </template>
-              </ATableColumn>
-              <ATableColumn key="batchPolicy" title="批次策略" :width="150">
-                <template #default="{ record }">
-                  {{ paymentBatchPolicyName(record.batchPolicyId) }}
-                </template>
-              </ATableColumn>
-              <ATableColumn
-                data-index="priority"
-                title="使用顺序"
-                :width="100"
-              />
-              <ATableColumn data-index="weight" title="分配比例" :width="100" />
-              <ATableColumn key="status" title="状态" :width="90">
-                <template #default="{ record }">
-                  <AsyncStatusSwitch
-                    v-access:code="['payment:account:bind']"
-                    :checked="record.status === 'active'"
-                    :label="`${paymentAccountName(record.paymentAccountId)}支付方案状态`"
-                    :request="
-                      (checked) => changePaymentPlanStatus(record, checked)
-                    "
-                  />
-                </template>
-              </ATableColumn>
-              <ATableColumn
-                align="center"
-                key="action"
-                fixed="right"
-                title="操作"
-                :width="150"
-              >
-                <template #default="{ record }">
-                  <div
-                    class="flex w-full flex-nowrap items-center justify-center gap-1 px-1"
-                  >
-                    <AButton
-                      v-access:code="['payment:account:bind']"
-                      class="px-1"
-                      size="small"
-                      type="link"
-                      @click="editPaymentPlan(record)"
-                    >
-                      编辑
-                    </AButton>
-                    <AButton
-                      v-access:code="['payment:account:bind']"
-                      class="px-1"
-                      danger
-                      size="small"
-                      type="link"
-                      @click="removePaymentPlan(record)"
                     >
                       删除
                     </AButton>

@@ -25,8 +25,11 @@ MOCK_BINANCE_CLIENT_TYPE=WEB
 ```bash
 curl -X POST http://127.0.0.1:13002/api/mock/binance-c2c/orders \
   -H 'content-type: application/json' \
-  -d '{"orderNumber":"22924521759466590208","totalPrice":"133.00","amount":"0.0019","realName":"杨圳","paymentMethod":{"id":"1","identifier":"BANK","tradeMethodName":"银行卡","payAccount":"13822079784","fieldList":[{"fieldName":"account_name","fieldValue":"杨圳"}]}}'
+  -d '{"externalMerchantId":"mock-hq-binance","orderNumber":"22924521759466590208","totalPrice":"133.00","amount":"0.0019","realName":"杨圳","paymentMethod":{"id":"1","identifier":"BANK","tradeMethodName":"银行卡","payAccount":"13822079784","fieldList":[{"fieldName":"account_name","fieldValue":"杨圳"}]}}'
 ```
+
+`externalMerchantId` 是 Mock 内部归属键。业务端凭证通过 `x-user-id` 传入商家账号编号；列表、详情、
+标记付款和申诉接口只允许访问同一账号的订单。
 
 订单可通过 `complaintReasons` 自定义上游返回的申诉原因。例如：
 

@@ -64,7 +64,7 @@ describe('Telegram administration database integration', () => {
         '00000000-0000-4000-8000-000000000030',
         '${C2C_FOUNDATION_IDS.headquartersTenant}',
         'PAY_MAIN', 'Main payment bot', 'PAYMENT', 'env://TELEGRAM_TOKEN',
-        ARRAY['ORDER_QUERY', 'MANUAL_PAYMENT'], 'active'
+        ARRAY['ORDER_QUERY', 'ALIPAY_BATCH_PAYMENT'], 'active'
       )
     `)
     await queryRunner.query(`

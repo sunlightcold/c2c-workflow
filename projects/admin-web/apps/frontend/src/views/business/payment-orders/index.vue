@@ -13,7 +13,7 @@ import {
   getPaymentAccountsApi,
   getPaymentOrderApi,
   getPaymentOrdersApi,
-  reconcilePaymentOrderApi,
+  queryPaymentOrderUpstreamApi,
   rematchPaymentOrderApi,
 } from '#/api';
 import { runResourceAction, useFormModal, useResourceGrid } from '#/hooks';
@@ -34,6 +34,7 @@ import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 type PaymentOrderDetail = BusinessApi.PaymentOrder & {
   batchItems: BusinessApi.PaymentBatchItem[];
   history: BusinessApi.StatusHistory[];
+  upstream?: BusinessApi.PaymentOrderUpstreamQueryResult['upstream'];
 };
 type SearchValues = {
   merchantId?: string;
@@ -289,6 +290,20 @@ async function openDetail(order: BusinessApi.PaymentOrder) {
   detailOpen.value = true;
 }
 
+async function queryUpstream(order: BusinessApi.PaymentOrder) {
+  const result = await queryPaymentOrderUpstreamApi(order.id, {
+    tenantId: selectedTenantId.value,
+  });
+  detail.value = {
+    ...result.order,
+    batchItems: [],
+    history: [],
+    upstream: result.upstream,
+  };
+  detailOpen.value = true;
+  await gApi.query();
+}
+
 function paymentRoute(order: BusinessApi.PaymentOrder) {
   return resolvePaymentRoute(
     paymentAccounts.value,
@@ -298,18 +313,11 @@ function paymentRoute(order: BusinessApi.PaymentOrder) {
 }
 
 async function runOrderAction(order: BusinessApi.PaymentOrder) {
-  const reconcile = ['PROCESSING', 'UNKNOWN'].includes(order.status);
   await runResourceAction({
     action: () =>
-      reconcile
-        ? reconcilePaymentOrderApi(order.id, {
-            tenantId: selectedTenantId.value,
-          })
-        : rematchPaymentOrderApi(order.id, {
-            tenantId: selectedTenantId.value,
-          }),
+      rematchPaymentOrderApi(order.id, { tenantId: selectedTenantId.value }),
     onSuccess: () => gApi.query(),
-    successMessage: reconcile ? '支付结果回查完成' : '支付方案重新匹配完成',
+    successMessage: '支付方案重新匹配完成',
   });
 }
 
@@ -405,14 +413,23 @@ onMounted(async () => {
           <AButton
             v-access:code="['payment:order:retry']"
             class="px-1"
-            :disabled="
-              !['PENDING_CONFIG', 'PROCESSING', 'UNKNOWN'].includes(row.status)
-            "
+            v-if="row.status === 'PENDING_CONFIG'"
+            :disabled="row.status !== 'PENDING_CONFIG'"
             size="small"
             type="link"
             @click="runOrderAction(row)"
           >
-            {{ row.status === 'PENDING_CONFIG' ? '重新匹配' : '回查' }}
+            重新匹配
+          </AButton>
+          <AButton
+            v-access:code="['payment:order:read']"
+            class="px-1"
+            v-if="row.status !== 'PENDING_CONFIG'"
+            size="small"
+            type="link"
+            @click="queryUpstream(row)"
+          >
+            上游查询
           </AButton>
         </div>
       </template>
@@ -452,16 +469,32 @@ onMounted(async () => {
           <ADescriptionsItem label="状态">
             {{ businessEnumText(detail.status) }}
           </ADescriptionsItem>
+          <ADescriptionsItem v-if="detail.upstream" label="上游查询状态">
+            {{ businessEnumText(detail.upstream.status) }}
+          </ADescriptionsItem>
+          <ADescriptionsItem
+            v-if="detail.upstream?.errorMessage"
+            label="上游返回说明"
+          >
+            {{ detail.upstream.errorMessage }}
+          </ADescriptionsItem>
           <ADescriptionsItem v-if="detail.lastError" label="异常原因">
             {{ detail.lastError }}
           </ADescriptionsItem>
         </ADescriptions>
+        <template v-if="detail.upstream">
+          <ADivider orientation="left">上游订单参数</ADivider>
+          <pre class="bg-muted max-h-80 overflow-auto rounded p-3 text-xs">{{
+            JSON.stringify(detail.upstream.raw, null, 2)
+          }}</pre>
+        </template>
         <ADivider orientation="left">状态时间线</ADivider>
         <ATimeline>
           <ATimelineItem v-for="item in detail.history" :key="item.id">
             <div class="font-medium">{{ businessEnumText(item.toStatus) }}</div>
             <div class="text-muted-foreground text-sm">
-              {{ formatBusinessTime(item.createdAt) }} · {{ item.source }}
+              {{ formatBusinessTime(item.createdAt) }} ·
+              {{ businessEnumText(item.source) }}
             </div>
             <div v-if="item.reason" class="mt-1 text-sm">{{ item.reason }}</div>
           </ATimelineItem>

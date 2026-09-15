@@ -81,4 +81,15 @@ export class PaymentOrderController {
   ) {
     return this.execution.reconcile(this.scope.resolveTenantId(actor, dto.tenantId), id)
   }
+
+  @Post(':id/upstream-query')
+  @Permission(PaymentOrderPermissions.READ)
+  @ApiOperation({ summary: '查询支付通道上游订单详情' })
+  upstreamQuery(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PaymentTenantContextDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.execution.queryUpstream(this.scope.resolveTenantId(actor, dto.tenantId), id)
+  }
 }

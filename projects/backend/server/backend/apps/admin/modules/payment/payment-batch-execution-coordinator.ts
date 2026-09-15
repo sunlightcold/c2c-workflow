@@ -6,6 +6,7 @@ import type { ExecutablePaymentOrder } from './payment-execution-coordinator'
 import { PaymentExecutionCoordinator } from './payment-execution-coordinator'
 import { PaymentNotSubmittedError } from './payment-execution.errors'
 import { EVENT_KEYS, EventEmitterService } from '../event-emitter'
+import type { PaymentReconciliationPolicy } from './payment-adapter.types'
 
 export interface ExecutablePaymentBatchItem {
   id: string
@@ -25,7 +26,14 @@ export interface ExecutablePaymentBatch {
   status: PaymentBatchStatus
   credentialRef: string
   upstreamId?: string | null
+  reconciliationAttempts: number
+  nextReconcileAt: Date | null
   items: ExecutablePaymentBatchItem[]
+}
+
+export interface PaymentBatchReconciliationSchedule {
+  reconciliationAttempts: number
+  nextReconcileAt: Date | null
 }
 
 export interface PaymentBatchApplyOutcome {
@@ -40,21 +48,26 @@ export interface PaymentBatchStore {
     batch: ExecutablePaymentBatch,
     status: PaymentBatchStatus.PROCESSING,
     upstreamId?: string,
+    schedule?: PaymentBatchReconciliationSchedule,
   ) => Promise<ExecutablePaymentBatch>
   markUnknown: (
     batch: ExecutablePaymentBatch,
     errorMessage?: string,
+    schedule?: PaymentBatchReconciliationSchedule,
   ) => Promise<ExecutablePaymentBatch>
   fail: (batch: ExecutablePaymentBatch, errorMessage?: string) => Promise<ExecutablePaymentBatch>
   applyQuery: (
     batch: ExecutablePaymentBatch,
     result: PaymentExecutionResult<AlipayBatchResponse>,
+    schedule?: PaymentBatchReconciliationSchedule,
   ) => Promise<PaymentBatchApplyOutcome>
+  prepareForQuery?: (tenantId: string, batchId: string) => Promise<ExecutablePaymentBatch>
 }
 
 export interface PaymentBatchExecutor {
   submit: (batch: ExecutablePaymentBatch) => Promise<PaymentExecutionResult<AlipayBatchResponse>>
   query: (batch: ExecutablePaymentBatch) => Promise<PaymentExecutionResult<AlipayBatchResponse>>
+  getReconciliationPolicy: (batch: ExecutablePaymentBatch) => PaymentReconciliationPolicy
 }
 
 export interface PaymentBatchPreflightVerifier {
@@ -80,6 +93,7 @@ export class PaymentBatchExecutionCoordinator {
     const prepared = await this.store.prepare(tenantId, batchId)
     if (prepared.status !== PaymentBatchStatus.READY)
       throw new ConflictException('只有待提交支付批次可以提交')
+    const policy = this.executor.getReconciliationPolicy(prepared)
     for (const item of prepared.items) {
       if (item.sourceType === PaymentSourceType.C2C_BUY) {
         await this.preflight.verifyBatch(tenantId, item.paymentOrderId)
@@ -94,7 +108,11 @@ export class PaymentBatchExecutionCoordinator {
       const outcome =
         error instanceof PaymentNotSubmittedError
           ? await this.store.fail(claimed, this.errorMessage(error))
-          : await this.store.markUnknown(claimed, this.errorMessage(error))
+          : await this.store.markUnknown(
+              claimed,
+              this.errorMessage(error),
+              this.initialSchedule(policy),
+            )
       this.emitStatus(outcome, this.errorMessage(error))
       return outcome
     }
@@ -104,7 +122,11 @@ export class PaymentBatchExecutionCoordinator {
       return outcome
     }
     if (result.status === PaymentExecutionStatus.UNKNOWN) {
-      const outcome = await this.store.markUnknown(claimed, result.errorMessage)
+      const outcome = await this.store.markUnknown(
+        claimed,
+        result.errorMessage,
+        this.initialSchedule(policy),
+      )
       this.emitStatus(outcome, result.errorMessage)
       return outcome
     }
@@ -112,9 +134,10 @@ export class PaymentBatchExecutionCoordinator {
       claimed,
       PaymentBatchStatus.PROCESSING,
       result.upstreamId,
+      this.initialSchedule(policy),
     )
     this.emitStatus(submitted)
-    return this.queryAndApply(submitted)
+    return submitted
   }
 
   async reconcile(tenantId: string, batchId: string): Promise<ExecutablePaymentBatch> {
@@ -130,33 +153,133 @@ export class PaymentBatchExecutionCoordinator {
     return this.queryAndApply(batch)
   }
 
-  private async queryAndApply(batch: ExecutablePaymentBatch): Promise<ExecutablePaymentBatch> {
+  async queryUpstream(tenantId: string, batchId: string) {
+    const batch = this.store.prepareForQuery
+      ? await this.store.prepareForQuery(tenantId, batchId)
+      : await this.store.prepare(tenantId, batchId)
+    const schedule = this.nextSchedule(batch, this.executor.getReconciliationPolicy(batch))
     let result: PaymentExecutionResult<AlipayBatchResponse>
     try {
       result = await this.executor.query(batch)
     } catch (error) {
-      const outcome = await this.store.markUnknown(batch, this.errorMessage(error))
+      let current = batch
+      if (
+        [
+          PaymentBatchStatus.SUBMITTING,
+          PaymentBatchStatus.PROCESSING,
+          PaymentBatchStatus.UNKNOWN,
+        ].includes(batch.status)
+      ) {
+        current = await this.store.markUnknown(batch, this.errorMessage(error), schedule)
+        this.emitStatus(current, this.errorMessage(error))
+      }
+      return {
+        batch: current,
+        upstream: {
+          status: PaymentExecutionStatus.UNKNOWN,
+          errorMessage: this.errorMessage(error),
+          raw: null,
+        },
+      }
+    }
+    let current = batch
+    if (
+      [
+        PaymentBatchStatus.SUBMITTING,
+        PaymentBatchStatus.PROCESSING,
+        PaymentBatchStatus.UNKNOWN,
+      ].includes(batch.status)
+    ) {
+      if (result.status === PaymentExecutionStatus.UNKNOWN) {
+        current = await this.store.markUnknown(batch, result.errorMessage, schedule)
+        this.emitStatus(current, result.errorMessage)
+      } else {
+        const outcome = await this.applyQueryResultAndConfirm(batch, result, schedule)
+        current = outcome
+      }
+    }
+    return {
+      batch: current,
+      upstream: {
+        status: result.status,
+        upstreamId: result.upstreamId,
+        errorMessage: result.errorMessage,
+        raw: result.raw,
+      },
+    }
+  }
+
+  private async queryAndApply(batch: ExecutablePaymentBatch): Promise<ExecutablePaymentBatch> {
+    const schedule = this.nextSchedule(batch, this.executor.getReconciliationPolicy(batch))
+    let result: PaymentExecutionResult<AlipayBatchResponse>
+    try {
+      result = await this.executor.query(batch)
+    } catch (error) {
+      const outcome = await this.store.markUnknown(batch, this.errorMessage(error), schedule)
       this.emitStatus(outcome, this.errorMessage(error))
       return outcome
     }
     if (result.status === PaymentExecutionStatus.UNKNOWN) {
-      const outcome = await this.store.markUnknown(batch, result.errorMessage)
+      const outcome = await this.store.markUnknown(batch, result.errorMessage, schedule)
+      this.emitStatus(outcome, result.errorMessage)
+      return outcome
+    }
+    return this.applyQueryResultAndConfirm(batch, result, schedule)
+  }
+
+  private async applyQueryResultAndConfirm(
+    batch: ExecutablePaymentBatch,
+    result: PaymentExecutionResult<AlipayBatchResponse>,
+    schedule: PaymentBatchReconciliationSchedule,
+  ): Promise<ExecutablePaymentBatch> {
+    if (result.status === PaymentExecutionStatus.UNKNOWN) {
+      const outcome = await this.store.markUnknown(batch, result.errorMessage, schedule)
       this.emitStatus(outcome, result.errorMessage)
       return outcome
     }
     let outcome: PaymentBatchApplyOutcome
     try {
-      outcome = await this.store.applyQuery(batch, result)
+      outcome = await this.applyQueryResult(batch, result, schedule)
     } catch (error) {
-      const outcome = await this.store.markUnknown(batch, this.errorMessage(error))
-      this.emitStatus(outcome, this.errorMessage(error))
-      return outcome
+      const unknown = await this.store.markUnknown(batch, this.errorMessage(error), schedule)
+      this.emitStatus(unknown, this.errorMessage(error))
+      return unknown
     }
-    for (const payment of outcome.paymentsToConfirm) {
-      await this.payments.confirmPlatform(payment)
-    }
+    for (const payment of outcome.paymentsToConfirm) await this.payments.confirmPlatform(payment)
     this.emitStatus(outcome.batch)
     return outcome.batch
+  }
+
+  private async applyQueryResult(
+    batch: ExecutablePaymentBatch,
+    result: PaymentExecutionResult<AlipayBatchResponse>,
+    schedule: PaymentBatchReconciliationSchedule,
+  ): Promise<PaymentBatchApplyOutcome> {
+    return this.store.applyQuery(batch, result, schedule)
+  }
+
+  private initialSchedule(policy: PaymentReconciliationPolicy): PaymentBatchReconciliationSchedule {
+    return {
+      reconciliationAttempts: 0,
+      nextReconcileAt:
+        policy.enabled && policy.maxAttempts > 0
+          ? new Date(Date.now() + Math.max(0, policy.initialDelaySeconds) * 1000)
+          : null,
+    }
+  }
+
+  private nextSchedule(
+    batch: ExecutablePaymentBatch,
+    policy: PaymentReconciliationPolicy,
+  ): PaymentBatchReconciliationSchedule {
+    const reconciliationAttempts = batch.reconciliationAttempts + 1
+    return {
+      reconciliationAttempts,
+      nextReconcileAt:
+        policy.enabled && reconciliationAttempts < policy.maxAttempts
+          ? new Date(Date.now() + Math.max(0, policy.intervalSeconds) * 1000)
+          : null,
+    }
   }
 
   private emitStatus(batch: ExecutablePaymentBatch, errorMessage?: string): void {

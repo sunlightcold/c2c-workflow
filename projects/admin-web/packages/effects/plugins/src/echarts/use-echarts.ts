@@ -1,9 +1,8 @@
-import type { EChartsOption } from 'echarts';
-
 import type { Ref } from 'vue';
 
 import type { Nullable } from '@vben/types';
 
+import type { ECOption } from './echarts';
 import type EchartsUI from './echarts-ui.vue';
 
 import { computed, nextTick, watch } from 'vue';
@@ -26,13 +25,13 @@ type EchartsThemeType = 'dark' | 'light' | null;
 
 function useEcharts(chartRef: Ref<EchartsUIType>) {
   let chartInstance: echarts.ECharts | null = null;
-  let cacheOptions: EChartsOption = {};
+  let cacheOptions: ECOption = {};
 
   const { isDark } = usePreferences();
   const { height, width } = useWindowSize();
   const resizeHandler: () => void = useDebounceFn(resize, 200);
 
-  const getOptions = computed((): EChartsOption => {
+  const getOptions = computed((): ECOption => {
     if (!isDark.value) {
       return {};
     }
@@ -53,7 +52,7 @@ function useEcharts(chartRef: Ref<EchartsUIType>) {
   };
 
   const renderEcharts = (
-    options: EChartsOption,
+    options: ECOption,
     clear = true,
   ): Promise<Nullable<echarts.ECharts>> => {
     cacheOptions = options;

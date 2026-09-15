@@ -7,7 +7,9 @@ import {
   type C2cHttpTransport,
   type C2cListInput,
   type C2cMarkPaidOptions,
+  type C2cMarkPaidPolicy,
   type C2cPaymentProofImage,
+  type C2cPlatformAdapter,
 } from './c2c-platform.types'
 import { normalizeOkxDetail, normalizeOkxSummary } from './c2c-order-normalizer'
 
@@ -30,7 +32,7 @@ interface OkxEnvelope<T> {
 }
 
 @Injectable()
-export class OkxWebPrivateClient {
+export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCredentials> {
   private readonly logger = new Logger(OkxWebPrivateClient.name)
   constructor(@Inject(C2C_HTTP_TRANSPORT) private readonly http: C2cHttpTransport) {}
 
@@ -39,7 +41,13 @@ export class OkxWebPrivateClient {
     const timestamp = Date.now()
     const response = await this.get<
       | Record<string, unknown>[]
-      | { items?: Record<string, unknown>[]; orders?: Record<string, unknown>[]; total?: number }
+      | {
+          items?: Record<string, unknown>[]
+          orders?: Record<string, unknown>[]
+          total?: number
+          totalItemCount?: number
+          pageInfo?: { totalItemCount?: number }
+        }
     >(
       credentials,
       '/v4/c2c/order/getOrderList',
@@ -59,16 +67,24 @@ export class OkxWebPrivateClient {
     const data = response.data
     const rawItems = Array.isArray(data) ? data : (data?.items ?? data?.orders ?? [])
     const items = rawItems
-      .filter((item) => String(item.side ?? 'buy').toLowerCase() === 'buy')
+      .filter((item) => String(item.side).toLowerCase() === 'buy')
       .map(normalizeOkxSummary)
       .filter(
         (item) =>
           !input.orderStatusList.length ||
           input.orderStatusList.includes(this.toNumericStatus(item.status)),
       )
+    const upstreamTotal = Array.isArray(data)
+      ? undefined
+      : (data?.total ?? data?.totalItemCount ?? data?.pageInfo?.totalItemCount)
+    const hasUpstreamTotal = upstreamTotal !== undefined && Number.isFinite(Number(upstreamTotal))
+    const total = hasUpstreamTotal ? Number(upstreamTotal) : rawItems.length
     return {
       items,
-      total: Array.isArray(data) ? items.length : Number(data?.total ?? items.length),
+      total,
+      hasMore:
+        rawItems.length > 0 &&
+        (hasUpstreamTotal ? input.page * input.rows < total : rawItems.length === input.rows),
     }
   }
 
@@ -106,10 +122,11 @@ export class OkxWebPrivateClient {
   async markOrderAsPaid(
     credentials: OkxWebPrivateCredentials,
     orderId: string,
-    paymentAccountId: string,
+    paymentAccountId: number | string,
     options?: C2cMarkPaidOptions,
   ) {
-    if (!/^\d+$/.test(paymentAccountId) || BigInt(paymentAccountId) <= 0n)
+    const paymentAccountIdText = String(paymentAccountId)
+    if (!/^\d+$/.test(paymentAccountIdText) || BigInt(paymentAccountIdText) <= 0n)
       throw new Error('欧易 C2C receiptAccountId 无效')
     const signingKey = this.parseSigningKey(credentials)
     const images = options?.paymentProofImages ?? []
@@ -132,8 +149,8 @@ export class OkxWebPrivateClient {
     const path = `/v3/c2c/orders/${this.orderId(orderId)}/payment/paid`
     const timestamp = Date.now()
     const body = paymentProofFileUrls
-      ? `{"receiptAccountId":${paymentAccountId},"paymentProofFileUrls":${JSON.stringify(paymentProofFileUrls)}}`
-      : `{"receiptAccountId":${paymentAccountId}}`
+      ? `{"receiptAccountId":${paymentAccountIdText},"paymentProofFileUrls":${JSON.stringify(paymentProofFileUrls)}}`
+      : `{"receiptAccountId":${paymentAccountIdText}}`
     const response = await this.post<Record<string, never>>(
       credentials,
       path,
@@ -152,10 +169,21 @@ export class OkxWebPrivateClient {
   getCapabilities(): C2cCapabilities {
     return {
       appeal: false,
+      cancelOrder: false,
+      chat: false,
+      checkAntiFraud: true,
       listOrders: true,
+      listReportOrders: false,
       getOrderDetail: true,
       markOrderAsPaid: true,
+      releaseCrypto: false,
       sellOrders: false,
+    }
+  }
+
+  getMarkPaidPolicy(credentials: OkxWebPrivateCredentials): C2cMarkPaidPolicy {
+    return {
+      paymentProof: credentials.skipPaymentProofUpload === false ? 'REQUIRED' : 'SKIP',
     }
   }
 

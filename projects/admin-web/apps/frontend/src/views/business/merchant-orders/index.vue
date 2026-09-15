@@ -7,6 +7,8 @@ import { onMounted, reactive, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
 
+import { notification } from 'ant-design-vue';
+
 import {
   cancelMerchantOrderApi,
   confirmMerchantOrderPaidApi,
@@ -29,7 +31,6 @@ import {
 import {
   cancelMerchantOrderModalOptions,
   createMerchantOrderAppealModalOptions,
-  createMerchantOrderPaymentModalOptions,
 } from '../shared/business-form-schemas';
 import { createEmptyBusinessPage } from '../shared/business-grid';
 import {
@@ -227,13 +228,13 @@ const [Grid, gridApi] = useResourceGrid<
   gridOptions,
   mapQueryParams: ({ formValues, page }) => ({
     ...formValues,
-    merchantId: formValues.merchantId ?? '',
+    merchantId: formValues.merchantId || undefined,
     pageIndex: page.currentPage,
     pageSize: page.pageSize,
   }),
   query: async (params) => {
     selectedTenantId.value = params.tenantId ?? '';
-    if (!params.tenantId || !params.merchantId) {
+    if (!params.tenantId) {
       return createEmptyBusinessPage(params.pageIndex, params.pageSize);
     }
     const { createdAt: _createdAt, pageIndex, ...query } = params;
@@ -244,6 +245,7 @@ const { FormModalRender, formModalClose, formModalShow } = useFormModal();
 
 async function selectTenant(tenantId: string, refresh: boolean) {
   selectedTenantId.value = tenantId;
+  await gridApi.formApi.setFieldValue('tenantId', tenantId);
   [merchants.value, paymentAccounts.value] = tenantId
     ? await Promise.all([
         getMerchantsApi({ tenantId }),
@@ -260,6 +262,9 @@ async function selectTenant(tenantId: string, refresh: boolean) {
     })),
   );
   await gridApi.formApi.setFieldValue('merchantId', undefined);
+  gridApi.formApi.setLatestSubmissionValues(
+    (await gridApi.formApi.getValues()) as SearchValues,
+  );
   if (refresh) await gridApi.query();
 }
 
@@ -296,29 +301,30 @@ async function openDetail(order: BusinessApi.MerchantOrder) {
 }
 
 function createPayment(order: BusinessApi.MerchantOrder) {
-  formModalShow(createMerchantOrderPaymentModalOptions(), {
-    onOk: async (api) => {
-      await api.validate();
-      const data = api.formData() as {
-        executionMode: BusinessApi.PaymentExecutionMode;
-      };
-      await runResourceAction({
-        action: () =>
-          createMerchantOrderPaymentApi(order.id, {
-            executionMode: data.executionMode,
-            merchantId: order.merchantId,
-            tenantId: selectedTenantId.value,
-          }),
-        onSuccess: async () => {
-          formModalClose();
-          await gridApi.query();
-        },
-        successMessage:
-          data.executionMode === 'INSTANT'
-            ? '支付宝商家转账已提交'
-            : '支付订单已创建，可加入批量有密批次',
+  confirmResourceAction({
+    action: async () => {
+      const payment = await createMerchantOrderPaymentApi(order.id, {
+        merchantId: order.merchantId,
+        tenantId: selectedTenantId.value,
+      });
+      if (['FAILED', 'FUND_EXCEPTION'].includes(payment.status)) {
+        notification.error({
+          description: payment.lastError || '请进入支付订单查看失败原因',
+          message: '支付失败',
+        });
+        return;
+      }
+      notification.success({
+        message:
+          payment.executionMode === 'BATCH'
+            ? '支付订单已创建，等待批次策略提交'
+            : '支付宝商家转账已提交',
       });
     },
+    content: '系统将按照该商家的启用支付方案选择支付账号和支付通道。',
+    okText: '支付',
+    onSuccess: () => gridApi.query(),
+    title: '确认支付该订单吗？',
   });
 }
 
@@ -366,38 +372,27 @@ async function appealOrder(order: BusinessApi.MerchantOrder) {
       merchantId: order.merchantId,
       tenantId: selectedTenantId.value,
     });
-    let receipt: File | undefined;
-    formModalShow(
-      createMerchantOrderAppealModalOptions(reasons, (file) => {
-        receipt = file;
-      }),
-      {
-        onOk: async (api) => {
-          await api.validate();
-          const selectedReceipt = receipt;
-          if (!selectedReceipt) return;
-          const data = api.formData() as {
-            description: string;
-            reasonCode: number;
-          };
-          await runResourceAction({
-            action: () =>
-              submitMerchantOrderAppealApi(order.id, {
-                description: data.description,
-                merchantId: order.merchantId,
-                reasonCode: Number(data.reasonCode),
-                receipt: selectedReceipt,
-                tenantId: selectedTenantId.value,
-              }),
-            onSuccess: async () => {
-              formModalClose();
-              await gridApi.query();
-            },
-            successMessage: '订单申诉已提交',
-          });
-        },
+    formModalShow(createMerchantOrderAppealModalOptions(reasons), {
+      onOk: async (api) => {
+        await api.validate();
+        const data = api.formData() as {
+          reasonCode: number;
+        };
+        await runResourceAction({
+          action: () =>
+            submitMerchantOrderAppealApi(order.id, {
+              merchantId: order.merchantId,
+              reasonCode: Number(data.reasonCode),
+              tenantId: selectedTenantId.value,
+            }),
+          onSuccess: async () => {
+            formModalClose();
+            await gridApi.query();
+          },
+          successMessage: '订单申诉已提交',
+        });
       },
-    );
+    });
   } finally {
     actionLoading.value = '';
   }
@@ -448,7 +443,6 @@ function paymentRoute(order: BusinessApi.MerchantOrder) {
 onMounted(async () => {
   selectedTenantId.value = await loadTenantOptions();
   if (!selectedTenantId.value) return;
-  await gridApi.formApi.setFieldValue('tenantId', selectedTenantId.value);
   await selectTenant(selectedTenantId.value, false);
   await gridApi.query();
 });
@@ -631,7 +625,8 @@ onMounted(async () => {
                 {{ businessEnumText(item.toStatus) }}
               </div>
               <div class="text-muted-foreground text-sm">
-                {{ formatBusinessTime(item.createdAt) }} · {{ item.source }}
+                {{ formatBusinessTime(item.createdAt) }} ·
+                {{ businessEnumText(item.source) }}
               </div>
               <div v-if="item.reason" class="mt-1 text-sm">
                 {{ item.reason }}
@@ -650,7 +645,8 @@ onMounted(async () => {
                   {{ businessEnumText(item.toStatus) }}
                 </div>
                 <div class="text-muted-foreground text-sm">
-                  {{ formatBusinessTime(item.createdAt) }} · {{ item.source }}
+                  {{ formatBusinessTime(item.createdAt) }} ·
+                  {{ businessEnumText(item.source) }}
                 </div>
                 <div v-if="item.reason" class="mt-1 text-sm">
                   {{ item.reason }}

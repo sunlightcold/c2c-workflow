@@ -55,21 +55,28 @@ describe('C2cMerchantPaymentService', () => {
   })
 
   it('creates an instant payment from trusted merchant-order fields and submits it', async () => {
-    await expect(
-      service.create('tenant-1', 'merchant-1', 'order-1', PaymentExecutionMode.INSTANT),
-    ).resolves.toEqual({ id: 'payment-1', status: PaymentOrderStatus.COMPLETED })
-
-    expect(paymentOrders.create).toHaveBeenCalledWith('tenant-1', {
-      merchantId: 'merchant-1',
-      sourceType: PaymentSourceType.C2C_BUY,
-      sourceBusinessNo: 'platform-order-1',
-      amount: '100.00',
-      currency: 'CNY',
-      paymentMethod: 'ALIPAY',
-      executionMode: PaymentExecutionMode.INSTANT,
-      payeeIdentity: 'payee@example.com',
-      payeeName: 'Payee',
+    await expect(service.create('tenant-1', 'merchant-1', 'order-1')).resolves.toEqual({
+      id: 'payment-1',
+      status: PaymentOrderStatus.COMPLETED,
     })
+
+    expect(paymentOrders.create).toHaveBeenCalledWith(
+      'tenant-1',
+      {
+        merchantId: 'merchant-1',
+        sourceType: PaymentSourceType.C2C_BUY,
+        sourceBusinessNo: 'platform-order-1',
+        amount: '100.00',
+        currency: 'CNY',
+        paymentMethod: 'ALIPAY',
+        payeeIdentity: 'payee@example.com',
+        payeeName: 'Payee',
+      },
+      {
+        automaticOnly: false,
+        requireRoute: true,
+      },
+    )
     expect(execution.submit).toHaveBeenCalledWith('tenant-1', 'payment-1')
     expect(paymentOrders.detail).toHaveBeenCalledWith('tenant-1', 'payment-1')
   })
@@ -81,7 +88,7 @@ describe('C2cMerchantPaymentService', () => {
       executionMode: PaymentExecutionMode.BATCH,
     })
 
-    await service.create('tenant-1', 'merchant-1', 'order-1', PaymentExecutionMode.BATCH)
+    await service.create('tenant-1', 'merchant-1', 'order-1')
 
     expect(execution.submit).not.toHaveBeenCalled()
     expect(paymentOrders.detail).toHaveBeenCalledWith('tenant-1', 'payment-1')
@@ -95,9 +102,9 @@ describe('C2cMerchantPaymentService', () => {
   ])('rejects %s before creating a payment', async (_name, change) => {
     merchantOrders.detail.mockResolvedValue({ ...order, ...change })
 
-    await expect(
-      service.create('tenant-1', 'merchant-1', 'order-1', PaymentExecutionMode.INSTANT),
-    ).rejects.toBeInstanceOf(BadRequestException)
+    await expect(service.create('tenant-1', 'merchant-1', 'order-1')).rejects.toBeInstanceOf(
+      BadRequestException,
+    )
     expect(paymentOrders.create).not.toHaveBeenCalled()
   })
 
@@ -107,11 +114,28 @@ describe('C2cMerchantPaymentService', () => {
       paymentOrder: { id: 'payment-1', status: PaymentOrderStatus.FAILED },
     })
 
-    await expect(
-      service.create('tenant-1', 'merchant-1', 'order-1', PaymentExecutionMode.BATCH),
-    ).rejects.toThrow(new ConflictException('商家订单已存在支付订单，请在支付订单中处理'))
+    await expect(service.create('tenant-1', 'merchant-1', 'order-1')).rejects.toThrow(
+      new ConflictException('商家订单已存在支付订单，请在支付订单中处理'),
+    )
     expect(paymentOrders.create).not.toHaveBeenCalled()
     expect(execution.submit).not.toHaveBeenCalled()
+  })
+
+  it('allows an explicitly reviewed identity mismatch and records the Telegram operator', async () => {
+    merchantOrders.detail.mockResolvedValue({ ...order, identityMatched: false })
+
+    await service.createAfterManualReview('tenant-1', 'merchant-1', 'order-1', 'TG:88')
+
+    expect(paymentOrders.create).toHaveBeenCalledWith(
+      'tenant-1',
+      expect.objectContaining({ sourceBusinessNo: 'platform-order-1' }),
+      {
+        automaticOnly: false,
+        reason: '实名不一致订单已由 TG:88 人工确认',
+        requireRoute: true,
+        source: 'TELEGRAM_C2C_REVIEW',
+      },
+    )
   })
 
   it('retries only platform confirmation without submitting payment again', async () => {

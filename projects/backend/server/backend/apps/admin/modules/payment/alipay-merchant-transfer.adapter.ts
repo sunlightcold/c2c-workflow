@@ -6,6 +6,7 @@ import {
   normalizeCnyAmount,
   PaymentExecutionStatus,
   type PaymentExecutionResult,
+  type PaymentReconciliationPolicy,
 } from './payment-adapter.types'
 
 type TransferStatus = 'DEALING' | 'SUCCESS' | 'FAIL' | 'WAIT_PAY' | 'CLOSED' | 'REFUND'
@@ -21,9 +22,20 @@ interface TransferResponse {
   transAmount?: string
 }
 
+export const ALIPAY_MERCHANT_TRANSFER_RECONCILIATION_POLICY: PaymentReconciliationPolicy = {
+  enabled: false,
+  initialDelaySeconds: 0,
+  intervalSeconds: 0,
+  maxAttempts: 0,
+}
+
 @Injectable()
 export class AlipayMerchantTransferAdapter {
   constructor(@Inject(ALIPAY_GATEWAY) private readonly gateway: AlipayGateway) {}
+
+  getReconciliationPolicy(): PaymentReconciliationPolicy {
+    return { ...ALIPAY_MERCHANT_TRANSFER_RECONCILIATION_POLICY }
+  }
 
   async create(
     input: AlipayPayee & { businessNo: string },

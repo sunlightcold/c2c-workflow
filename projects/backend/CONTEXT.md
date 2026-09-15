@@ -56,6 +56,14 @@
 所属单位名下的一个 C2C 商家账号，创建时必须且只能选择一个交易平台（币安或欧易）。同一经营主体跨平台经营时分别创建商家账号，订单、凭据、同步状态和机器人配置不能跨账号混用。
 _Avoid_: Merchant Profile, Organization, Platform Account
 
+## C2C Platform Provider
+
+币安或欧易提供的外部 C2C 订单能力。业务模块只通过统一的 Platform Provider 入口执行订单列表、详情、付款确认和申诉，不选择具体平台客户端。平台签名、会话、请求字段和能力差异留在各自 Adapter 内；没有真实协议证据的能力必须显式关闭。
+
+## C2C Platform Adapter
+
+把某个平台的凭据、请求协议、订单标识、状态和付款方式归一化为 Platform Provider 契约的适配层。Binance Adapter 与 OKX Web Private Adapter 可以实现不同协议，但不得改变 Payment Order、Automatic C2C Payment 和 Payment Recovery 的业务状态机。
+
 ## Payment Order
 
 由 C2C 买币订单、机器人手工支付或退款申请产生的一笔独立付款业务。Payment Order 在提交前锁定本次使用的支付账号与账号通道，后续结果始终归属于同一笔付款业务。

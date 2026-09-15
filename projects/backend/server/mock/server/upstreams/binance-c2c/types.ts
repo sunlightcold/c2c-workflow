@@ -25,6 +25,8 @@ export interface BinanceC2cPayMethod {
 
 export interface BinanceC2cMockOrder {
   id: string
+  /** Mock-only ownership key. Real Binance isolates orders by account credentials. */
+  externalMerchantId?: string
   orderNumber: string
   orderStatus: number
   totalPrice: string

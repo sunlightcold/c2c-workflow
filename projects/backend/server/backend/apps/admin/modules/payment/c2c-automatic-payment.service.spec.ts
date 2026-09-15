@@ -1,4 +1,5 @@
 import { PaymentExecutionMode, PaymentOrderStatus, PaymentSourceType } from '@admin/database'
+import { EVENT_KEYS } from '../event-emitter'
 import { C2cAutomaticPaymentService } from './c2c-automatic-payment.service'
 
 describe('C2cAutomaticPaymentService', () => {
@@ -7,7 +8,6 @@ describe('C2cAutomaticPaymentService', () => {
     tenantId: 'tenant-1',
     merchantId: 'merchant-1',
     merchantOrderId: 'merchant-order-1',
-    executionMode: PaymentExecutionMode.INSTANT,
     paymentOrderId: null,
     paymentOrderStatus: null,
     paymentOrderExecutionMode: null,
@@ -33,6 +33,7 @@ describe('C2cAutomaticPaymentService', () => {
     requireManualRule: jest.fn(),
   }
   const batchExecution = { submit: jest.fn(), reconcile: jest.fn() }
+  const eventEmitter = { emit: jest.fn(), emitAsync: jest.fn().mockResolvedValue([]) }
   const service = new C2cAutomaticPaymentService(
     store as never,
     merchantPayments as never,
@@ -41,6 +42,7 @@ describe('C2cAutomaticPaymentService', () => {
     batchService as never,
     batchPolicies as never,
     batchExecution as never,
+    eventEmitter as never,
   )
 
   beforeEach(() => jest.clearAllMocks())
@@ -62,7 +64,32 @@ describe('C2cAutomaticPaymentService', () => {
       'tenant-1',
       'merchant-1',
       'merchant-order-1',
-      PaymentExecutionMode.INSTANT,
+      true,
+    )
+    expect(eventEmitter.emit).not.toHaveBeenCalled()
+  })
+
+  it('publishes every automatically created batch payment order', async () => {
+    store.findCandidates.mockResolvedValue([candidate])
+    merchantPayments.create.mockResolvedValue({
+      id: 'payment-1',
+      paymentNo: 'PAY-1',
+      sourceBusinessNo: 'ORDER-1',
+      status: PaymentOrderStatus.READY,
+      upstreamId: null,
+      lastError: null,
+    })
+
+    await service.createAndSubmit(now)
+
+    expect(eventEmitter.emit).toHaveBeenCalledWith(
+      EVENT_KEYS.TELEGRAM_PAYMENT_STATUS,
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        merchantId: 'merchant-1',
+        paymentOrderId: 'payment-1',
+        status: PaymentOrderStatus.READY,
+      }),
     )
   })
 
@@ -84,7 +111,7 @@ describe('C2cAutomaticPaymentService', () => {
     await service.createAndSubmit(now)
 
     expect(merchantPayments.create).not.toHaveBeenCalled()
-    expect(paymentOrders.rematch).toHaveBeenCalledWith('tenant-1', 'payment-1')
+    expect(paymentOrders.rematch).toHaveBeenCalledWith('tenant-1', 'payment-1', true)
     expect(payments.submit).toHaveBeenCalledWith('tenant-1', 'payment-1')
   })
 
@@ -103,6 +130,7 @@ describe('C2cAutomaticPaymentService', () => {
       },
     ])
     batchService.create.mockResolvedValue({ batch: { id: 'batch-1' }, items: [] })
+    batchExecution.submit.mockResolvedValue({ batchNo: 'BAT-1', status: 'PROCESSING' })
 
     await expect(service.submitReadyBatches(now)).resolves.toEqual({
       found: 1,
@@ -114,6 +142,19 @@ describe('C2cAutomaticPaymentService', () => {
       source: 'AUTOMATIC',
     })
     expect(batchExecution.submit).toHaveBeenCalledWith('tenant-1', 'batch-1')
+    expect(eventEmitter.emitAsync).toHaveBeenCalledWith(
+      EVENT_KEYS.TELEGRAM_BATCH_SUBMITTED,
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        merchantId: 'merchant-1',
+        totalCount: 2,
+        totalAmount: '30.00',
+        groups: 1,
+        submitted: 1,
+        failed: 0,
+      }),
+    )
+    expect(batchExecution.reconcile).not.toHaveBeenCalled()
   })
 
   it('manually submits a global policy in isolated merchant groups', async () => {
@@ -150,12 +191,7 @@ describe('C2cAutomaticPaymentService', () => {
     })
 
     expect(batchPolicies.requireManualRule).toHaveBeenCalledWith('tenant-1', null, 'policy-1')
-    expect(batchService.findReadyGroups).toHaveBeenCalledWith(
-      'tenant-1',
-      null,
-      PaymentSourceType.C2C_BUY,
-      'policy-1',
-    )
+    expect(batchService.findReadyGroups).toHaveBeenCalledWith('tenant-1', null, 'policy-1')
     expect(batchService.create).toHaveBeenNthCalledWith(1, 'tenant-1', ['payment-1'], {
       ruleIds: [],
       source: 'MANUAL',
@@ -166,11 +202,12 @@ describe('C2cAutomaticPaymentService', () => {
     })
   })
 
-  it('reconciles uncertain payments and only retries platform confirmation after funds succeeded', async () => {
+  it('reconciles uncertain payments from every source and only retries platform confirmation after funds succeeded', async () => {
     store.findRecoverablePayments.mockResolvedValue([
       {
         id: 'payment-1',
         tenantId: 'tenant-1',
+        sourceType: PaymentSourceType.BOT_MANUAL,
         status: PaymentOrderStatus.UNKNOWN,
         upstreamId: null,
       },

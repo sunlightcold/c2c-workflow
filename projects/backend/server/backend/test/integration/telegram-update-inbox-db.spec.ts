@@ -51,7 +51,7 @@ describe('Telegram update inbox database integration', () => {
       `INSERT INTO telegram_bot
        (id, "tenantId", code, name, "botType", "tokenRef", "webhookSecretRef", capabilities, status)
        VALUES ($1, $2, 'PAY_MAIN', 'Pay bot', 'PAYMENT', 'env://TG_TOKEN', 'env://TG_SECRET',
-         ARRAY['MANUAL_PAYMENT'], 'active')`,
+         ARRAY['ALIPAY_BATCH_PAYMENT'], 'active')`,
       ['00000000-0000-4000-8000-000000000030', C2C_FOUNDATION_IDS.headquartersTenant],
     )
     await queryRunner.query(

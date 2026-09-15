@@ -27,6 +27,34 @@ export interface C2cMarkPaidOptions {
   skipPaymentProofUpload?: boolean
 }
 
+export interface C2cComplaintReason {
+  reasonCode: number
+  reasonDesc: string
+}
+
+export interface C2cComplaintUpload {
+  filePath: string
+  uploadUrl: string
+}
+
+export interface C2cComplaintPayload {
+  description: string
+  fileUrls: string[]
+  orderNo: string
+  reason: string
+  reasonCode: number
+}
+
+export interface C2cComplaintSubmissionResult {
+  data: { complaintNo?: number | string }
+}
+
+export type C2cPaymentProofMode = 'NONE' | 'SKIP' | 'REQUIRED'
+
+export interface C2cMarkPaidPolicy {
+  paymentProof: C2cPaymentProofMode
+}
+
 export interface C2cListInput {
   tradeType: 'BUY'
   asset: string
@@ -39,9 +67,14 @@ export interface C2cListInput {
 
 export interface C2cCapabilities {
   appeal: boolean
+  cancelOrder: boolean
+  chat: boolean
+  checkAntiFraud: boolean
   listOrders: boolean
+  listReportOrders: boolean
   getOrderDetail: boolean
   markOrderAsPaid: boolean
+  releaseCrypto: boolean
   sellOrders: boolean
 }
 
@@ -79,6 +112,20 @@ export interface C2cBuyOrderDetail extends Omit<C2cBuyOrderSummary, 'assetAmount
 }
 
 export interface C2cBuyOrderPage {
+  hasMore: boolean
   items: C2cBuyOrderSummary[]
   total: number
+}
+
+export interface C2cPlatformAdapter<TCredentials> {
+  getCapabilities: () => C2cCapabilities
+  getMarkPaidPolicy: (credentials: TCredentials) => C2cMarkPaidPolicy
+  getOrderDetail: (credentials: TCredentials, orderId: string) => Promise<C2cBuyOrderDetail>
+  listOrders: (credentials: TCredentials, input: C2cListInput) => Promise<C2cBuyOrderPage>
+  markOrderAsPaid: (
+    credentials: TCredentials,
+    orderId: string,
+    paymentMethodId: number | string,
+    options?: C2cMarkPaidOptions,
+  ) => Promise<unknown>
 }

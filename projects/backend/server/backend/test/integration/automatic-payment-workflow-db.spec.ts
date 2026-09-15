@@ -20,6 +20,7 @@ import {
   PaymentOrderEntity,
   PaymentOrderStatus,
   PaymentOrderStatusHistoryEntity,
+  PaymentSourceType,
   PaymentPlatformEntity,
   PaymentChannelEntity,
   TenantEntity,
@@ -38,14 +39,19 @@ import { migrateC2cMerchantOrderAppeals } from '@/apps/admin/database/migrations
 import { migratePaymentAccountCredentials } from '@/apps/admin/database/migrations/payment-account-credentials.migration'
 import { migrateC2cAutomaticPayments } from '@/apps/admin/database/migrations/c2c-automatic-payments.migration'
 import { migrateC2cPaymentBatchPolicies } from '@/apps/admin/database/migrations/c2c-payment-batch-policies.migration'
+import { migrateC2cPaymentReconciliationPolicy } from '@/apps/admin/database/migrations/c2c-payment-reconciliation-policy.migration'
+import { migrateC2cPaymentPlanAutomation } from '@/apps/admin/database/migrations/c2c-payment-plan-automation.migration'
 import { MerchantPlatformCredentialService } from '@/apps/admin/modules/business/merchant-platform-credential.service'
 import { C2cOrderService } from '@/apps/admin/modules/c2c-order/c2c-order.service'
 import { C2cOrderSyncService } from '@/apps/admin/modules/c2c-order/c2c-order-sync.service'
+import { C2cReceiptImageService } from '@/apps/admin/modules/c2c-order/c2c-receipt-image.service'
 import { EnvironmentC2cSecretResolver } from '@/apps/admin/modules/c2c-order/c2c-secret-resolver'
+import { ReceiptDocumentDownloader } from '@/apps/admin/modules/c2c-order/receipt-document-downloader'
 import { TypeOrmC2cOrderSyncStore } from '@/apps/admin/modules/c2c-order/typeorm-c2c-order-sync.store'
 import { AxiosC2cHttpTransport } from '@/apps/admin/modules/c2c-platform/axios-c2c-http.transport'
 import {
   BinanceC2cClient,
+  C2cPlatformClient,
   C2cPlatformCredentialFactory,
   OkxWebPrivateClient,
 } from '@/apps/admin/modules/c2c-platform'
@@ -55,6 +61,7 @@ import { AlipayGatewayFactory } from '@/apps/admin/modules/payment/alipay-gatewa
 import { C2cAlipayPaymentExecutor } from '@/apps/admin/modules/payment/c2c-alipay-payment.executor'
 import { C2cAutomaticPaymentService } from '@/apps/admin/modules/payment/c2c-automatic-payment.service'
 import { C2cMerchantPaymentService } from '@/apps/admin/modules/payment/c2c-merchant-payment.service'
+import { C2cPaymentProofService } from '@/apps/admin/modules/payment/c2c-payment-proof.service'
 import { C2cPaymentCancellationService } from '@/apps/admin/modules/payment/c2c-payment-cancellation.service'
 import { C2cPaymentPreflightVerifier } from '@/apps/admin/modules/payment/c2c-payment-preflight-verifier'
 import { C2cPlatformPaymentConfirmer } from '@/apps/admin/modules/payment/c2c-platform-payment.confirmer'
@@ -63,7 +70,9 @@ import { PaymentBatchService } from '@/apps/admin/modules/payment/payment-batch.
 import { PaymentBatchPolicyService } from '@/apps/admin/modules/payment/payment-batch-policy.service'
 import { PaymentExecutionCoordinator } from '@/apps/admin/modules/payment/payment-execution-coordinator'
 import { PaymentOrderService } from '@/apps/admin/modules/payment/payment-order.service'
+import { PaymentReceiptService } from '@/apps/admin/modules/payment/payment-receipt.service'
 import { PaymentPlanResolver } from '@/apps/admin/modules/payment/payment-plan-resolver'
+import { AlipayPaymentChannelCapabilityFactory } from '@/apps/admin/modules/payment/payment-channel-capability.factory'
 import { TypeOrmC2cAutomaticPaymentStore } from '@/apps/admin/modules/payment/typeorm-c2c-automatic-payment.store'
 import { TypeOrmPaymentBatchStore } from '@/apps/admin/modules/payment/typeorm-payment-batch.store'
 import { TypeOrmPaymentOrderStore } from '@/apps/admin/modules/payment/typeorm-payment-order.store'
@@ -98,6 +107,7 @@ interface WorkflowHarness {
 }
 
 describe('Automatic C2C payment workflow database integration', () => {
+  jest.setTimeout(15_000)
   const { postgres } = developmentConfig.admin
   const schema = `automatic_payment_workflow_test_${process.pid}_${Date.now()}`
   let adminDataSource: DataSource
@@ -149,6 +159,8 @@ describe('Automatic C2C payment workflow database integration', () => {
       await migratePaymentAccountCredentials(manager)
       await migrateC2cAutomaticPayments(manager)
       await migrateC2cPaymentBatchPolicies(manager)
+      await migrateC2cPaymentReconciliationPolicy(manager)
+      await migrateC2cPaymentPlanAutomation({ query: manager.query.bind(manager) })
     })
     harness = createHarness(dataSource)
   })
@@ -308,6 +320,40 @@ describe('Automatic C2C payment workflow database integration', () => {
     expect((await transferOrders()).total).toBe(1)
   })
 
+  it('finds a submitted bot manual payment for recovery regardless of its source', async () => {
+    await seedMerchant(harness.dataSource, merchantIds.binance, MerchantPlatform.BINANCE)
+    const payment = await harness.dataSource.getRepository(PaymentOrderEntity).save({
+      tenantId,
+      merchantId: merchantIds.binance,
+      sourceType: PaymentSourceType.BOT_MANUAL,
+      sourceBusinessNo: 'BOT-MANUAL-RECOVERY-1',
+      paymentNo: 'PAY-BOT-MANUAL-RECOVERY-1',
+      amount: '88.60',
+      currency: 'CNY',
+      paymentMethod: 'ALIPAY',
+      executionMode: PaymentExecutionMode.INSTANT,
+      payeeIdentity: 'buyer@example.com',
+      payeeName: '测试用户',
+      paymentPlanId: null,
+      paymentAccountId: null,
+      paymentAccountChannelId: null,
+      batchPolicyId: null,
+      status: PaymentOrderStatus.UNKNOWN,
+      upstreamId: 'alipay-manual-1',
+      lastError: null,
+    })
+
+    await expect(
+      new TypeOrmC2cAutomaticPaymentStore(harness.dataSource).findRecoverablePayments(100),
+    ).resolves.toContainEqual(
+      expect.objectContaining({
+        id: payment.id,
+        tenantId,
+        status: PaymentOrderStatus.UNKNOWN,
+      }),
+    )
+  })
+
   it('batches discovered orders, reconciles the original batch, and never pays twice', async () => {
     await seedMerchant(
       harness.dataSource,
@@ -346,8 +392,13 @@ describe('Automatic C2C payment workflow database integration', () => {
       PaymentOrderStatus.PROCESSING,
     ])
 
+    await expect(harness.job.recoverPayments()).resolves.toMatchObject({
+      batches: { found: 0, succeeded: 0, failed: 0 },
+    })
+    await makeBatchReconciliationDue(harness.dataSource)
     await harness.job.recoverPayments()
     await harness.job.processAutomaticPayments()
+    await makeBatchReconciliationDue(harness.dataSource)
     await harness.job.recoverPayments()
 
     expect(await paymentStatuses(harness.dataSource)).toEqual([
@@ -395,12 +446,32 @@ describe('Automatic C2C payment workflow database integration', () => {
         paymentDeadline,
       ] = candidate
       const merchantId = `34000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`
+      const accountId = `34000000-0000-4000-8100-${String(index + 1).padStart(12, '0')}`
+      const bindingId = `34000000-0000-4000-8200-${String(index + 1).padStart(12, '0')}`
       await harness.dataSource.query(
         `INSERT INTO merchant (
-          id, "tenantId", code, name, platform, "apiBaseUrl", status,
-          "automaticPaymentEnabled", "automaticPaymentExecutionMode"
-        ) VALUES ($1, $2, $3, $3, 'BINANCE', $4, $5, $6, 'INSTANT')`,
-        [merchantId, scopeTenantId, suffix, MOCK_ORIGIN, status, automaticPaymentEnabled],
+          id, "tenantId", code, name, platform, "apiBaseUrl", status
+        ) VALUES ($1, $2, $3, $3, 'BINANCE', $4, $5)`,
+        [merchantId, scopeTenantId, suffix, MOCK_ORIGIN, status],
+      )
+      await harness.dataSource.query(
+        `INSERT INTO payment_account (
+          id, "tenantId", "platformId", code, name, "externalAccountId", "credentialRef", status
+        ) VALUES ($1, $2, $3, $4, $4, '2088000000000000', 'env://TEST', 'active')`,
+        [accountId, scopeTenantId, C2C_FOUNDATION_IDS.alipayPlatform, `account-${suffix}`],
+      )
+      await harness.dataSource.query(
+        `INSERT INTO payment_account_channel (
+          id, "paymentAccountId", "channelId", "concurrencyLimit", status
+        ) VALUES ($1, $2, $3, 1, 'active')`,
+        [bindingId, accountId, C2C_FOUNDATION_IDS.alipayMerchantTransferChannel],
+      )
+      await harness.dataSource.query(
+        `INSERT INTO merchant_payment_plan (
+          "tenantId", "merchantId", scene, currency, "paymentAccountId",
+          "paymentAccountChannelId", "automaticPaymentEnabled", priority, weight, status
+        ) VALUES ($1, $2, 'C2C_BUY', 'CNY', $3, $4, $5, 100, 100, 'active')`,
+        [scopeTenantId, merchantId, accountId, bindingId, automaticPaymentEnabled],
       )
       await harness.dataSource.query(
         `INSERT INTO merchant_order (
@@ -456,6 +527,7 @@ function createHarness(dataSource: DataSource): WorkflowHarness {
   const transport = new AxiosC2cHttpTransport()
   const binance = new BinanceC2cClient(transport)
   const okx = new OkxWebPrivateClient(transport)
+  const platformClient = new C2cPlatformClient(binance, okx)
   const credentialFactory = new C2cPlatformCredentialFactory()
   const secretResolver = new EnvironmentC2cSecretResolver(null as never)
   const credentialService = new MerchantPlatformCredentialService(
@@ -464,8 +536,7 @@ function createHarness(dataSource: DataSource): WorkflowHarness {
     dataSource,
     null as never,
     credentialFactory,
-    binance,
-    okx,
+    platformClient,
   )
   const syncStore = new TypeOrmC2cOrderSyncStore(dataSource)
   const orderSync = new C2cOrderSyncService(
@@ -473,8 +544,7 @@ function createHarness(dataSource: DataSource): WorkflowHarness {
     credentialService,
     secretResolver,
     credentialFactory,
-    binance,
-    okx,
+    platformClient,
     syncStore,
   )
   const orderService = new C2cOrderService(
@@ -495,28 +565,40 @@ function createHarness(dataSource: DataSource): WorkflowHarness {
     preflightStore,
     secretResolver,
     credentialFactory,
-    binance,
-    okx,
+    platformClient,
   )
   const gatewayProvider = new AlipayAccountGatewayProvider(
     secretResolver,
     new AlipayGatewayFactory(),
   )
+  const paymentChannels = new AlipayPaymentChannelCapabilityFactory(gatewayProvider)
+  const paymentReceipts = new PaymentReceiptService(
+    dataSource.getRepository(PaymentOrderEntity),
+    dataSource.getRepository(PaymentBatchItemEntity),
+    dataSource.getRepository(PaymentBatchEntity),
+    dataSource.getRepository(PaymentAccountEntity),
+    paymentChannels,
+  )
+  const paymentProofs = new C2cPaymentProofService(
+    paymentReceipts,
+    new ReceiptDocumentDownloader(),
+    new C2cReceiptImageService(),
+  )
   const paymentCoordinator = new PaymentExecutionCoordinator(
     new TypeOrmPaymentOrderStore(dataSource),
-    new C2cAlipayPaymentExecutor(preflight, gatewayProvider),
+    new C2cAlipayPaymentExecutor(preflight, paymentChannels),
     new C2cPlatformPaymentConfirmer(
       preflightStore,
       secretResolver,
       credentialFactory,
-      binance,
-      okx,
+      platformClient,
+      paymentProofs,
     ),
   )
   const batchService = new PaymentBatchService(dataSource)
   const batchCoordinator = new PaymentBatchExecutionCoordinator(
     new TypeOrmPaymentBatchStore(dataSource),
-    new AlipayBatchPaymentExecutor(gatewayProvider),
+    new AlipayBatchPaymentExecutor(paymentChannels),
     preflight,
     paymentCoordinator,
   )
@@ -563,6 +645,15 @@ async function resetDatabase(dataSource: DataSource): Promise<void> {
   ]) {
     await dataSource.query(`DELETE FROM ${table}`)
   }
+}
+
+async function makeBatchReconciliationDue(dataSource: DataSource): Promise<void> {
+  await dataSource.query(
+    `UPDATE payment_batch
+     SET "nextReconcileAt" = NOW() - INTERVAL '1 second'
+     WHERE status IN ('SUBMITTING', 'PROCESSING', 'UNKNOWN')
+       AND "nextReconcileAt" IS NOT NULL`,
+  )
 }
 
 async function seedMerchant(
@@ -665,8 +756,8 @@ async function seedPaymentRoute(
   await dataSource.query(
     `INSERT INTO merchant_payment_plan (
       "tenantId", "merchantId", scene, currency, "paymentAccountId",
-      "paymentAccountChannelId", "batchPolicyId", priority, weight, status
-    ) VALUES ($1, $2, 'C2C_BUY', 'CNY', $3, $4, $5, 100, 100, 'active')`,
+      "paymentAccountChannelId", "batchPolicyId", "automaticPaymentEnabled", priority, weight, status
+    ) VALUES ($1, $2, 'C2C_BUY', 'CNY', $3, $4, $5, true, 100, 100, 'active')`,
     [
       tenantId,
       merchantId,

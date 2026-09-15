@@ -1,13 +1,20 @@
+name: c2c-production
+
 x-backend-image: &backend-image
-  image: ${C2C_BACKEND_IMAGE:-ghcr.io/your-org/c2c-backend:latest}
+  image: ${C2C_BACKEND_IMAGE:?C2C_BACKEND_IMAGE is required}
   pull_policy: always
 
-x-backend-volumes: &backend-volumes
-  - ${C2C_BACKEND_CONFIG_DIR:-./volumes/config}:/app/config:ro
+x-backend-env-files: &backend-env-files
+  - ${C2C_RUNTIME_ENV_FILE:-.env}
 
 x-backend-environment: &backend-environment
   NODE_ENV: production
   C2C_BACKEND_PORT: 3000
+  C2C_TIME_ZONE: ${C2C_TIME_ZONE:-Asia/Shanghai}
+  C2C_STATIC_SERVER_URL: ${C2C_STATIC_SERVER_URL:-}
+  C2C_REDIS_PREFIX: ${C2C_REDIS_PREFIX:-c2c}
+  C2C_SUPER_ADMIN_UID: ${C2C_SUPER_ADMIN_UID:-1}
+  C2C_SUPER_ADMIN_NAME: ${C2C_SUPER_ADMIN_NAME:-superAdmin}
   C2C_SUPER_ADMIN_PASSWORD: ${C2C_SUPER_ADMIN_PASSWORD:?C2C_SUPER_ADMIN_PASSWORD is required}
   C2C_CREDENTIAL_MASTER_KEY: ${C2C_CREDENTIAL_MASTER_KEY:?C2C_CREDENTIAL_MASTER_KEY is required}
   C2C_POSTGRES_HOST: postgres
@@ -21,9 +28,10 @@ services:
   migrate:
     <<: *backend-image
     command: node dist/apps/migrate/main.js
+    env_file: *backend-env-files
     environment: *backend-environment
+    init: true
     restart: 'no'
-    volumes: *backend-volumes
     networks:
       - app-network
     depends_on:
@@ -33,18 +41,22 @@ services:
   app:
     <<: *backend-image
     container_name: c2c-backend
+    env_file: *backend-env-files
+    init: true
     restart: unless-stopped
     ports:
       - '127.0.0.1:${C2C_BACKEND_PORT:-3000}:3000'
     environment: *backend-environment
     volumes:
-      - ${C2C_BACKEND_CONFIG_DIR:-./volumes/config}:/app/config:ro
       - ${C2C_BACKEND_LOG_DIR:-./volumes/logs}:/app/logs
+      - ${C2C_BACKEND_STATIC_DIR:-./volumes/static}:/app/dist/apps/static
     networks:
       - app-network
     depends_on:
       migrate:
         condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -52,11 +64,17 @@ services:
         - CMD
         - node
         - -e
-        - "fetch('http://127.0.0.1:3000/').then((response) => process.exit(response.status < 500 ? 0 : 1)).catch(() => process.exit(1))"
+        - "fetch('http://127.0.0.1:3000/v1/auth/captcha').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 30s
+      start_period: 60s
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: '5'
 
   postgres:
     image: postgres:16.10-alpine
@@ -69,6 +87,7 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - ./volumes/postgres_data:/var/lib/postgresql/data
+    shm_size: 256mb
     networks:
       - app-network
     healthcheck:
@@ -76,20 +95,19 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    stop_grace_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: '5'
 
   redis:
     # Production persistence uses RDB format 14; do not downgrade below Redis 8.8.
     image: redis:8.8.1-alpine
     container_name: c2c-redis
     restart: unless-stopped
-    command:
-      [
-        'redis-server',
-        '--appendonly',
-        'yes',
-        '--requirepass',
-        '${C2C_REDIS_PASSWORD:?C2C_REDIS_PASSWORD is required}',
-      ]
+    command: ['sh', '-c', 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
     environment:
       REDIS_PASSWORD: ${C2C_REDIS_PASSWORD:?C2C_REDIS_PASSWORD is required}
     volumes:
@@ -97,10 +115,17 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: ['CMD-SHELL', 'redis-cli -a "$${REDIS_PASSWORD}" ping | grep PONG']
+      test:
+        ['CMD-SHELL', 'redis-cli --no-auth-warning -a "$${REDIS_PASSWORD}" ping | grep PONG']
       interval: 5s
       timeout: 5s
       retries: 20
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: '5'
 
 networks:
   app-network:

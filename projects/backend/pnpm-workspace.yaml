@@ -74,6 +74,7 @@ catalog:
   "nest-winston": ^1.10.2
   "nitropack": ^2.10.4
   "nestjs-typeorm-paginate": ^4.1.0
+  "node-poppler": ^8.0.1
   "otplib": ^12.0.1
   "passport-jwt": ^4.0.1
   "pg": ^8.16.3

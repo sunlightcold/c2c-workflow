@@ -30,11 +30,7 @@ async function handler() {
     NODE_OPTIONS: process.env.NODE_OPTIONS ?? '--max-old-space-size=4096',
     FORK_TS_CHECKER_MEMORY_LIMIT: process.env.FORK_TS_CHECKER_MEMORY_LIMIT ?? '4096',
   }
-  const buildCommands = [
-    'npx nest build --builder webpack --webpackPath webpack.build.config.js admin',
-    'npx nest build --builder webpack --webpackPath webpack.build.config.js migrate',
-  ]
-  for (const buildCommand of buildCommands) {
+  function runBuild(buildCommand: string) {
     if (Shell.exec(buildCommand, { cwd: backendRootPath, env: buildEnv }).code !== 0) {
       Shell.echo(`Error: ${buildCommand}`)
       Shell.exit(1)
@@ -45,20 +41,26 @@ async function handler() {
   // 创建输出目录
   Shell.mkdir(outPath, volumesPath, appConfigPath, logsPath, appsPath)
 
-  // 复制配置文件
-  Shell.cp(
-    '-R',
-    join(backendRootPath, 'config/production.ts'),
-    join(appConfigPath, 'production.js'),
+  runBuild('npx nest build --builder webpack --webpackPath webpack.build.config.js admin')
+  Shell.cp('-R', join(distPath, 'apps/admin'), appsPath)
+
+  runBuild('npx nest build --builder webpack --webpackPath webpack.build.config.js migrate')
+  Shell.cp('-R', join(distPath, 'apps/migrate'), appsPath)
+
+  runBuild(
+    'npx tsc config/production.ts --target ES2022 --module CommonJS --moduleResolution Node --esModuleInterop --skipLibCheck --outDir dist/config',
   )
+
+  // 复制配置文件
+  Shell.cp('-R', join(distPath, 'config/production.js'), appConfigPath)
   // 复制数据库数据文件
   if (Shell.test('-d', initJsonSourcePath)) {
     Shell.cp('-R', initJsonSourcePath, initJsonPath)
   }
-  // 复制应用构建代码
-  Shell.cp('-R', join(distPath, 'apps'), volumesPath)
   // 复制 docker-compose
   Shell.cp('-R', join(dockerPath, 'compose.yaml'), outPath)
+  Shell.cp('-R', join(dockerPath, 'backup.sh'), outPath)
+  Shell.cp('-R', join(dockerPath, 'readme.md'), join(outPath, 'README.md'))
   // 复制服务器部署变量模板
   Shell.cp('-R', join(workspaceRootPath, '.env.docker.example'), join(outPath, '.env.example'))
 

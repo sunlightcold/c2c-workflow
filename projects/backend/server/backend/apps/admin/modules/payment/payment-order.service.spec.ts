@@ -90,6 +90,35 @@ describe('PaymentOrderService', () => {
     })
   })
 
+  it('derives the execution mode from the selected payment plan', async () => {
+    resolver.resolve.mockResolvedValue({
+      planId: 'plan-1',
+      batchPolicyId: null,
+      paymentAccountId: 'account-1',
+      paymentAccountChannelId: 'account-channel-1',
+      adapterCode: 'ALIPAY_MERCHANT_TRANSFER',
+      executionMode: PaymentExecutionMode.INSTANT,
+    })
+    const { executionMode: _executionMode, ...withoutMode } = input
+
+    await expect(
+      service.create(tenantId, withoutMode, { requireRoute: true }),
+    ).resolves.toMatchObject({ executionMode: PaymentExecutionMode.INSTANT })
+    expect(resolver.resolve).toHaveBeenCalledWith(
+      expect.objectContaining({ executionMode: undefined }),
+    )
+  })
+
+  it('does not create a merchant payment order when no usable plan is available', async () => {
+    resolver.resolve.mockResolvedValue(null)
+    const { executionMode: _executionMode, ...withoutMode } = input
+
+    await expect(service.create(tenantId, withoutMode, { requireRoute: true })).rejects.toThrow(
+      '未匹配到可用的支付方案',
+    )
+    expect(manager.save).not.toHaveBeenCalled()
+  })
+
   it('creates a pending-config order when no complete route is available', async () => {
     resolver.resolve.mockResolvedValue(null)
 

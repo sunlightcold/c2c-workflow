@@ -10,5 +10,6 @@
 | C2C 支付订单 | `payment` | `/v1/sys/payment-orders/*` | [main/c2c-payment-orders.md](main/c2c-payment-orders.md) |
 | C2C 支付批次 | `payment` | `/v1/sys/payment-batches/*` | [main/c2c-payment-batches.md](main/c2c-payment-batches.md) |
 | C2C 商家订单 | `c2c-order` | `/v1/sys/merchant-orders/*`、`/v1/sys/merchants/*/orders/sync` | [main/c2c-merchant-orders.md](main/c2c-merchant-orders.md) |
+| C2C 经营工作台 | `dashboard` | `/v1/sys/dashboard/overview` | [main/c2c-dashboard.md](main/c2c-dashboard.md) |
 
 新增 Controller 时必须同步更新本表、对应契约文档和 contract test。

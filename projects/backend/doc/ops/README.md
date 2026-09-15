@@ -5,6 +5,7 @@
 ## 当前条目
 
 - [database-migrations.md](database-migrations.md)
+- [Docker 服务器部署](../../docker/readme.md)
 - [mongodb-docker-notes.md](mongodb-docker-notes.md)
 - [cf-r2-reverse-proxy-config.md](cf-r2-reverse-proxy-config.md)
 

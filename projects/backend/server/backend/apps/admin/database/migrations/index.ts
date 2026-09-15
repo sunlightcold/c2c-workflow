@@ -27,6 +27,9 @@ import { C2cTelegramPaymentBotType1789015000000 } from './c2c-telegram-payment-b
 import { C2cTelegramBotRuntime1789016000000 } from './c2c-telegram-bot-runtime.migration'
 import { C2cPaymentBatchPolicies1789017000000 } from './c2c-payment-batch-policies.migration'
 import { C2cTelegramIdentities1789018000000 } from './c2c-telegram-identities.migration'
+import { C2cTelegramCapabilityCleanup1789019000000 } from './c2c-telegram-capability-cleanup.migration'
+import { C2cPaymentReconciliationPolicy1789020000000 } from './c2c-payment-reconciliation-policy.migration'
+import { C2cPaymentPlanAutomation1789021000000 } from './c2c-payment-plan-automation.migration'
 
 export type AdminMigrationConstructor = new () => MigrationInterface
 
@@ -59,4 +62,7 @@ export const adminMigrations: AdminMigrationConstructor[] = [
   C2cTelegramBotRuntime1789016000000,
   C2cPaymentBatchPolicies1789017000000,
   C2cTelegramIdentities1789018000000,
+  C2cTelegramCapabilityCleanup1789019000000,
+  C2cPaymentReconciliationPolicy1789020000000,
+  C2cPaymentPlanAutomation1789021000000,
 ]
