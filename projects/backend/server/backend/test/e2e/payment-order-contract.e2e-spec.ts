@@ -82,7 +82,13 @@ describe('Payment order API contract (e2e)', () => {
 
     const listed = await request(app.getHttpServer())
       .get('/v1/sys/payment-orders')
-      .query({ executionMode: 'BATCH', status: 'READY', page: 1, pageSize: 20 })
+      .query({
+        executionMode: 'BATCH',
+        orderNo: '  ALIPAY202609150001  ',
+        status: 'READY',
+        page: 1,
+        pageSize: 20,
+      })
       .expect(200)
     const detail = await request(app.getHttpServer())
       .get(`/v1/sys/payment-orders/${orderId}`)
@@ -97,6 +103,7 @@ describe('Payment order API contract (e2e)', () => {
       'tenant-1',
       expect.objectContaining({
         executionMode: 'BATCH',
+        orderNo: 'ALIPAY202609150001',
         status: 'READY',
         page: 1,
         pageSize: 20,

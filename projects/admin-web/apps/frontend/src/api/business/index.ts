@@ -446,6 +446,7 @@ export namespace BusinessApi {
   export interface PaymentOrderQuery extends PageQuery {
     executionMode?: PaymentExecutionMode;
     merchantId?: string;
+    orderNo?: string;
     sourceType?: PaymentSourceType;
     status?: string;
   }

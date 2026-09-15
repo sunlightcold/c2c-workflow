@@ -7,7 +7,7 @@ Controller：`PaymentOrderController`。基础路径：`/v1/sys/payment-orders`�
 
 | Method | Path | 权限 | Request | data 来源 |
 | --- | --- | --- | --- | --- |
-| GET | `/` | `payment:order:read` | Query `{ tenantId?, merchantId?, executionMode?, sourceType?, status?, page?, pageSize? }` | `{ items, total, page, pageSize }` |
+| GET | `/` | `payment:order:read` | Query `{ tenantId?, merchantId?, orderNo?, executionMode?, sourceType?, status?, page?, pageSize? }` | `{ items, total, page, pageSize }` |
 | GET | `/{id}` | `payment:order:read` | Query `{ tenantId? }` | 支付订单、状态历史和关联批次明细 |
 | POST | `/` | `payment:order:create` | 创建机器人手工支付订单 | `PaymentOrderEntity` |
 | POST | `/{id}/rematch` | `payment:order:retry` | `{ tenantId? }` | `PaymentOrderEntity` |
@@ -32,7 +32,7 @@ Controller：`PaymentOrderController`。基础路径：`/v1/sys/payment-orders`�
 `amount` 必须是大于零、最多两位小数的字符串，禁止 JSON 数值。`paymentMethod` 本期只能是
 `ALIPAY`，`executionMode` 为 `INSTANT` 或 `BATCH`。
 
-列表默认第 1 页、每页 20 条，`pageSize` 最大 100；按创建时间倒序。每条记录额外返回最近关联支付批次的 `batchNo`，未进入支付批次时为 `null`。`executionMode`、`sourceType` 和 `status` 必须使用系统枚举。组建支付批次时使用 `executionMode=BATCH` 查询批量有密候选订单。详情只在当前所属单位内查找，不存在或跨所属单位均返回 `404`。
+列表默认第 1 页、每页 20 条，`pageSize` 最大 100；按创建时间倒序。`orderNo` 是订单号聚合搜索字段，可使用支付宝支付订单号 `upstreamId`、系统订单号 `paymentNo`、平台订单号 `sourceBusinessNo` 或支付批次号 `batchNo` 精确查询。聚合查询仍同时受所属单位、商家、来源、执行方式和状态条件限制。每条记录额外返回最近关联支付批次的 `batchNo`，未进入支付批次时为 `null`。`executionMode`、`sourceType` 和 `status` 必须使用系统枚举。组建支付批次时使用 `executionMode=BATCH` 查询批量有密候选订单。详情只在当前所属单位内查找，不存在或跨所属单位均返回 `404`。
 
 ## 业务行为
 

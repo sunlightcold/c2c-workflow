@@ -166,6 +166,41 @@ describe('PaymentOrderService', () => {
     )
   })
 
+  it('searches payment, system, platform, and batch order numbers within the tenant', async () => {
+    batches.find.mockResolvedValue([{ id: 'batch-1' }])
+    batchItems.find.mockResolvedValue([{ paymentOrderId: 'order-from-batch' }])
+    orders.findAndCount.mockResolvedValue([[], 0])
+
+    await service.list(tenantId, {
+      merchantId,
+      orderNo: 'ORDER-REFERENCE-1',
+      page: 1,
+      pageSize: 20,
+    })
+
+    expect(batches.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { batchNo: 'ORDER-REFERENCE-1', tenantId },
+      }),
+    )
+    expect(batchItems.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: { paymentOrderId: true },
+        where: expect.objectContaining({ tenantId }),
+      }),
+    )
+    expect(orders.findAndCount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: [
+          { merchantId, paymentNo: 'ORDER-REFERENCE-1', tenantId },
+          { merchantId, sourceBusinessNo: 'ORDER-REFERENCE-1', tenantId },
+          { merchantId, tenantId, upstreamId: 'ORDER-REFERENCE-1' },
+          { id: expect.anything(), merchantId, tenantId },
+        ],
+      }),
+    )
+  })
+
   it('includes the latest payment batch number in the order list', async () => {
     orders.findAndCount.mockResolvedValue([
       [

@@ -343,6 +343,57 @@ describe('Payment routing database integration', () => {
     )
   })
 
+  it('finds one payment order by payment, system, platform, or batch order number', async () => {
+    const order = await orders.create(tenantId, {
+      merchantId,
+      sourceType: PaymentSourceType.BOT_MANUAL,
+      sourceBusinessNo: 'PLATFORM-AGGREGATE-1',
+      amount: '88.00',
+      currency: 'CNY',
+      paymentMethod: 'ALIPAY',
+      executionMode: PaymentExecutionMode.BATCH,
+      payeeIdentity: 'payee@example.com',
+      payeeName: 'Payee',
+    })
+    await dataSource.query(`UPDATE payment_order SET "upstreamId" = $2 WHERE id = $1`, [
+      order.id,
+      'ALIPAY-AGGREGATE-1',
+    ])
+    const [{ id: batchId }] = await dataSource.query<Array<{ id: string }>>(
+      `INSERT INTO payment_batch
+         ("tenantId", "merchantId", "batchNo", "paymentAccountId",
+          "paymentAccountChannelId", "batchPolicyId", currency, "totalCount",
+          "totalAmount", status)
+       VALUES ($1, $2, 'BATCH-AGGREGATE-1', $3, $4, $5, 'CNY', 1, 88.00, 'READY')
+       RETURNING id`,
+      [tenantId, merchantId, batchAccountId, batchAccountChannelId, batchPolicyId],
+    )
+    await dataSource.query(
+      `INSERT INTO payment_batch_item
+         ("tenantId", "merchantId", "batchId", "paymentOrderId", amount, status)
+       VALUES ($1, $2, $3, $4, 88.00, 'QUEUED')`,
+      [tenantId, merchantId, batchId, order.id],
+    )
+
+    for (const orderNo of [
+      'ALIPAY-AGGREGATE-1',
+      order.paymentNo,
+      'PLATFORM-AGGREGATE-1',
+      'BATCH-AGGREGATE-1',
+    ]) {
+      await expect(
+        orders.list(tenantId, { orderNo, page: 1, pageSize: 20 }),
+      ).resolves.toMatchObject({ items: [expect.objectContaining({ id: order.id })], total: 1 })
+    }
+    await expect(
+      orders.list('00000000-0000-4000-8000-000000000999', {
+        orderNo: 'BATCH-AGGREGATE-1',
+        page: 1,
+        pageSize: 20,
+      }),
+    ).resolves.toMatchObject({ items: [], total: 0 })
+  })
+
   it('records one transition when a pending-config order is rematched', async () => {
     const order = await orders.create(tenantId, {
       merchantId,

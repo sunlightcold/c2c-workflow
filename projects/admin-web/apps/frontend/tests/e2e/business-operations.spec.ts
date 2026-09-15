@@ -970,7 +970,18 @@ test('shows payment identifiers and batch number in separate columns', async ({
 }, testInfo) => {
   await page.goto('/business/payment-orders');
   await selectHeadquartersTenant(page);
+  const orderNoInput = page.getByPlaceholder('支付 / 系统 / 平台 / 批次订单号');
+  await expect(orderNoInput).toBeVisible();
+  await orderNoInput.fill('ALIPAY202609140001');
+  const filteredRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return (
+      url.pathname === '/v1/sys/payment-orders' &&
+      url.searchParams.get('orderNo') === 'ALIPAY202609140001'
+    );
+  });
   await page.getByRole('button', { name: /搜\s*索/ }).click();
+  await filteredRequest;
 
   await expect(page.getByText('订单号', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('批次号', { exact: true }).first()).toBeVisible();

@@ -363,10 +363,18 @@ describe('business api', () => {
       total: 21,
     });
 
-    const result = await getPaymentOrdersApi({ page: 2, pageSize: 20 });
+    const result = await getPaymentOrdersApi({
+      orderNo: 'ALIPAY202609150001',
+      page: 2,
+      pageSize: 20,
+    });
 
     expect(requestMocks.get).toHaveBeenCalledWith('/sys/payment-orders', {
-      params: { page: 2, pageSize: 20 },
+      params: {
+        orderNo: 'ALIPAY202609150001',
+        page: 2,
+        pageSize: 20,
+      },
     });
     expect(result).toEqual({
       items: [{ amount: '88.00', id: 'order-1' }],

@@ -20,7 +20,14 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { DataSource, type EntityManager, In, QueryFailedError, Repository } from 'typeorm'
+import {
+  DataSource,
+  type EntityManager,
+  type FindOptionsWhere,
+  In,
+  QueryFailedError,
+  Repository,
+} from 'typeorm'
 import {
   PAYMENT_PLAN_RESOLVER,
   type PaymentPlanResolverPort,
@@ -54,14 +61,18 @@ export class PaymentOrderService {
   ) {}
 
   async list(tenantId: string, input: PaymentOrderListDto) {
+    const baseWhere: FindOptionsWhere<PaymentOrderEntity> = {
+      tenantId,
+      ...(input.merchantId ? { merchantId: input.merchantId } : {}),
+      ...(input.executionMode ? { executionMode: input.executionMode } : {}),
+      ...(input.sourceType ? { sourceType: input.sourceType } : {}),
+      ...(input.status ? { status: input.status } : {}),
+    }
+    const where = input.orderNo
+      ? await this.buildOrderNumberWhere(tenantId, input.orderNo, baseWhere)
+      : baseWhere
     const [items, total] = await this.orders.findAndCount({
-      where: {
-        tenantId,
-        ...(input.merchantId ? { merchantId: input.merchantId } : {}),
-        ...(input.executionMode ? { executionMode: input.executionMode } : {}),
-        ...(input.sourceType ? { sourceType: input.sourceType } : {}),
-        ...(input.status ? { status: input.status } : {}),
-      },
+      where,
       order: { createdAt: 'DESC' },
       skip: (input.page - 1) * input.pageSize,
       take: input.pageSize,
@@ -163,6 +174,33 @@ export class PaymentOrderService {
       })
       return saved
     })
+  }
+
+  private async buildOrderNumberWhere(
+    tenantId: string,
+    orderNo: string,
+    baseWhere: FindOptionsWhere<PaymentOrderEntity>,
+  ): Promise<FindOptionsWhere<PaymentOrderEntity>[]> {
+    const batches = await this.dataSource.getRepository(PaymentBatchEntity).find({
+      select: { id: true },
+      where: { batchNo: orderNo, tenantId },
+    })
+    const batchIds = batches.map(({ id }) => id)
+    const batchItems =
+      batchIds.length === 0
+        ? []
+        : await this.dataSource.getRepository(PaymentBatchItemEntity).find({
+            select: { paymentOrderId: true },
+            where: { batchId: In(batchIds), tenantId },
+          })
+    const paymentOrderIds = [...new Set(batchItems.map(({ paymentOrderId }) => paymentOrderId))]
+
+    return [
+      { ...baseWhere, paymentNo: orderNo },
+      { ...baseWhere, sourceBusinessNo: orderNo },
+      { ...baseWhere, upstreamId: orderNo },
+      ...(paymentOrderIds.length > 0 ? [{ ...baseWhere, id: In(paymentOrderIds) }] : []),
+    ]
   }
 
   private findBySource(

@@ -27,6 +27,16 @@ export class PaymentTenantContextDto {
 }
 
 export class PaymentOrderListDto extends PaymentTenantContextDto {
+  @ApiPropertyOptional({
+    description: '聚合搜索支付订单号、系统订单号、平台订单号或批次号',
+    example: 'PAY202609150001',
+  })
+  @Transform(trim)
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  orderNo?: string
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()

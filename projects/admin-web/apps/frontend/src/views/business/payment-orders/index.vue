@@ -37,6 +37,7 @@ type PaymentOrderDetail = BusinessApi.PaymentOrder & {
 };
 type SearchValues = {
   merchantId?: string;
+  orderNo?: string;
   sourceType?: BusinessApi.PaymentSourceType;
   status?: string;
   tenantId?: string;
@@ -73,6 +74,16 @@ const statusOptions = [
 const formOptions: VbenFormProps = {
   commonConfig: { labelWidth: 86 },
   schema: [
+    {
+      component: 'Input',
+      componentProps: {
+        allowClear: true,
+        maxlength: 128,
+        placeholder: '支付 / 系统 / 平台 / 批次订单号',
+      },
+      fieldName: 'orderNo',
+      label: '订单号',
+    },
     {
       component: 'Select',
       componentProps: () => ({
@@ -119,7 +130,7 @@ const formOptions: VbenFormProps = {
       label: '状态',
     },
   ],
-  wrapperClass: '2xl:grid-cols-4 xl:grid-cols-3 lg:grid-cols-2 md:grid-cols-1',
+  wrapperClass: '2xl:grid-cols-5 xl:grid-cols-3 lg:grid-cols-2 md:grid-cols-1',
 };
 
 const gridOptions: VxeTableGridOptions<BusinessApi.PaymentOrderListItem> = {
@@ -209,6 +220,7 @@ const [Grid, gApi] = useResourceGrid<
     }
     return getPaymentOrdersApi({
       merchantId: params.merchantId,
+      orderNo: params.orderNo,
       page: params.pageIndex,
       pageSize: params.pageSize,
       sourceType: params.sourceType,
