@@ -69,6 +69,12 @@ c2c-workflow/                         # 唯一 Git 仓库
 
 Windows 本地开发固定使用 WSL2 内的 Docker Engine。先运行
 `.\scripts\Start-Local.ps1` 一键启动并探测 `c2c-postgres-dev`、`c2c-redis-dev`、后端、Mock 和管理后台。
+在 Git Bash 中使用：
+
+```bash
+./scripts/start-local.sh
+```
+
 脚本把进程信息和日志写入根目录 `.runtime/`；已健康运行的服务会跳过，固定端口被其他进程占用时会停止并明确报错。
 只需启动基础设施时使用 `.\scripts\Start-LocalInfra.ps1`。不要调用 Windows Docker CLI，也不要连接 Windows 原生 PostgreSQL/Redis 服务。
 PostgreSQL 与 Redis 数据固定保存在 `E:\software\develop\docker-volumes\c2c-workflow`，不得改用 C 盘目录或 Docker 命名卷。

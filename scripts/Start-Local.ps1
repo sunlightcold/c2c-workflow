@@ -6,7 +6,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-if (-not $IsWindows) {
+$isWindowsHost = if (Get-Variable IsWindows -ErrorAction SilentlyContinue) {
+  $IsWindows
+}
+else {
+  $env:OS -eq "Windows_NT"
+}
+if (-not $isWindowsHost) {
   throw "Start-Local.ps1 is the Windows/WSL2 entry point."
 }
 
