@@ -1814,7 +1814,33 @@ test('provides complete Telegram administration actions', async ({ page }) => {
         await expect(
           editDialog.getByText('后台用户', { exact: true }),
         ).toHaveCount(0);
-        await editDialog.getByRole('button', { name: /取\s*消/ }).click();
+        const capabilityField = editDialog
+          .locator('.ant-form-item')
+          .filter({ hasText: '成员权限' });
+        await expect(capabilityField.getByRole('checkbox')).toHaveCount(13);
+        await expect(capabilityField.getByRole('combobox')).toHaveCount(0);
+        await expect(
+          capabilityField.getByRole('checkbox', { name: '手工支付' }),
+        ).toBeChecked();
+        await capabilityField
+          .getByRole('checkbox', { name: '订单查询' })
+          .check();
+        const updateRequest = page.waitForRequest(
+          (request) =>
+            request.method() === 'PUT' &&
+            request
+              .url()
+              .endsWith(
+                '/v1/sys/tg/members/00000000-0000-4000-8000-000000000203',
+              ),
+        );
+        await editDialog.getByRole('button', { name: /确\s*定/ }).click();
+        const request = await updateRequest;
+        expect(request.postDataJSON()).toMatchObject({ tenantId });
+        expect(request.postDataJSON().capabilities).toEqual(
+          expect.arrayContaining(['MANUAL_PAYMENT', 'ORDER_QUERY']),
+        );
+        expect(request.postDataJSON().capabilities).toHaveLength(2);
 
         break;
       }

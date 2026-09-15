@@ -246,9 +246,10 @@ function memberRules(editing = false) {
     },
     {
       field: 'capabilities',
-      props: { mode: 'multiple', options: telegramCapabilityOptions },
+      options: telegramCapabilityOptions,
+      props: { class: 'telegram-capability-checkbox-group' },
       title: '成员权限',
-      type: 'select',
+      type: 'checkbox',
       validate: [
         {
           message: '请选择至少一项成员权限',
