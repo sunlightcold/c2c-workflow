@@ -41,10 +41,12 @@ describe('TypeOrmC2cAutomaticPaymentStore', () => {
       100,
     ])
     expect(dataSource.query.mock.calls[1][1][0]).toEqual([
+      PaymentBatchStatus.READY,
       PaymentBatchStatus.SUBMITTING,
       PaymentBatchStatus.PROCESSING,
       PaymentBatchStatus.UNKNOWN,
     ])
+    expect(dataSource.query.mock.calls[1][0]).toContain("status = 'READY'")
     expect(dataSource.query.mock.calls[1][0]).toContain('"nextReconcileAt" <= NOW()')
   })
 

@@ -1,4 +1,4 @@
-import { PaymentExecutionMode, PaymentOrderStatus } from '@admin/database'
+import { PaymentBatchStatus, PaymentExecutionMode, PaymentOrderStatus } from '@admin/database'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { C2cMerchantPaymentService } from './c2c-merchant-payment.service'
 import type {
@@ -158,7 +158,9 @@ export class C2cAutomaticPaymentService {
     )
     const batchResult = await this.runItems(batches, (batch) =>
       this.store.runLocked(`batch-recovery:${batch.id}`, () =>
-        this.batchExecution.reconcile(batch.tenantId, batch.id),
+        batch.status === PaymentBatchStatus.READY
+          ? this.batchExecution.submit(batch.tenantId, batch.id)
+          : this.batchExecution.reconcile(batch.tenantId, batch.id),
       ),
     )
     return { payments: paymentResult, batches: batchResult }

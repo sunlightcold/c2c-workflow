@@ -1,4 +1,9 @@
-import { PaymentExecutionMode, PaymentOrderStatus, PaymentSourceType } from '@admin/database'
+import {
+  PaymentBatchStatus,
+  PaymentExecutionMode,
+  PaymentOrderStatus,
+  PaymentSourceType,
+} from '@admin/database'
 import { EVENT_KEYS } from '../event-emitter'
 import { C2cAutomaticPaymentService } from './c2c-automatic-payment.service'
 
@@ -229,5 +234,17 @@ describe('C2cAutomaticPaymentService', () => {
       }),
     )
     expect(payments.submit).not.toHaveBeenCalled()
+  })
+
+  it('submits a ready batch left behind by a failed preflight and reconciles active batches', async () => {
+    store.findRecoverableBatches.mockResolvedValue([
+      { id: 'batch-ready', tenantId: 'tenant-1', status: PaymentBatchStatus.READY },
+      { id: 'batch-processing', tenantId: 'tenant-1', status: PaymentBatchStatus.PROCESSING },
+    ])
+
+    await service.recover()
+
+    expect(batchExecution.submit).toHaveBeenCalledWith('tenant-1', 'batch-ready')
+    expect(batchExecution.reconcile).toHaveBeenCalledWith('tenant-1', 'batch-processing')
   })
 })

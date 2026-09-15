@@ -147,14 +147,20 @@ export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore
         FROM payment_batch
         WHERE status = ANY($1::payment_batch_status_enum[])
           AND (
-            "nextReconcileAt" <= NOW()
+            status = 'READY'
+            OR "nextReconcileAt" <= NOW()
             OR (status = 'SUBMITTING' AND "nextReconcileAt" IS NULL)
           )
         ORDER BY "updatedAt" ASC, id ASC
         LIMIT $2
       `,
       [
-        [PaymentBatchStatus.SUBMITTING, PaymentBatchStatus.PROCESSING, PaymentBatchStatus.UNKNOWN],
+        [
+          PaymentBatchStatus.READY,
+          PaymentBatchStatus.SUBMITTING,
+          PaymentBatchStatus.PROCESSING,
+          PaymentBatchStatus.UNKNOWN,
+        ],
         limit,
       ],
     )
