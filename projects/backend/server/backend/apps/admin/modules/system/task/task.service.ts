@@ -33,30 +33,11 @@ export class TaskService {
 
   async update(id: string, dto: TaskUpdateDto) {
     const currentTask = await this.findOne(id)
-    if (currentTask.source === SysTaskSource.System) {
-      if (dto.service && dto.service !== currentTask.service) {
-        throw new BadRequestException(ErrorEnum.TASK_SYSTEM_LOCKED)
-      }
-      const systemTaskUpdates = Object.fromEntries(
-        Object.entries({
-          name: dto.name,
-          type: dto.type,
-          status: dto.status,
-          startedAt: dto.startedAt,
-          endedAt: dto.endedAt,
-          limit: dto.limit,
-          cron: dto.cron,
-          every: dto.every,
-          description: dto.description,
-        }).filter(([, value]) => value !== undefined),
-      ) as Partial<TaskUpdateDto>
-      await this.taskRepository.update(id, systemTaskUpdates)
-    } else {
-      if (dto.service) {
-        this.assertCustomTaskService(dto.service)
-      }
-      await this.taskRepository.update(id, dto)
+    if (currentTask.source === SysTaskSource.Custom && dto.service) {
+      this.assertCustomTaskService(dto.service)
     }
+    await this.taskRepository.update(id, dto)
+
     const task = (await this.taskRepository.findOneBy({ id }))!
     if (task.status === SysTaskStatus.Activated) {
       await this.start(task)
@@ -150,8 +131,8 @@ export class TaskService {
 
   async syncSystemTasks() {
     for (const definition of SYSTEM_TASKS) {
-      this.checkTaskService(definition.service)
       const task = await this.upsertSystemTask(definition)
+      this.checkTaskService(task.service)
       if (task.status === SysTaskStatus.Activated) {
         await this.startInternal(task)
       } else {
@@ -224,14 +205,14 @@ export class TaskService {
 
   private assertCustomTask(task: SysTaskEntity) {
     if (task.source === SysTaskSource.System) {
-      throw new BadRequestException(ErrorEnum.TASK_SYSTEM_LOCKED)
+      throw new BadRequestException(ErrorEnum.TASK_SYSTEM_DELETE_FORBIDDEN)
     }
   }
 
   private assertCustomTaskService(service: string) {
     const [serviceName] = service.split('.')
     if (SYSTEM_TASK_SERVICES.has(serviceName)) {
-      throw new BadRequestException(ErrorEnum.TASK_SYSTEM_LOCKED)
+      throw new BadRequestException(ErrorEnum.TASK_SYSTEM_SERVICE_RESERVED)
     }
   }
 
@@ -246,15 +227,9 @@ export class TaskService {
       return (await this.taskRepository.save(systemTask)) as SysTaskEntity
     }
 
-    // Keep operator-managed scheduling fields and only repair immutable registry metadata.
-    await this.taskRepository.update(definition.id, {
-      service: definition.service,
-      source: SysTaskSource.System,
-    })
-    return Object.assign(existing, {
-      service: definition.service,
-      source: SysTaskSource.System,
-    })
+    // Registry definitions seed new tasks; existing task settings remain operator-managed.
+    await this.taskRepository.update(definition.id, { source: SysTaskSource.System })
+    return Object.assign(existing, { source: SysTaskSource.System })
   }
 
   private async stopInternal(task: SysTaskEntity) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { editModalOptions, systemEditModalOptions } from './schema';
+import { editModalOptions } from './schema';
 
 function fields(options: typeof editModalOptions) {
   return options.formProps?.rule?.map((rule) => rule.field) ?? [];
@@ -9,13 +9,12 @@ function fields(options: typeof editModalOptions) {
 describe('task edit forms', () => {
   it('keeps status changes in the table switch', () => {
     expect(fields(editModalOptions)).not.toContain('status');
-    expect(fields(systemEditModalOptions)).not.toContain('status');
   });
 
-  it('does not expose immutable system task execution settings', () => {
-    expect(fields(systemEditModalOptions)).not.toContain('service');
-    expect(fields(systemEditModalOptions)).not.toContain('data');
-    expect(fields(systemEditModalOptions)).toContain('type');
-    expect(fields(systemEditModalOptions)).toContain('description');
+  it('exposes service and execution parameters in the task edit form', () => {
+    expect(fields(editModalOptions)).toContain('service');
+    expect(fields(editModalOptions)).toContain('data');
+    expect(fields(editModalOptions)).toContain('type');
+    expect(fields(editModalOptions)).toContain('description');
   });
 });

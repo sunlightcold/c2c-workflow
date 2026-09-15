@@ -227,15 +227,3 @@ export const editModalOptions: FormModalOptions = {
     rule: editRules,
   },
 };
-
-const systemEditRules = cloneDeep(
-  editModalOptions.formProps?.rule ?? [],
-).filter((rule) => rule.field !== 'service' && rule.field !== 'data');
-
-export const systemEditModalOptions: FormModalOptions = {
-  ...cloneDeep(editModalOptions),
-  formProps: {
-    ...cloneDeep(editModalOptions.formProps),
-    rule: systemEditRules,
-  },
-};

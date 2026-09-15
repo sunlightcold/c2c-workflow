@@ -23,7 +23,8 @@ export enum ErrorEnum {
 
   INSECURE_TASK = '1301:不安全的任务，确保执行的加入@ScheduleTask注解',
   TASK_NOT_FOUND = '1302:任务不存在',
-  TASK_SYSTEM_LOCKED = '1303:系统任务不允许手动配置',
+  TASK_SYSTEM_DELETE_FORBIDDEN = '1303:系统任务不允许删除',
+  TASK_SYSTEM_SERVICE_RESERVED = '1304:系统任务服务不能用于自定义任务',
   PARAM_SYSTEM_LOCKED = '1401:系统参数不允许手动修改结构',
 
   UN_KNOW = '9999:未知错误',

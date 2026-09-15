@@ -24,11 +24,7 @@ import {
 } from '#/hooks';
 import { VxeUtils } from '#/utils';
 
-import {
-  createModalOptions,
-  editModalOptions,
-  systemEditModalOptions,
-} from './schema';
+import { createModalOptions, editModalOptions } from './schema';
 
 interface RowType extends TaskApi.TaskData {}
 
@@ -157,28 +153,21 @@ async function onCreateClick() {
 }
 
 async function onEdit(row: RowType) {
-  const [fApi] = await formModalShow(
-    row.source === 'system' ? systemEditModalOptions : editModalOptions,
-    {
-      onOk: async (api) => {
-        await api.validate().then(async () => {
-          const data = api.formData() as TaskApi.UpdateTaskParams;
-          if (row.source === 'system') {
-            delete data.service;
-            delete data.data;
-          }
-          await runResourceAction({
-            action: () => updateTaskApi(row.id, data),
-            onSuccess: async () => {
-              await gApi.query();
-              formModalClose();
-            },
-            successMessage: '修改成功',
-          });
+  const [fApi] = await formModalShow(editModalOptions, {
+    onOk: async (api) => {
+      await api.validate().then(async () => {
+        const data = api.formData() as TaskApi.UpdateTaskParams;
+        await runResourceAction({
+          action: () => updateTaskApi(row.id, data),
+          onSuccess: async () => {
+            await gApi.query();
+            formModalClose();
+          },
+          successMessage: '修改成功',
         });
-      },
+      });
     },
-  );
+  });
   fApi?.setValue(row);
 }
 

@@ -39,4 +39,21 @@ describe('TaskController', () => {
     expect(taskService.checkServiceMeta).not.toHaveBeenCalled()
     expect(taskService.update).toHaveBeenCalledWith('task-1', { status: 1 })
   })
+
+  it('validates and forwards edited service settings for any task', async () => {
+    const taskService = {
+      checkServiceMeta: jest.fn(),
+      update: jest.fn().mockResolvedValue(undefined),
+    }
+    const controller = new TaskController(taskService as any)
+    const dto = {
+      service: 'OtherJob.handle',
+      data: '{"retentionDays":30}',
+    }
+
+    await controller.update('system-task-1', dto as any)
+
+    expect(taskService.checkServiceMeta).toHaveBeenCalledWith('OtherJob', 'handle')
+    expect(taskService.update).toHaveBeenCalledWith('system-task-1', dto)
+  })
 })

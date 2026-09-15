@@ -20,7 +20,8 @@ jest.mock('@/common/constants', () => ({
   ErrorEnum: {
     INSECURE_TASK: '1301:不安全的任务，确保执行的加入@ScheduleTask注解',
     TASK_NOT_FOUND: '1302:任务不存在',
-    TASK_SYSTEM_LOCKED: '1303:系统任务不允许手动配置',
+    TASK_SYSTEM_DELETE_FORBIDDEN: '1303:系统任务不允许删除',
+    TASK_SYSTEM_SERVICE_RESERVED: '1304:系统任务服务不能用于自定义任务',
   },
 }))
 
@@ -142,7 +143,7 @@ describe('TaskService', () => {
       status: SysTaskStatus.Disabled,
     }
 
-    await expect(service.create(dto)).rejects.toThrow('1303:系统任务不允许手动配置')
+    await expect(service.create(dto)).rejects.toThrow('1304:系统任务服务不能用于自定义任务')
   })
 
   it('allows a system task to run once', async () => {
@@ -188,7 +189,7 @@ describe('TaskService', () => {
     )
   })
 
-  it('updates system task scheduling fields but never changes its service', async () => {
+  it('updates all editable system task fields including service and data', async () => {
     const task = {
       id: SYSTEM_TASKS[0].id,
       source: 'system',
@@ -198,38 +199,30 @@ describe('TaskService', () => {
       cron: SYSTEM_TASKS[0].cron,
       limit: -1,
     }
-    taskRepository.findOneBy
-      .mockResolvedValueOnce(task)
-      .mockResolvedValueOnce({ ...task, name: '自定义清理', cron: '0 1 * * * *' })
+    taskRepository.findOneBy.mockResolvedValueOnce(task).mockResolvedValueOnce({
+      ...task,
+      name: '自定义清理',
+      cron: '0 1 * * * *',
+      service: 'OtherJob.handle',
+      data: '{"retentionDays":30}',
+    })
 
     await service.update(task.id, {
       name: '自定义清理',
       cron: '0 1 * * * *',
-      service: SYSTEM_TASKS[0].service,
+      service: 'OtherJob.handle',
+      data: '{"retentionDays":30}',
       status: SysTaskStatus.Disabled,
     })
 
     expect(taskRepository.update).toHaveBeenCalledWith(
       task.id,
-      expect.objectContaining({ name: '自定义清理', cron: '0 1 * * * *' }),
-    )
-    expect(taskRepository.update).not.toHaveBeenCalledWith(
-      task.id,
-      expect.objectContaining({ service: 'OtherJob.handle' }),
-    )
-  })
-
-  it('rejects changing a system task service', async () => {
-    const task = {
-      id: SYSTEM_TASKS[0].id,
-      source: 'system',
-      service: SYSTEM_TASKS[0].service,
-      status: SysTaskStatus.Disabled,
-    }
-    taskRepository.findOneBy.mockResolvedValue(task)
-
-    await expect(service.update(task.id, { service: 'OtherJob.handle' })).rejects.toThrow(
-      '1303:系统任务不允许手动配置',
+      expect.objectContaining({
+        name: '自定义清理',
+        cron: '0 1 * * * *',
+        service: 'OtherJob.handle',
+        data: '{"retentionDays":30}',
+      }),
     )
   })
 
@@ -240,15 +233,17 @@ describe('TaskService', () => {
       status: SysTaskStatus.Disabled,
     })
 
-    await expect(service.delete(SYSTEM_TASKS[0].id)).rejects.toThrow('1303:系统任务不允许手动配置')
+    await expect(service.delete(SYSTEM_TASKS[0].id)).rejects.toThrow('1303:系统任务不允许删除')
     expect(taskRepository.delete).not.toHaveBeenCalled()
   })
 
-  it('preserves an existing system task schedule when syncing definitions', async () => {
+  it('preserves all operator edits when syncing existing system tasks', async () => {
     const task = {
       ...SYSTEM_TASKS[0],
       source: 'system',
       name: '运营调整后的名称',
+      service: 'OtherJob.handle',
+      data: '{"retentionDays":30}',
       cron: '0 1 * * * *',
       status: SysTaskStatus.Disabled,
     }
@@ -257,13 +252,13 @@ describe('TaskService', () => {
     await service.syncSystemTasks()
 
     expect(taskRepository.save).not.toHaveBeenCalled()
-    expect(taskRepository.update).toHaveBeenCalledWith(
+    expect(taskRepository.update).toHaveBeenCalledWith(task.id, { source: 'system' })
+    expect(taskRepository.update).not.toHaveBeenCalledWith(
       task.id,
-      expect.objectContaining({
-        service: SYSTEM_TASKS[0].service,
-        source: 'system',
-      }),
+      expect.objectContaining({ service: SYSTEM_TASKS[0].service }),
     )
+    expect(taskInvoker.checkService).toHaveBeenCalledWith('OtherJob.handle')
+    expect(taskQueue.add).not.toHaveBeenCalled()
   })
 
   it('syncs system tasks into the task repository', async () => {
