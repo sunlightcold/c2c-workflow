@@ -28,7 +28,9 @@ export class TaskLogService {
           ...(isNotEmpty(status) ? { status } : null),
           ...(taskSource ? { taskSource } : null),
         })
-        .loadRelationIdAndMap('taskLog.taskId', 'taskLog.task'),
+        .loadRelationIdAndMap('taskLog.taskId', 'taskLog.task')
+        .orderBy('taskLog.startedAt', 'DESC')
+        .addOrderBy('taskLog.id', 'DESC'),
       paginateOptions,
     )
   }

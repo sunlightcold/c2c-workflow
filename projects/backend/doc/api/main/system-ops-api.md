@@ -127,6 +127,7 @@
 | Auth | Permission `monitor:taskLog:read` |
 | Request DTO | `TaskLogFilterDto` |
 | Success data | paginated task logs |
+| Sort | `startedAt DESC, id DESC`，最新执行记录优先 |
 
 #### Request
 
