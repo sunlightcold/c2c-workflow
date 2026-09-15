@@ -1,0 +1,42 @@
+name: c2c-local-infra
+
+services:
+  postgres:
+    image: postgres:16.10-alpine
+    container_name: c2c-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${C2C_POSTGRES_USER:?C2C_POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${C2C_POSTGRES_PASSWORD:?C2C_POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${C2C_POSTGRES_DB:?C2C_POSTGRES_DB is required}
+    ports:
+      - '127.0.0.1:15433:5432'
+    volumes:
+      - /mnt/e/software/develop/docker-volumes/c2c-workflow/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:8.8.1-alpine
+    container_name: c2c-redis-dev
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - 'yes'
+      - --requirepass
+      - ${C2C_REDIS_PASSWORD:?C2C_REDIS_PASSWORD is required}
+    ports:
+      - '127.0.0.1:16380:6379'
+    volumes:
+      - /mnt/e/software/develop/docker-volumes/c2c-workflow/redis:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli --no-auth-warning -a "$${C2C_REDIS_PASSWORD}" ping | grep PONG']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    environment:
+      C2C_REDIS_PASSWORD: ${C2C_REDIS_PASSWORD:?C2C_REDIS_PASSWORD is required}
