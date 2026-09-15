@@ -25,7 +25,6 @@ function defaultOrder(): OkxC2cMockOrder {
     price: '7.00',
     createdDate: now,
     modifyDate: now,
-    paymentDeadline: now + 15 * 60_000,
     orderPaidDate: null,
     receiptAccountId: '25990076',
     sellerReceiptAccount: {

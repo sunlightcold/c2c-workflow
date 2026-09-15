@@ -100,6 +100,20 @@ export class C2cPlatformClient {
     )
   }
 
+  async sendChatText(
+    platform: MerchantPlatform,
+    credentials: C2cPlatformCredentials,
+    orderId: string,
+    content: string,
+  ): Promise<void> {
+    this.requireCapability(platform, 'chat')
+    if (platform === MerchantPlatform.BINANCE) {
+      await this.binance.sendChatText(credentials as BinanceCredentials, orderId, content)
+      return
+    }
+    await this.okx.sendChatText(credentials as OkxWebPrivateCredentials, orderId, content)
+  }
+
   async getComplaintReasons(
     platform: MerchantPlatform,
     credentials: C2cPlatformCredentials,

@@ -1,10 +1,11 @@
 import {
   BusinessStatus,
   MerchantOrderStatus,
+  MerchantPlatform,
   PaymentOrderStatus,
   PaymentSourceType,
 } from '@admin/database'
-import { Inject, Injectable } from '@nestjs/common'
+import { Inject, Injectable, Optional } from '@nestjs/common'
 import {
   C2cPlatformClient,
   type C2cPlatformCredentials,
@@ -21,6 +22,7 @@ import {
 import { PlatformFundsExceptionError } from './payment-execution.errors'
 import { normalizeCnyAmount } from './payment-adapter.types'
 import { C2cPaymentProofService } from './c2c-payment-proof.service'
+import { C2cPlatformChatService } from '../c2c-order/c2c-platform-chat.service'
 import type {
   ExecutablePaymentOrder,
   PlatformPaymentConfirmer,
@@ -43,6 +45,7 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
     private readonly credentialFactory: C2cPlatformCredentialFactory,
     private readonly platformClient: C2cPlatformClient,
     private readonly paymentProofs: C2cPaymentProofService,
+    @Optional() private readonly platformChat?: C2cPlatformChatService,
   ) {}
 
   async confirmPaid(order: ExecutablePaymentOrder): Promise<void> {
@@ -58,6 +61,8 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
     if (this.isFundsConflict(context.merchantOrder.status)) {
       await this.toFundsException(context, this.toPlatformStatus(context.merchantOrder.status))
     }
+    const recovering =
+      context.merchantOrder.status === MerchantOrderStatus.PAID_PENDING_PLATFORM_CONFIRM
     await this.store.transitionMerchantOrder(
       context.order.tenantId,
       context.merchantOrder.id,
@@ -70,16 +75,36 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
       context.credential,
       secret,
     )
-    const current = await this.getOrder(context, credentials)
-    this.verifyPlatformOrder(context, current)
-    if (await this.finalizeKnownStatus(context, current.status)) return
-    if (current.status !== C2cBuyOrderStatus.PENDING_PAYMENT || !current.payable) {
-      throw new Error(`平台订单状态 ${current.status} 不允许确认已付款`)
+    let paymentMethodId = context.merchantOrder.platformPaymentMethodId!
+    if (recovering) {
+      const current = await this.getOrder(context, credentials)
+      this.verifyPlatformOrder(context, current)
+      if (await this.finalizeKnownStatus(context, current.status)) {
+        await this.notifyPaid(context, current.status)
+        return
+      }
+      if (current.status !== C2cBuyOrderStatus.PENDING_PAYMENT || !current.payable) {
+        throw new Error(`平台订单状态 ${current.status} 不允许确认已付款`)
+      }
+      paymentMethodId = current.platformPaymentMethodId
     }
-    await this.markPaid(context, credentials)
+    await this.markPaid(context, credentials, paymentMethodId)
+    if (context.merchant.platform === MerchantPlatform.BINANCE) {
+      await this.store.transitionMerchantOrder(
+        context.order.tenantId,
+        context.merchantOrder.id,
+        MerchantOrderStatus.PENDING_RELEASE,
+        C2cBuyOrderStatus.PAID,
+      )
+      await this.notifyPaid(context, C2cBuyOrderStatus.PAID)
+      return
+    }
     const confirmed = await this.getOrder(context, credentials)
     this.verifyPlatformOrder(context, confirmed)
-    if (await this.finalizeKnownStatus(context, confirmed.status)) return
+    if (await this.finalizeKnownStatus(context, confirmed.status)) {
+      await this.notifyPaid(context, confirmed.status)
+      return
+    }
     throw new Error('平台尚未确认已付款')
   }
 
@@ -106,9 +131,9 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
   private async markPaid(
     context: PaymentPreflightConfiguration,
     credentials: C2cPlatformCredentials,
+    paymentMethodId: string,
   ): Promise<void> {
     const orderId = context.merchantOrder.platformOrderId
-    const paymentMethodId = context.merchantOrder.platformPaymentMethodId!
     const policy = this.platformClient.getMarkPaidPolicy(context.merchant.platform, credentials)
     const paymentProofImages =
       policy.paymentProof !== 'REQUIRED'
@@ -142,17 +167,6 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
     if (current.platformOrderId !== snapshot.platformOrderId) throw new Error('平台订单编号不匹配')
     if (!this.sameAmount(current.fiatAmount, context.order.amount))
       throw new Error('平台订单金额已变化')
-    if (current.fiatCurrency !== context.order.currency) throw new Error('平台订单币种已变化')
-    if (current.paymentMethod !== context.order.paymentMethod)
-      throw new Error('平台订单收款方式已变化')
-    if (
-      current.payeeIdentity !== context.order.payeeIdentity ||
-      current.payeeName !== context.order.payeeName
-    ) {
-      throw new Error('平台订单收款资料已变化')
-    }
-    if (current.platformPaymentMethodId !== snapshot.platformPaymentMethodId)
-      throw new Error('平台付款方式已变化')
   }
 
   private getOrder(context: PaymentPreflightConfiguration, credentials: C2cPlatformCredentials) {
@@ -226,6 +240,24 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
       return normalizeCnyAmount(left) === normalizeCnyAmount(right)
     } catch {
       return false
+    }
+  }
+
+  private async notifyPaid(
+    context: PaymentPreflightConfiguration,
+    status: C2cBuyOrderStatus,
+  ): Promise<void> {
+    await this.platformChat?.sendOrderPaid(
+      context.order.tenantId,
+      context.order.merchantId,
+      context.merchantOrder.id,
+    )
+    if (status === C2cBuyOrderStatus.COMPLETED) {
+      await this.platformChat?.sendOrderCompleted(
+        context.order.tenantId,
+        context.order.merchantId,
+        context.merchantOrder.id,
+      )
     }
   }
 }

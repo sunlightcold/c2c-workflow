@@ -107,6 +107,8 @@ export interface C2cBuyOrderDetail extends Omit<C2cBuyOrderSummary, 'assetAmount
   payeeName: string
   identityName: string
   payable: boolean
+  kycStatus?: string
+  unpayableReason?: string
   paymentDeadline?: string
   updatedAt?: string
 }
@@ -128,4 +130,5 @@ export interface C2cPlatformAdapter<TCredentials> {
     paymentMethodId: number | string,
     options?: C2cMarkPaidOptions,
   ) => Promise<unknown>
+  sendChatText: (credentials: TCredentials, orderId: string, content: string) => Promise<unknown>
 }

@@ -25,11 +25,13 @@ describe('C2cMerchantPaymentService', () => {
     paymentMethod: 'ALIPAY',
     payeeIdentity: 'payee@example.com',
     payeeName: 'Payee',
+    identityName: 'Verified Payee',
   }
   const merchantOrders = { detail: jest.fn() }
   const paymentOrders = { create: jest.fn(), detail: jest.fn() }
   const cancellation = { cancel: jest.fn() }
   const execution = { confirmPlatform: jest.fn(), submit: jest.fn() }
+  const platformChat = { sendOrderCreated: jest.fn() }
   let service: C2cMerchantPaymentService
 
   beforeEach(() => {
@@ -46,11 +48,13 @@ describe('C2cMerchantPaymentService', () => {
     })
     execution.submit.mockResolvedValue({ id: 'payment-1', status: PaymentOrderStatus.COMPLETED })
     cancellation.cancel.mockResolvedValue(undefined)
+    platformChat.sendOrderCreated.mockResolvedValue(undefined)
     service = new C2cMerchantPaymentService(
       merchantOrders as unknown as C2cOrderService,
       paymentOrders as unknown as PaymentOrderService,
       execution as unknown as PaymentExecutionCoordinator,
       cancellation as unknown as C2cPaymentCancellationService,
+      platformChat as never,
     )
   })
 
@@ -70,7 +74,7 @@ describe('C2cMerchantPaymentService', () => {
         currency: 'CNY',
         paymentMethod: 'ALIPAY',
         payeeIdentity: 'payee@example.com',
-        payeeName: 'Payee',
+        payeeName: 'Verified Payee',
       },
       {
         automaticOnly: false,
@@ -78,6 +82,7 @@ describe('C2cMerchantPaymentService', () => {
       },
     )
     expect(execution.submit).toHaveBeenCalledWith('tenant-1', 'payment-1')
+    expect(platformChat.sendOrderCreated).toHaveBeenCalledWith('tenant-1', 'merchant-1', 'order-1')
     expect(paymentOrders.detail).toHaveBeenCalledWith('tenant-1', 'payment-1')
   })
 

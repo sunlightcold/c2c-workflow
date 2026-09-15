@@ -92,7 +92,7 @@ export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCred
     const response = await this.get<Record<string, unknown>>(
       credentials,
       `/v3/c2c/orders/${this.orderId(orderId)}`,
-      { t: String(Date.now()) },
+      {},
     )
     if (!response.data) throw new Error(response.msg ?? '欧易 C2C 订单详情无效')
     return normalizeOkxDetail(response.data, orderId)
@@ -164,6 +164,14 @@ export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCred
       },
     )
     return { supported: true, ...(response.requestId ? { requestId: response.requestId } : {}) }
+  }
+
+  sendChatText(
+    _credentials: OkxWebPrivateCredentials,
+    _orderId: string,
+    _content: string,
+  ): Promise<never> {
+    return Promise.reject(new Error('欧易不支持 C2C 聊天'))
   }
 
   getCapabilities(): C2cCapabilities {
@@ -303,8 +311,9 @@ export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCred
   }
 
   private orderId(value: string) {
-    if (!/^[A-Za-z0-9_-]{1,128}$/.test(value)) throw new Error('欧易 C2C 订单 ID 无效')
-    return encodeURIComponent(value)
+    const orderId = value.trim()
+    if (!orderId) throw new Error('欧易 C2C 订单 ID 为空')
+    return encodeURIComponent(orderId)
   }
 
   private toNumericStatus(status: string) {

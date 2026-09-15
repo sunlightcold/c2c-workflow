@@ -51,10 +51,12 @@ describe('C2cPaymentPreflightVerifier', () => {
       payable: true,
       fiatAmount: '100.00',
       fiatCurrency: 'CNY',
+      asset: 'USDT',
       paymentMethod: 'ALIPAY',
       platformPaymentMethodId: '901',
       payeeIdentity: 'payee@example.com',
       payeeName: '张三',
+      identityName: '张三',
       paymentDeadline: new Date('2026-09-10T08:05:00.000Z'),
     },
     credential: {
@@ -225,14 +227,29 @@ describe('C2cPaymentPreflightVerifier', () => {
   it.each([
     ['platform status changed', { status: C2cBuyOrderStatus.CANCELLED }, '平台订单已不可付款'],
     ['amount changed', { fiatAmount: '101.00' }, '平台订单金额已变化'],
+    ['asset changed', { asset: 'BTC' }, '平台订单资产已变化'],
     ['payee changed', { payeeIdentity: 'other@example.com' }, '平台订单收款账号已变化'],
-    ['payment method changed', { platformPaymentMethodId: '902' }, '平台付款方式已变化'],
+    ['identity changed', { identityName: '李四' }, '平台订单实名已变化'],
   ])('rejects before payment when %s', async (_case, change, message) => {
     platformClient.getOrderDetail.mockResolvedValue({ ...platformOrder, ...change })
 
     await expect(verifier.verify('tenant-1', 'payment-1', now)).rejects.toEqual(
       new PaymentNotSubmittedError(message),
     )
+  })
+
+  it('accepts harmless name formatting and a refreshed platform payment method id', async () => {
+    platformClient.getOrderDetail.mockResolvedValue({
+      ...platformOrder,
+      identityName: '张 三',
+      payeeName: '张 三',
+      platformPaymentMethodId: '902',
+      paymentMethod: 'aliPay',
+    })
+
+    await expect(verifier.verify('tenant-1', 'payment-1', now)).resolves.toMatchObject({
+      platformOrder: { platformPaymentMethodId: '902' },
+    })
   })
 
   it('allows payment when Binance does not provide a payment deadline', async () => {

@@ -28,6 +28,7 @@ describe('C2cPlatformClient', () => {
     listOrders: jest.fn(),
     getOrderDetail: jest.fn(),
     markOrderAsPaid: jest.fn(),
+    sendChatText: jest.fn(),
     getComplaintReasons: jest.fn(),
     getComplaintUploadUrl: jest.fn(),
     uploadComplaintFile: jest.fn(),
@@ -36,7 +37,7 @@ describe('C2cPlatformClient', () => {
     getCapabilities: jest.fn().mockReturnValue({
       appeal: true,
       cancelOrder: false,
-      chat: false,
+      chat: true,
       checkAntiFraud: false,
       listOrders: true,
       listReportOrders: false,
@@ -50,6 +51,7 @@ describe('C2cPlatformClient', () => {
     listOrders: jest.fn(),
     getOrderDetail: jest.fn(),
     markOrderAsPaid: jest.fn(),
+    sendChatText: jest.fn(),
     getMarkPaidPolicy: jest.fn().mockReturnValue({ paymentProof: 'SKIP' }),
     getCapabilities: jest.fn().mockReturnValue({
       appeal: false,
@@ -127,6 +129,20 @@ describe('C2cPlatformClient', () => {
       client.getComplaintReasons(MerchantPlatform.OKX, okxCredentials, 'OKX-1'),
     ).rejects.toEqual(new C2cPlatformCapabilityError(MerchantPlatform.OKX, 'appeal'))
     expect(binance.getComplaintReasons).not.toHaveBeenCalled()
+  })
+
+  it('sends Binance chat text and rejects unsupported OKX chat', async () => {
+    binance.sendChatText.mockResolvedValue({ supported: true })
+
+    await expect(
+      client.sendChatText(MerchantPlatform.BINANCE, binanceCredentials, 'BIN-1', '已付款'),
+    ).resolves.toBeUndefined()
+    expect(binance.sendChatText).toHaveBeenCalledWith(binanceCredentials, 'BIN-1', '已付款')
+
+    await expect(
+      client.sendChatText(MerchantPlatform.OKX, okxCredentials, 'OKX-1', '已付款'),
+    ).rejects.toEqual(new C2cPlatformCapabilityError(MerchantPlatform.OKX, 'chat'))
+    expect(okx.sendChatText).not.toHaveBeenCalled()
   })
 
   it('delegates the full Binance appeal flow through the provider entry', async () => {

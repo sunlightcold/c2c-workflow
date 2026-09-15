@@ -81,7 +81,6 @@ describe('OKX C2C mock', () => {
       code: 0,
       data: {
         publicOrderId: '260905000000001',
-        paymentDeadline: expect.any(Number),
         receiptAccountId: '25990076',
         counterPartyName: '测试用户',
         orderDetailUserVo: {
@@ -91,6 +90,7 @@ describe('OKX C2C mock', () => {
         },
       },
     })
+    expect((detail.body as any).data).not.toHaveProperty('paymentDeadline')
 
     getOkxC2cState().updateSettings({ antiFraudReview: true })
     const risk = getOkxC2cPlugin().handle(request('GET', '/v4/c2c/risk/antiFraudPopup/info'))

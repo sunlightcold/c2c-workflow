@@ -20,6 +20,7 @@ import { C2cOrderAppealService, C2C_ORDER_APPEAL_STORE } from './c2c-order-appea
 import { TypeOrmC2cOrderAppealStore } from './typeorm-c2c-order-appeal.store'
 import { C2cReceiptImageService } from './c2c-receipt-image.service'
 import { ReceiptDocumentDownloader } from './receipt-document-downloader'
+import { C2cPlatformChatService } from './c2c-platform-chat.service'
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { ReceiptDocumentDownloader } from './receipt-document-downloader'
     C2cReceiptImageService,
     ReceiptDocumentDownloader,
     C2cOrderService,
+    C2cPlatformChatService,
   ],
   exports: [
     C2C_ORDER_SYNC_STORE,
@@ -55,6 +57,7 @@ import { ReceiptDocumentDownloader } from './receipt-document-downloader'
     C2cOrderService,
     C2cReceiptImageService,
     ReceiptDocumentDownloader,
+    C2cPlatformChatService,
   ],
 })
 export class C2cOrderModule {}

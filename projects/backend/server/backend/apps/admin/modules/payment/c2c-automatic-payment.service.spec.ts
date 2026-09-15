@@ -71,7 +71,16 @@ describe('C2cAutomaticPaymentService', () => {
       'merchant-order-1',
       true,
     )
-    expect(eventEmitter.emit).not.toHaveBeenCalled()
+    expect(eventEmitter.emitAsync).toHaveBeenCalledWith(
+      EVENT_KEYS.TELEGRAM_PAYMENT_CREATED,
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        merchantId: 'merchant-1',
+        merchantOrderId: 'merchant-order-1',
+        paymentOrderId: 'payment-1',
+        status: PaymentOrderStatus.COMPLETED,
+      }),
+    )
   })
 
   it('publishes every automatically created batch payment order', async () => {
@@ -87,8 +96,8 @@ describe('C2cAutomaticPaymentService', () => {
 
     await service.createAndSubmit(now)
 
-    expect(eventEmitter.emit).toHaveBeenCalledWith(
-      EVENT_KEYS.TELEGRAM_PAYMENT_STATUS,
+    expect(eventEmitter.emitAsync).toHaveBeenCalledWith(
+      EVENT_KEYS.TELEGRAM_PAYMENT_CREATED,
       expect.objectContaining({
         tenantId: 'tenant-1',
         merchantId: 'merchant-1',

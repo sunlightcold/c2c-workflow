@@ -58,7 +58,6 @@ export function validateOrder(value: unknown): OkxC2cMockOrder {
     price: string(input.price ?? '7.00', 'price'),
     createdDate: Number(input.createdDate ?? now),
     modifyDate: Number(input.modifyDate ?? now),
-    paymentDeadline: Number(input.paymentDeadline ?? now + 15 * 60_000),
     orderPaidDate: input.orderPaidDate == null ? null : Number(input.orderPaidDate),
     receiptAccountId,
     sellerReceiptAccount: {

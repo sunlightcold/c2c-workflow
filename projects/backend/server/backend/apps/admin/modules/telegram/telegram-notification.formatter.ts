@@ -13,6 +13,7 @@ export interface TelegramOrderMessageInput {
   identityName?: string | null
   identityMatched: boolean
   payable: boolean
+  lastError?: string | null
 }
 
 export interface TelegramPaymentMessageInput {
@@ -271,7 +272,9 @@ function batchStatusMeta(status: string): { icon: string; text: string } {
 
 export function formatOrderDiscoveredMessage(order: TelegramOrderMessageInput): string {
   const meta = orderStatusMeta(order.status)
-  const reviewReason = order.identityMatched ? '当前订单不可自动付款' : '收款人与平台实名不一致'
+  const reviewReason =
+    order.lastError || (order.identityMatched ? '当前订单不可自动付款' : '收款人与平台实名不一致')
+  const kycStatus = order.lastError === '卖方 KYC 未通过' ? 'FAIL' : 'PASS'
   return (
     `${meta.icon} <b>${escapeTelegramHtml(reviewReason)}</b>\n\n` +
     `<b>订单信息</b>\n` +
@@ -279,11 +282,11 @@ export function formatOrderDiscoveredMessage(order: TelegramOrderMessageInput): 
     `金额：<code>${escapeTelegramHtml(money(order.fiatAmount))} ${escapeTelegramHtml(order.fiatCurrency)}</code>\n` +
     `资产：<code>${escapeTelegramHtml(order.assetAmount)} ${escapeTelegramHtml(order.asset)}</code>\n\n` +
     `<b>收款信息</b>\n` +
-    `姓名：<code>${escapeTelegramHtml(order.payeeName || '未记录')}</code>\n` +
+    `姓名：<code>${escapeTelegramHtml(order.identityName || '未记录')}</code>\n` +
     `账号：<code>${escapeTelegramHtml(order.payeeIdentity || '未记录')}</code>\n` +
     `方式：<code>${escapeTelegramHtml(order.paymentMethod || '未记录')}</code>\n\n` +
     `<b>实名核验</b>\n` +
-    `KYC：<code>${escapeTelegramHtml(order.identityMatched ? 'PASS' : 'FAIL')}</code>\n` +
+    `KYC：<code>${escapeTelegramHtml(kycStatus)}</code>\n` +
     `平台实名：<code>${escapeTelegramHtml(order.identityName || '未记录')}</code>\n` +
     `持有人：<code>${escapeTelegramHtml(order.payeeName || '未记录')}</code>\n` +
     `结果：<b>${meta.icon} ${escapeTelegramHtml(meta.text)}</b>`
@@ -304,12 +307,12 @@ export function formatC2cCreatedMessage(order: TelegramC2cCreatedMessageInput): 
       ? `\n资产：<code>${escapeTelegramHtml(order.assetAmount)} ${escapeTelegramHtml(order.asset)}</code>`
       : '') +
     `\n\n<b>收款信息</b>\n` +
-    `姓名：<code>${escapeTelegramHtml(order.payeeName || '未记录')}</code>\n` +
+    `姓名：<code>${escapeTelegramHtml(order.identityName || '未记录')}</code>\n` +
     `账号：<code>${escapeTelegramHtml(order.payeeIdentity || '未记录')}</code>\n` +
     `方式：<code>${escapeTelegramHtml(order.paymentMethod || '未记录')}</code>\n\n` +
     `<b>实名核验</b>\n` +
     `KYC：<code>${escapeTelegramHtml(order.kycStatus || 'PASS')}</code>\n` +
-    `持有人：<code>${escapeTelegramHtml(order.identityName || order.payeeName || '未记录')}</code>\n` +
+    `持有人：<code>${escapeTelegramHtml(order.payeeName || '未记录')}</code>\n` +
     `结果：<b>${escapeTelegramHtml(result)}</b>`
   )
 }

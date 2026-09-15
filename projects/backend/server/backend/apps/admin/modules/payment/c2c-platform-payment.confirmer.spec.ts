@@ -72,10 +72,12 @@ describe('C2cPlatformPaymentConfirmer', () => {
       payable: true,
       fiatAmount: '100.00',
       fiatCurrency: 'CNY',
+      asset: 'USDT',
       paymentMethod: 'ALIPAY',
       platformPaymentMethodId: '901',
       payeeIdentity: 'payee@example.com',
       payeeName: '张三',
+      identityName: '张三',
       paymentDeadline: new Date('2026-09-10T09:00:00.000Z'),
     },
     credential: {
@@ -128,6 +130,7 @@ describe('C2cPlatformPaymentConfirmer', () => {
     getMarkPaidPolicy: jest.fn(),
   }
   const paymentProofs = { load: jest.fn() }
+  const platformChat = { sendOrderPaid: jest.fn(), sendOrderCompleted: jest.fn() }
   let confirmer: C2cPlatformPaymentConfirmer
 
   beforeEach(() => {
@@ -142,24 +145,22 @@ describe('C2cPlatformPaymentConfirmer', () => {
       timeoutMs: 5000,
     })
     platformClient.getMarkPaidPolicy.mockReturnValue({ paymentProof: 'NONE' })
-    platformClient.getOrderDetail
-      .mockResolvedValueOnce(pendingPlatformOrder)
-      .mockResolvedValueOnce({
-        ...pendingPlatformOrder,
-        status: C2cBuyOrderStatus.PAID,
-        payable: false,
-      })
+    platformClient.getOrderDetail.mockReset()
+    platformClient.getOrderDetail.mockResolvedValue(pendingPlatformOrder)
     platformClient.markOrderAsPaid.mockResolvedValue(undefined)
+    platformChat.sendOrderPaid.mockResolvedValue(undefined)
+    platformChat.sendOrderCompleted.mockResolvedValue(undefined)
     confirmer = new C2cPlatformPaymentConfirmer(
       store,
       secretResolver,
       credentials as never,
       platformClient as never,
       paymentProofs as never,
+      platformChat as never,
     )
   })
 
-  it('marks a Binance order paid with its numeric platform payment method and verifies the result', async () => {
+  it('accepts a successful Binance mark-paid response without waiting for an immediate status refresh', async () => {
     await expect(confirmer.confirmPaid(executable)).resolves.toBeUndefined()
 
     expect(platformClient.markOrderAsPaid).toHaveBeenCalledWith(
@@ -168,6 +169,12 @@ describe('C2cPlatformPaymentConfirmer', () => {
       'platform-order-1',
       '901',
       undefined,
+    )
+    expect(platformClient.getOrderDetail).not.toHaveBeenCalled()
+    expect(platformChat.sendOrderPaid).toHaveBeenCalledWith(
+      'tenant-1',
+      'merchant-1',
+      'merchant-order-1',
     )
     expect(store.transitionMerchantOrder.mock.calls).toEqual([
       [
@@ -213,13 +220,12 @@ describe('C2cPlatformPaymentConfirmer', () => {
       timeoutMs: 5000,
     })
     platformClient.getMarkPaidPolicy.mockReturnValue({ paymentProof: 'SKIP' })
-    platformClient.getOrderDetail
-      .mockResolvedValueOnce(pendingPlatformOrder)
-      .mockResolvedValueOnce({
-        ...pendingPlatformOrder,
-        status: C2cBuyOrderStatus.PAID,
-        payable: false,
-      })
+    platformClient.getOrderDetail.mockReset()
+    platformClient.getOrderDetail.mockResolvedValue({
+      ...pendingPlatformOrder,
+      status: C2cBuyOrderStatus.PAID,
+      payable: false,
+    })
     await confirmer.confirmPaid(executable)
 
     expect(paymentProofs.load).not.toHaveBeenCalled()
@@ -262,13 +268,12 @@ describe('C2cPlatformPaymentConfirmer', () => {
     })
     paymentProofs.load.mockResolvedValue([paymentProofImage])
     platformClient.getMarkPaidPolicy.mockReturnValue({ paymentProof: 'REQUIRED' })
-    platformClient.getOrderDetail
-      .mockResolvedValueOnce(pendingPlatformOrder)
-      .mockResolvedValueOnce({
-        ...pendingPlatformOrder,
-        status: C2cBuyOrderStatus.PAID,
-        payable: false,
-      })
+    platformClient.getOrderDetail.mockReset()
+    platformClient.getOrderDetail.mockResolvedValue({
+      ...pendingPlatformOrder,
+      status: C2cBuyOrderStatus.PAID,
+      payable: false,
+    })
     await expect(confirmer.confirmPaid(executable)).resolves.toBeUndefined()
 
     expect(paymentProofs.load).toHaveBeenCalledWith({
@@ -307,14 +312,30 @@ describe('C2cPlatformPaymentConfirmer', () => {
     })
     paymentProofs.load.mockRejectedValue(new Error('付款回单暂不可用：回单生成中'))
     platformClient.getMarkPaidPolicy.mockReturnValue({ paymentProof: 'REQUIRED' })
-    platformClient.getOrderDetail.mockResolvedValueOnce(pendingPlatformOrder)
 
     await expect(confirmer.confirmPaid(executable)).rejects.toThrow('付款回单暂不可用')
 
     expect(platformClient.markOrderAsPaid).not.toHaveBeenCalled()
   })
 
-  it('keeps the merchant order pending and never sends money again when verification is delayed', async () => {
+  it('keeps an OKX order pending when its post-submit status refresh is delayed', async () => {
+    store.load.mockResolvedValue({
+      ...context,
+      merchant: { ...context.merchant, platform: MerchantPlatform.OKX },
+      merchantOrder: {
+        ...context.merchantOrder,
+        platform: MerchantPlatform.OKX,
+        status: MerchantOrderStatus.PAID_PENDING_PLATFORM_CONFIRM,
+      },
+      credential: { ...context.credential, platform: MerchantPlatform.OKX, clientType: null },
+    })
+    credentials.create.mockReturnValue({
+      cookie: 'cookie',
+      authorization: 'authorization',
+      signaturePrivateKey: 'private-key',
+      timeoutMs: 5000,
+    })
+    platformClient.getMarkPaidPolicy.mockReturnValue({ paymentProof: 'SKIP' })
     platformClient.getOrderDetail.mockReset()
     platformClient.getOrderDetail
       .mockResolvedValueOnce(pendingPlatformOrder)
@@ -328,6 +349,13 @@ describe('C2cPlatformPaymentConfirmer', () => {
     'moves a paid order to funds exception when platform status is %s',
     async (status) => {
       platformClient.getOrderDetail.mockReset()
+      store.load.mockResolvedValue({
+        ...context,
+        merchantOrder: {
+          ...context.merchantOrder,
+          status: MerchantOrderStatus.PAID_PENDING_PLATFORM_CONFIRM,
+        },
+      })
       platformClient.getOrderDetail.mockResolvedValue({
         ...pendingPlatformOrder,
         status,
@@ -347,14 +375,29 @@ describe('C2cPlatformPaymentConfirmer', () => {
     },
   )
 
-  it('does not mark paid when platform payment details changed after the Alipay success', async () => {
+  it('does not block Binance mark-paid on mutable receipt metadata after Alipay succeeded', async () => {
+    store.load.mockResolvedValue({
+      ...context,
+      merchantOrder: {
+        ...context.merchantOrder,
+        status: MerchantOrderStatus.PAID_PENDING_PLATFORM_CONFIRM,
+      },
+    })
     platformClient.getOrderDetail.mockReset()
     platformClient.getOrderDetail.mockResolvedValue({
       ...pendingPlatformOrder,
       platformPaymentMethodId: '902',
+      payeeIdentity: 'formatted-account',
+      payeeName: '张 三',
     })
 
-    await expect(confirmer.confirmPaid(executable)).rejects.toThrow('平台付款方式已变化')
-    expect(platformClient.markOrderAsPaid).not.toHaveBeenCalled()
+    await expect(confirmer.confirmPaid(executable)).resolves.toBeUndefined()
+    expect(platformClient.markOrderAsPaid).toHaveBeenCalledWith(
+      MerchantPlatform.BINANCE,
+      expect.anything(),
+      'platform-order-1',
+      '902',
+      undefined,
+    )
   })
 })

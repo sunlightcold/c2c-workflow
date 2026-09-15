@@ -11,6 +11,7 @@ describe('C2C buy-order clients', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks()
+    http.request.mockReset()
     const module = await Test.createTestingModule({
       providers: [
         BinanceC2cClient,
@@ -26,7 +27,7 @@ describe('C2C buy-order clients', () => {
     expect(binance.getCapabilities()).toEqual({
       appeal: true,
       cancelOrder: false,
-      chat: false,
+      chat: true,
       checkAntiFraud: false,
       getOrderDetail: true,
       listOrders: true,
@@ -130,6 +131,75 @@ describe('C2C buy-order clients', () => {
     ).rejects.toThrow('仅支持 BUY')
   })
 
+  it('retrieves Binance chat credentials and sends the pfa-pay text message shape', async () => {
+    const originalWebSocket = globalThis.WebSocket
+    const sent: string[] = []
+    class FakeWebSocket {
+      bufferedAmount = 0
+      private readonly listeners = new Map<string, Array<() => void>>()
+
+      constructor(readonly url: string) {
+        queueMicrotask(() => this.emit('open'))
+      }
+
+      addEventListener(type: string, listener: () => void) {
+        this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener])
+      }
+
+      send(message: string) {
+        sent.push(message)
+      }
+
+      close() {
+        this.emit('close')
+      }
+
+      private emit(type: string) {
+        for (const listener of this.listeners.get(type) ?? []) listener()
+      }
+    }
+    Object.defineProperty(globalThis, 'WebSocket', { configurable: true, value: FakeWebSocket })
+    http.request.mockResolvedValue({
+      success: true,
+      code: '000000',
+      data: {
+        chatWssUrl: 'wss://im.binance.test/chat',
+        listenKey: 'listen-key',
+        listenToken: 'listen-token',
+      },
+    })
+
+    try {
+      await expect(
+        binance.sendChatText(
+          { apiKey: 'key', secretKey: 'secret', clientType: 'WEB', timeoutMs: 5000 },
+          'BIN-CHAT-1',
+          '订单已付款',
+        ),
+      ).resolves.toEqual({ supported: true })
+    } finally {
+      Object.defineProperty(globalThis, 'WebSocket', {
+        configurable: true,
+        value: originalWebSocket,
+      })
+    }
+
+    expect(http.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'GET',
+        url: expect.stringContaining('/sapi/v1/c2c/chat/retrieveChatCredential?'),
+      }),
+    )
+    expect(JSON.parse(sent[0])).toMatchObject({
+      orderNo: 'BIN-CHAT-1',
+      type: 'text',
+      content: '订单已付款',
+      self: true,
+      clientType: 'web',
+      sendStatus: 0,
+    })
+  })
+
   it('keeps OKX private requests on the configured origin and fixed paths', async () => {
     http.request.mockResolvedValue({
       code: 0,
@@ -161,6 +231,7 @@ describe('C2C buy-order clients', () => {
       expect.objectContaining({
         method: 'GET',
         url: 'http://127.0.0.1:13002/upstreams/okx/v3/c2c/orders/123',
+        params: {},
       }),
     )
   })
@@ -384,6 +455,112 @@ describe('C2C buy-order clients', () => {
     })
   })
 
+  it('skips unexpected Binance list records that are not explicit BUY orders', async () => {
+    http.request.mockResolvedValue({
+      success: true,
+      code: '000000',
+      data: [{ orderNumber: 'BIN-SELL', tradeType: 'SELL' }, { orderNumber: 'BIN-NO-SIDE' }],
+      total: 2,
+    })
+
+    await expect(
+      binance.listOrders(
+        { apiKey: 'key', secretKey: 'secret', clientType: 'WEB', timeoutMs: 5000 },
+        {
+          tradeType: 'BUY',
+          asset: 'USDT',
+          startDate: 1,
+          endDate: 2,
+          page: 1,
+          rows: 20,
+          orderStatusList: [1],
+        },
+      ),
+    ).resolves.toEqual({ items: [], total: 2, hasMore: false })
+  })
+
+  it('uses Binance structured KYC names and rejects an explicit non-PASS KYC result', async () => {
+    const detail = {
+      orderNumber: 'BIN-KYC-1',
+      orderStatus: 1,
+      tradeType: 'BUY',
+      asset: 'USDT',
+      fiatUnit: 'CNY',
+      amount: '10',
+      totalPrice: '70.00',
+      createTime: 1_787_586_752_664,
+      selectedPayId: '2',
+      payMethods: [
+        {
+          id: '2',
+          identifier: 'ALIPAY',
+          fields: [
+            { fieldName: 'beneficiary_name', fieldValue: 'Zhang San' },
+            { fieldName: 'bank_account', fieldValue: 'payee@example.com' },
+          ],
+        },
+      ],
+      taker: {
+        userKycVo: { firstName: 'Zhang', lastName: 'San', kycStatus: 'PASS' },
+      },
+    }
+    http.request
+      .mockResolvedValueOnce({ success: true, code: '000000', data: detail })
+      .mockResolvedValueOnce({
+        success: true,
+        code: '000000',
+        data: { ...detail, taker: { userKycVo: { ...detail.taker.userKycVo, kycStatus: 'FAIL' } } },
+      })
+    const credentials = {
+      apiKey: 'key',
+      secretKey: 'secret',
+      clientType: 'WEB',
+      timeoutMs: 5000,
+    }
+
+    await expect(binance.getOrderDetail(credentials, 'BIN-KYC-1')).resolves.toMatchObject({
+      identityName: 'Zhang San',
+      payeeName: 'Zhang San',
+      payeeIdentity: 'payee@example.com',
+      payable: true,
+    })
+    await expect(binance.getOrderDetail(credentials, 'BIN-KYC-1')).resolves.toMatchObject({
+      payable: false,
+      kycStatus: 'FAIL',
+      unpayableReason: '卖方 KYC 未通过',
+    })
+  })
+
+  it('keeps a Binance response without a selected receipt method as an order-level rejection', async () => {
+    http.request.mockResolvedValue({
+      success: true,
+      code: '000000',
+      data: {
+        orderNumber: 'BIN-NO-PAY-METHOD',
+        orderStatus: 1,
+        tradeType: 'BUY',
+        asset: 'USDT',
+        fiatUnit: 'CNY',
+        amount: '10',
+        totalPrice: '70.00',
+        createTime: 1_787_586_752_664,
+        payMethods: [],
+        taker: { realName: 'Zhang San', userKycVo: { kycStatus: 'PASS' } },
+      },
+    })
+
+    await expect(
+      binance.getOrderDetail(
+        { apiKey: 'key', secretKey: 'secret', clientType: 'WEB', timeoutMs: 5000 },
+        'BIN-NO-PAY-METHOD',
+      ),
+    ).resolves.toMatchObject({
+      platformPaymentMethodId: '',
+      payable: false,
+      unpayableReason: '未找到订单选中的收款方式',
+    })
+  })
+
   it('normalizes OKX list envelopes and keeps its internal order id for detail calls', async () => {
     http.request
       .mockResolvedValueOnce({
@@ -476,8 +653,83 @@ describe('C2C buy-order clients', () => {
     })
   })
 
-  it('rejects an OKX detail response for a different public order id', async () => {
-    http.request.mockResolvedValue({ code: 0, data: { publicOrderId: 260000000000002 } })
+  it('uses OKX detail-user and receipt-account fallbacks without requiring one response shape', async () => {
+    const base = {
+      id: 'OKX-FALLBACK-1',
+      side: 'buy',
+      orderProcessStatus: 2,
+      paymentStatus: 'unpaid',
+      baseAmount: '10',
+      baseCurrency: 'USDT',
+      quoteAmount: '70',
+      quoteCurrency: 'CNY',
+      createdDate: 1_787_586_752_664,
+      selectedPayId: '25990076',
+      orderDetailUserVo: {
+        sellerAllReceiptAccountList: [
+          {
+            receiptAccountId: '25990076',
+            accountName: 'Li Si',
+            accountNo: 'payee@example.com',
+            type: 'aliPay',
+          },
+        ],
+      },
+      detailUser: { realName: 'Li Si', kycVerified: true },
+    }
+    http.request.mockResolvedValueOnce({ code: 0, data: base }).mockResolvedValueOnce({
+      code: 0,
+      data: { ...base, detailUser: { realName: 'Li Si', kycVerified: false } },
+    })
+
+    await expect(
+      okx.getOrderDetail(
+        { cookie: 'session', authorization: 'token', timeoutMs: 5000 },
+        'OKX-FALLBACK-1',
+      ),
+    ).resolves.toMatchObject({
+      platformPaymentMethodId: '25990076',
+      paymentMethod: 'ALIPAY',
+      payeeIdentity: 'payee@example.com',
+      payeeName: 'Li Si',
+      identityName: 'Li Si',
+      payable: true,
+    })
+    await expect(
+      okx.getOrderDetail(
+        { cookie: 'session', authorization: 'token', timeoutMs: 5000 },
+        'OKX-FALLBACK-1',
+      ),
+    ).resolves.toMatchObject({
+      payable: false,
+      kycStatus: 'FAIL',
+      unpayableReason: '卖方 KYC 未通过',
+    })
+  })
+
+  it('uses the requested OKX path id instead of treating publicOrderId as the internal id', async () => {
+    http.request.mockResolvedValue({
+      code: 0,
+      data: {
+        publicOrderId: 260000000000002,
+        side: 'buy',
+        orderProcessStatus: 2,
+        paymentStatus: 'unpaid',
+        baseAmount: '10',
+        baseCurrency: 'USDT',
+        quoteAmount: '70',
+        quoteCurrency: 'CNY',
+        createdDate: 1_787_586_752_664,
+        receiptAccountId: '1',
+        sellerReceiptAccount: {
+          id: '1',
+          accountName: 'Payee',
+          accountNo: 'account',
+          type: 'aliPay',
+        },
+        detailUser: { realName: 'Payee', kycVerified: true },
+      },
+    })
 
     await expect(
       okx.getOrderDetail(
@@ -489,7 +741,11 @@ describe('C2C buy-order clients', () => {
         },
         '260000000000001',
       ),
-    ).rejects.toThrow('欧易订单详情返回的订单号不匹配')
+    ).resolves.toMatchObject({
+      platformOrderId: '260000000000001',
+      status: C2cBuyOrderStatus.PENDING_PAYMENT,
+      payable: true,
+    })
   })
 
   it('rejects OKX list records without an explicit buy side', async () => {
@@ -611,7 +867,7 @@ describe('C2C buy-order clients', () => {
     ).resolves.toEqual({ items: [], total: 40, hasMore: true })
   })
 
-  it('blocks OKX payment when the platform disables marking or the order is in appeal', async () => {
+  it('does not turn OKX UI flags into payment blockers when the order status remains pending', async () => {
     const base = {
       id: 'OKX-BLOCKED-1',
       side: 'buy',
@@ -643,13 +899,13 @@ describe('C2C buy-order clients', () => {
         { cookie: 'session', authorization: 'token', timeoutMs: 5000 },
         'OKX-BLOCKED-1',
       ),
-    ).resolves.toMatchObject({ payable: false })
+    ).resolves.toMatchObject({ status: C2cBuyOrderStatus.PENDING_PAYMENT, payable: true })
     await expect(
       okx.getOrderDetail(
         { cookie: 'session', authorization: 'token', timeoutMs: 5000 },
         'OKX-BLOCKED-1',
       ),
-    ).resolves.toMatchObject({ status: C2cBuyOrderStatus.DISPUTED, payable: false })
+    ).resolves.toMatchObject({ status: C2cBuyOrderStatus.PENDING_PAYMENT, payable: true })
   })
 
   it('keeps expired orders distinct from cancelled orders', async () => {

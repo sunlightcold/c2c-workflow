@@ -37,7 +37,6 @@ export interface BinanceC2cMockOrder {
   tradeType: 'BUY' | 'SELL'
   createTime: string
   updateTime: string
-  paymentDeadline: string
   selectedPayId: string
   payMethods: BinanceC2cPayMethod[]
   complaintReasons?: Array<{ reasonCode: number; reasonDesc: string }>

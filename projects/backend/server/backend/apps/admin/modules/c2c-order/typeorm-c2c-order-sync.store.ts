@@ -196,7 +196,9 @@ export class TypeOrmC2cOrderSyncStore implements C2cOrderSyncStore {
         platformCreatedAt: new Date(incoming.createdAt),
         platformUpdatedAt: incoming.updatedAt ? new Date(incoming.updatedAt) : null,
         lastSyncedAt: syncedAt,
-        lastError: incoming.status === C2cBuyOrderStatus.UNKNOWN ? '平台返回未知订单状态' : null,
+        lastError:
+          incoming.unpayableReason ??
+          (incoming.status === C2cBuyOrderStatus.UNKNOWN ? '平台返回未知订单状态' : null),
       }),
     )
     const changed = !existing || existing.status !== status

@@ -148,8 +148,8 @@ describe('Binance C2C mock', () => {
     expect((detail.body as any).data).toMatchObject({
       selectedPayId: '2',
       orderNumber: 'ORDER_DETAIL',
-      paymentDeadline: expect.any(String),
     })
+    expect((detail.body as any).data).not.toHaveProperty('paymentDeadline')
 
     const invalid = getBinanceC2cPlugin().handle({
       ...request('/sapi/v1/c2c/orderMatch/getUserOrderDetail', { adOrderNo: 'ORDER_DETAIL' }),

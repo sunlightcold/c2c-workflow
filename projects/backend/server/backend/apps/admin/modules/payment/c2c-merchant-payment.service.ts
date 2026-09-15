@@ -4,8 +4,9 @@ import {
   PaymentOrderStatus,
   PaymentSourceType,
 } from '@admin/database'
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, Optional } from '@nestjs/common'
 import { C2cOrderService } from '../c2c-order/c2c-order.service'
+import { C2cPlatformChatService } from '../c2c-order/c2c-platform-chat.service'
 import { PaymentExecutionCoordinator } from './payment-execution-coordinator'
 import { PaymentOrderService } from './payment-order.service'
 import { C2cPaymentCancellationService } from './c2c-payment-cancellation.service'
@@ -17,6 +18,7 @@ export class C2cMerchantPaymentService {
     private readonly paymentOrders: PaymentOrderService,
     private readonly execution: PaymentExecutionCoordinator,
     private readonly cancellation: C2cPaymentCancellationService,
+    @Optional() private readonly platformChat?: C2cPlatformChatService,
   ) {}
 
   async create(
@@ -89,7 +91,7 @@ export class C2cMerchantPaymentService {
       currency: merchantOrder.fiatCurrency,
       paymentMethod: merchantOrder.paymentMethod!,
       payeeIdentity: merchantOrder.payeeIdentity!,
-      payeeName: merchantOrder.payeeName!,
+      payeeName: merchantOrder.identityName!,
     }
     const paymentOrder = allowIdentityMismatch
       ? await this.paymentOrders.create(tenantId, paymentInput, {
@@ -102,6 +104,7 @@ export class C2cMerchantPaymentService {
           automaticOnly,
           requireRoute: true,
         })
+    await this.platformChat?.sendOrderCreated(tenantId, merchantId, merchantOrderId)
     if (
       paymentOrder.executionMode === PaymentExecutionMode.INSTANT &&
       paymentOrder.status === PaymentOrderStatus.READY
@@ -117,6 +120,7 @@ export class C2cMerchantPaymentService {
       payable: boolean
       identityMatched: boolean
       paymentMethod: string | null
+      identityName: string | null
       paymentOrder?: { status: PaymentOrderStatus } | null
       payeeIdentity: string | null
       payeeName: string | null
@@ -131,7 +135,12 @@ export class C2cMerchantPaymentService {
     }
     if (!allowIdentityMismatch && !order.identityMatched)
       throw new BadRequestException('收款人与平台实名不一致')
-    if (order.paymentMethod !== 'ALIPAY' || !order.payeeIdentity || !order.payeeName) {
+    if (
+      order.paymentMethod !== 'ALIPAY' ||
+      !order.payeeIdentity ||
+      !order.payeeName ||
+      !order.identityName
+    ) {
       throw new BadRequestException('商家订单缺少完整的支付宝收款资料')
     }
   }

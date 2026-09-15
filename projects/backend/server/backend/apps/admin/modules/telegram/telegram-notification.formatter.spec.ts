@@ -3,6 +3,7 @@ import {
   formatBatchStatusMessage,
   formatAutomaticBatchSubmissionMessage,
   formatC2cCreatedMessage,
+  formatOrderDiscoveredMessage,
   formatPaymentStatusMessage,
   shouldNotifyBatchStatus,
   shouldNotifyPaymentStatus,
@@ -19,7 +20,7 @@ describe('Telegram notification formatting policy', () => {
       fiatCurrency: 'CNY',
       asset: 'USDT',
       assetAmount: '3.8',
-      payeeName: '白连宝',
+      payeeName: '白连宝（收款账户）',
       payeeIdentity: '19523560923',
       paymentMethod: '支付宝',
       identityName: '白连宝',
@@ -30,6 +31,8 @@ describe('Telegram notification formatting policy', () => {
     expect(message).toContain('🟢 <b>C2C订单已自动创建</b>')
     expect(message.indexOf('<b>订单信息</b>')).toBeLessThan(message.indexOf('<b>收款信息</b>'))
     expect(message.indexOf('<b>收款信息</b>')).toBeLessThan(message.indexOf('<b>实名核验</b>'))
+    expect(message).toContain('姓名：<code>白连宝</code>')
+    expect(message).toContain('持有人：<code>白连宝（收款账户）</code>')
     expect(message).toContain('结果：<b>一致，已自动下单</b>')
   })
 
@@ -51,6 +54,27 @@ describe('Telegram notification formatting policy', () => {
     expect(message).toContain('金额：<code>88.60 CNY</code>')
     expect(message).toContain('姓名：<code>张三 &lt;test&gt;</code>')
     expect(message).toContain('状态：<b>🟢 成功</b>')
+  })
+
+  it('shows the platform KYC rejection reason instead of reporting a name mismatch', () => {
+    const message = formatOrderDiscoveredMessage({
+      platformOrderId: 'BN-KYC-1',
+      fiatAmount: '70',
+      fiatCurrency: 'CNY',
+      asset: 'USDT',
+      assetAmount: '10',
+      status: 'PENDING_PAYMENT',
+      payeeName: 'Zhang San',
+      payeeIdentity: 'payee@example.com',
+      paymentMethod: 'ALIPAY',
+      identityName: 'Zhang San',
+      identityMatched: true,
+      payable: false,
+      lastError: '卖方 KYC 未通过',
+    })
+
+    expect(message).toContain('<b>卖方 KYC 未通过</b>')
+    expect(message).toContain('KYC：<code>FAIL</code>')
   })
 
   it('formats one aggregate partial-success batch result with failure details', () => {

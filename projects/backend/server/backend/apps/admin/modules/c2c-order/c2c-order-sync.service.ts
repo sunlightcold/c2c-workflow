@@ -18,6 +18,7 @@ import {
 import { C2C_SECRET_RESOLVER, type C2cSecretResolver } from './c2c-secret-resolver'
 import type { C2cOrderSyncStore } from './c2c-order-sync.types'
 import { EVENT_KEYS, EventEmitterService } from '../event-emitter'
+import { C2cPlatformChatService } from './c2c-platform-chat.service'
 
 export const C2C_ORDER_SYNC_STORE = Symbol('C2C_ORDER_SYNC_STORE')
 const INITIAL_LOOKBACK_MS = 24 * 60 * 60 * 1000
@@ -33,6 +34,7 @@ export class C2cOrderSyncService {
     private readonly platformClient: C2cPlatformClient,
     @Inject(C2C_ORDER_SYNC_STORE) private readonly store: C2cOrderSyncStore,
     @Optional() private readonly eventEmitter?: EventEmitterService,
+    @Optional() private readonly platformChat?: C2cPlatformChatService,
   ) {}
 
   async sync(tenantId: string, merchantId: string, now = new Date()) {
@@ -58,6 +60,11 @@ export class C2cOrderSyncService {
         { tenantId, merchantId, platform: merchant.platform },
         orders,
         now,
+      )
+      await this.platformChat?.sendCompletedOrders(
+        tenantId,
+        merchantId,
+        result.changedOrderIds ?? [],
       )
       // "discovered" is a first-seen event. Status refreshes are persisted for
       // reconciliation but must not spam Telegram on every polling interval.

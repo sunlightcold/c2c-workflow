@@ -174,36 +174,23 @@ export class C2cAutomaticPaymentService {
         candidate.merchantOrderId,
         true,
       )
-      if ([PaymentOrderStatus.PENDING_CONFIG, PaymentOrderStatus.READY].includes(payment.status)) {
-        this.eventEmitter?.emit(EVENT_KEYS.TELEGRAM_PAYMENT_CREATED, {
-          tenantId: candidate.tenantId,
-          merchantId: candidate.merchantId,
-          merchantOrderId: candidate.merchantOrderId,
-          paymentOrderId: payment.id,
-          paymentNo: payment.paymentNo,
-          sourceBusinessNo: payment.sourceBusinessNo,
-          amount: payment.amount ?? null,
-          currency: payment.currency ?? null,
-          paymentMethod: payment.paymentMethod ?? null,
-          payeeName: payment.payeeName ?? null,
-          payeeIdentity: payment.payeeIdentity ?? null,
-          identityMatched: true,
-          status: payment.status,
-          upstreamId: payment.upstreamId ?? null,
-          errorMessage: payment.lastError ?? null,
-        })
-        this.eventEmitter?.emit(EVENT_KEYS.TELEGRAM_PAYMENT_STATUS, {
-          tenantId: candidate.tenantId,
-          merchantId: candidate.merchantId,
-          paymentOrderId: payment.id,
-          paymentNo: payment.paymentNo,
-          sourceBusinessNo: payment.sourceBusinessNo,
-          status: payment.status,
-          upstreamId: payment.upstreamId ?? null,
-          errorMessage: payment.lastError ?? null,
-          notificationType: 'CREATED',
-        })
-      }
+      await this.eventEmitter?.emitAsync(EVENT_KEYS.TELEGRAM_PAYMENT_CREATED, {
+        tenantId: candidate.tenantId,
+        merchantId: candidate.merchantId,
+        merchantOrderId: candidate.merchantOrderId,
+        paymentOrderId: payment.id,
+        paymentNo: payment.paymentNo,
+        sourceBusinessNo: payment.sourceBusinessNo,
+        amount: payment.amount ?? null,
+        currency: payment.currency ?? null,
+        paymentMethod: payment.paymentMethod ?? null,
+        payeeName: payment.payeeName ?? null,
+        payeeIdentity: payment.payeeIdentity ?? null,
+        identityMatched: true,
+        status: payment.status,
+        upstreamId: payment.upstreamId ?? null,
+        errorMessage: payment.lastError ?? null,
+      })
       return payment
     }
     let payment = {

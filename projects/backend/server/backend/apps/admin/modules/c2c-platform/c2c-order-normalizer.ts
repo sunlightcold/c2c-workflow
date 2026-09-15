@@ -13,18 +13,25 @@ interface PaymentField {
 
 interface PaymentMethod {
   id?: unknown
+  receiptAccountId?: unknown
   identifier?: unknown
   tradeMethodName?: unknown
+  bankCode?: unknown
+  type?: unknown
   payAccount?: unknown
+  payBank?: unknown
   payee?: unknown
   accountNo?: unknown
   accountHolder?: unknown
+  accountName?: unknown
+  paymentDescription?: unknown
   fieldList?: PaymentField[]
   fields?: PaymentField[]
 }
 
 interface PaymentDetails {
   identityName: string
+  kycStatus: string
   payeeIdentity: string
   payeeName: string
   paymentMethod: string
@@ -32,12 +39,41 @@ interface PaymentDetails {
   verified: boolean
 }
 
-const holderFields = new Set(['payee', 'name', 'account_name', 'holder_name', 'account_holder'])
+interface BinanceTaker {
+  realName?: unknown
+  userKycVo?: {
+    firstName?: unknown
+    middleName?: unknown
+    lastName?: unknown
+    kycStatus?: unknown
+  }
+}
+
+interface OkxDetailUser {
+  realName?: unknown
+  kycVerified?: unknown
+  sellerSelectedReceiptAccount?: unknown
+  sellerReceiptAccount?: unknown
+  sellerAllReceiptAccountList?: unknown
+}
+
+const holderFields = new Set([
+  'payee',
+  'name',
+  'account_name',
+  'holder_name',
+  'account_holder',
+  'beneficiary_name',
+])
 const accountFields = new Set([
   'pay_account',
   'account_no',
   'account_number',
+  'bank_account',
+  'bank_card_number',
+  'card_number',
   'alipay_account',
+  'wechat_account',
   'phone',
   'mobile',
 ])
@@ -72,31 +108,55 @@ export function normalizeBinanceDetail(
 
 function normalizeBinancePaymentDetails(input: Record<string, unknown>): PaymentDetails {
   const methods = paymentMethods(input.payMethods)
-  const methodId = requiredText(input.selectedPayId, '币安平台付款方式 ID')
+  const methodId = text(input.selectedPayId)
   const selected = methods.find((method) => text(method.id) === methodId)
-  if (!selected) throw new Error('币安订单未返回选中的付款方式')
-  const fields = [...(selected.fieldList ?? []), ...(selected.fields ?? [])]
-  const payeeName =
-    text(input.payee) ||
-    text(selected.payee ?? selected.accountHolder) ||
-    findField(fields, holderFields)
-  const payeeIdentity =
-    text(input.payAccount) ||
-    text(selected.payAccount ?? selected.accountNo) ||
-    findField(fields, accountFields)
-  const identityName = input.isSellerCompanyAccount
-    ? text(input.sellerCompanyAccountName)
-    : text((input.taker as { realName?: unknown } | undefined)?.realName) || text(input.sellerName)
+  const fields = [...(selected?.fieldList ?? []), ...(selected?.fields ?? [])]
+  const { payeeIdentity, payeeName } = binanceRecipient(input, selected, fields)
+  const { identityName, kycStatus } = binanceIdentity(input)
   return {
     platformPaymentMethodId: methodId,
-    paymentMethod: text(
-      input.payType ?? selected.identifier ?? selected.tradeMethodName,
+    paymentMethod: firstText(
+      input.payType,
+      selected?.identifier,
+      selected?.tradeMethodName,
     ).toUpperCase(),
     payeeIdentity,
     payeeName,
     identityName,
-    verified: true,
+    kycStatus,
+    verified: !kycStatus || kycStatus === 'PASS',
   }
+}
+
+function binanceRecipient(
+  input: Record<string, unknown>,
+  selected: PaymentMethod | undefined,
+  fields: PaymentField[],
+): Pick<PaymentDetails, 'payeeIdentity' | 'payeeName'> {
+  return {
+    payeeName: firstText(
+      input.payee,
+      selected?.payee,
+      selected?.accountHolder,
+      findField(fields, holderFields),
+    ),
+    payeeIdentity: firstText(
+      input.payAccount,
+      selected?.payAccount,
+      selected?.accountNo,
+      findField(fields, accountFields),
+    ),
+  }
+}
+
+function binanceIdentity(
+  input: Record<string, unknown>,
+): Pick<PaymentDetails, 'identityName' | 'kycStatus'> {
+  const taker = input.taker as BinanceTaker | undefined
+  const identityName = input.isSellerCompanyAccount
+    ? text(input.sellerCompanyAccountName)
+    : firstText(taker?.realName, buildStructuredName(taker?.userKycVo), input.sellerName)
+  return { identityName, kycStatus: text(taker?.userKycVo?.kycStatus) }
 }
 
 export function normalizeOkxSummary(input: Record<string, unknown>): C2cBuyOrderSummary {
@@ -123,41 +183,86 @@ export function normalizeOkxDetail(
   input: Record<string, unknown>,
   expectedOrderId: string,
 ): C2cBuyOrderDetail {
-  const responseOrderId = text(input.publicOrderId ?? input.id)
-  if (responseOrderId && responseOrderId !== expectedOrderId)
-    throw new Error('欧易订单详情返回的订单号不匹配')
   const summary = normalizeOkxSummary({ ...input, id: expectedOrderId })
   const details = normalizeOkxPaymentDetails(input)
   return buildDetail(summary, summary.assetAmount, details, input)
 }
 
 function normalizeOkxPaymentDetails(input: Record<string, unknown>): PaymentDetails {
-  const selected = ((
-    input.orderDetailUserVo as { sellerSelectedReceiptAccount?: unknown } | undefined
-  )?.sellerSelectedReceiptAccount ??
-    (input.detailUser as { sellerSelectedReceiptAccount?: unknown } | undefined)
-      ?.sellerSelectedReceiptAccount ??
-    input.sellerReceiptAccount ??
-    (input.orderDetailUserVo as { sellerReceiptAccount?: unknown } | undefined)
-      ?.sellerReceiptAccount ??
-    input.receiptAccount) as Record<string, unknown> | undefined
-  const methodId = requiredText(input.receiptAccountId ?? selected?.id, '欧易平台付款方式 ID')
-  const detailUser = (input.orderDetailUserVo ?? input.detailUser) as
-    | { realName?: unknown; kycVerified?: unknown }
-    | undefined
+  const orderDetailUser = input.orderDetailUserVo as OkxDetailUser | undefined
+  const detailUser = input.detailUser as OkxDetailUser | undefined
+  const { fallbackAccount, methodId, selected } = okxReceiptAccount(
+    input,
+    orderDetailUser,
+    detailUser,
+  )
+  const kycVerified = firstBoolean(orderDetailUser?.kycVerified, detailUser?.kycVerified)
   const payeeIdentity = text(selected?.accountNo)
   const payeeName = text(selected?.accountName)
-  const identityName = text(detailUser?.realName ?? input.counterPartyName)
+  const identityName = firstText(
+    orderDetailUser?.realName,
+    detailUser?.realName,
+    input.counterPartyName,
+  )
   return {
     platformPaymentMethodId: methodId,
-    paymentMethod: text(
-      selected?.bankCode ?? selected?.type ?? input.receiptAccountType,
+    paymentMethod: firstText(
+      fallbackAccount?.type,
+      fallbackAccount?.bankCode,
+      input.receiptAccountType,
+      fallbackAccount?.paymentDescription,
     ).toUpperCase(),
-    payeeIdentity,
-    payeeName,
+    payeeIdentity: payeeIdentity || text(fallbackAccount?.accountNo),
+    payeeName: payeeName || text(fallbackAccount?.accountName),
     identityName,
-    verified: detailUser?.kycVerified !== false,
+    kycStatus: kycVerified === undefined ? '' : kycVerified ? 'PASS' : 'FAIL',
+    verified: kycVerified !== false,
   }
+}
+
+function okxReceiptAccount(
+  input: Record<string, unknown>,
+  orderDetailUser: OkxDetailUser | undefined,
+  detailUser: OkxDetailUser | undefined,
+): {
+  fallbackAccount: PaymentMethod | undefined
+  methodId: string
+  selected: PaymentMethod | undefined
+} {
+  const selectedId = firstText(input.receiptAccountId, input.selectedPayId)
+  const directSelected = firstObject(
+    orderDetailUser?.sellerSelectedReceiptAccount,
+    detailUser?.sellerSelectedReceiptAccount,
+    input.sellerReceiptAccount,
+    orderDetailUser?.sellerReceiptAccount,
+    input.receiptAccount,
+  )
+  const accounts = firstArray(
+    orderDetailUser?.sellerAllReceiptAccountList,
+    detailUser?.sellerAllReceiptAccountList,
+    input.sellerAllReceiptAccountList,
+  )
+  const selected = directSelected ?? findReceiptAccount(accounts, selectedId)
+  const fallbackAccount = selected ?? accounts[0]
+  return {
+    selected,
+    fallbackAccount,
+    methodId: firstText(
+      selectedId,
+      fallbackAccount?.id,
+      fallbackAccount?.receiptAccountId,
+      fallbackAccount?.accountNo,
+    ),
+  }
+}
+
+function findReceiptAccount(
+  accounts: PaymentMethod[],
+  selectedId: string,
+): PaymentMethod | undefined {
+  return accounts.find((account) =>
+    [account.id, account.receiptAccountId].map(text).includes(selectedId),
+  )
 }
 
 function buildDetail(
@@ -166,6 +271,7 @@ function buildDetail(
   details: PaymentDetails,
   input: Record<string, unknown>,
 ): C2cBuyOrderDetail {
+  const unpayableReason = paymentBlockReason(summary.status, details)
   return {
     ...summary,
     assetAmount,
@@ -174,19 +280,24 @@ function buildDetail(
     payeeIdentity: details.payeeIdentity,
     payeeName: details.payeeName,
     identityName: details.identityName,
-    payable:
-      summary.status === C2cBuyOrderStatus.PENDING_PAYMENT &&
-      details.verified &&
-      !truthy(input.markAsPaidDisabled) &&
-      !truthy(input.appeal) &&
-      Boolean(
-        details.payeeIdentity &&
-          details.payeeName &&
-          details.identityName &&
-          details.platformPaymentMethodId,
-      ),
+    payable: !unpayableReason,
+    ...(details.kycStatus ? { kycStatus: details.kycStatus } : {}),
+    ...(unpayableReason ? { unpayableReason } : {}),
     ...optionalDateFields(input),
   }
+}
+
+function paymentBlockReason(
+  status: C2cBuyOrderStatus,
+  details: PaymentDetails,
+): string | undefined {
+  if (status !== C2cBuyOrderStatus.PENDING_PAYMENT) return '订单不是等待付款状态'
+  if (!details.verified) return '卖方 KYC 未通过'
+  if (!details.platformPaymentMethodId) return '未找到订单选中的收款方式'
+  if (!details.identityName) return '实名信息为空'
+  if (!details.payeeName) return '收款方式持有人姓名为空'
+  if (!details.payeeIdentity) return '收款账号为空'
+  return undefined
 }
 
 function normalizeNumericStatus(value: unknown): C2cBuyOrderStatus {
@@ -208,15 +319,11 @@ function normalizeOkxStatus(input: Record<string, unknown>): C2cBuyOrderStatus {
   if (status === 'completed' || process === '4') return C2cBuyOrderStatus.COMPLETED
   if (status === 'cancelled' || process === '3') return C2cBuyOrderStatus.CANCELLED
   if (status === 'expired') return C2cBuyOrderStatus.EXPIRED
-  if (truthy(input.appeal) || status.includes('appeal') || status.includes('dispute'))
-    return C2cBuyOrderStatus.DISPUTED
+  if (status.includes('appeal') || status.includes('dispute')) return C2cBuyOrderStatus.DISPUTED
   if (payment === 'paid' || payment === 'confirmed') return C2cBuyOrderStatus.PAID
-  if (status === 'new' && payment === 'unpaid') return C2cBuyOrderStatus.PENDING_PAYMENT
+  if ((status === 'new' || !status || process === '2') && (!payment || payment === 'unpaid'))
+    return C2cBuyOrderStatus.PENDING_PAYMENT
   return C2cBuyOrderStatus.UNKNOWN
-}
-
-function truthy(value: unknown): boolean {
-  return value === true || value === 1 || ['1', 'true'].includes(text(value).toLowerCase())
 }
 
 function paymentMethods(value: unknown): PaymentMethod[] {
@@ -236,6 +343,35 @@ function fieldKey(value: unknown): string {
   return text(value)
     .toLowerCase()
     .replace(/[\s-]+/g, '_')
+}
+
+function buildStructuredName(value: Record<string, unknown> | undefined): string {
+  if (!value) return ''
+  return [value.firstName, value.middleName, value.lastName].map(text).filter(Boolean).join(' ')
+}
+
+function firstText(...values: unknown[]): string {
+  for (const value of values) {
+    const result = text(value)
+    if (result) return result
+  }
+  return ''
+}
+
+function firstObject(...values: unknown[]): PaymentMethod | undefined {
+  return values.find(
+    (value): value is PaymentMethod =>
+      Boolean(value) && typeof value === 'object' && !Array.isArray(value),
+  )
+}
+
+function firstArray(...values: unknown[]): PaymentMethod[] {
+  const value = values.find(Array.isArray)
+  return value ? (value as PaymentMethod[]) : []
+}
+
+function firstBoolean(...values: unknown[]): boolean | undefined {
+  return values.find((value): value is boolean => typeof value === 'boolean')
 }
 
 function optionalDateFields(input: Record<string, unknown>): {

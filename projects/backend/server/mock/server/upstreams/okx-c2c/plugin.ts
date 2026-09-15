@@ -204,7 +204,6 @@ export class OkxC2cMockPlugin {
       quoteCurrency: order.quoteCurrency,
       createdDate: order.createdDate,
       modifyDate: order.modifyDate,
-      paymentDeadline: order.paymentDeadline,
     }
   }
 
@@ -242,7 +241,6 @@ export class OkxC2cMockPlugin {
       ...this.listItem(order),
       publicOrderId: order.id,
       price: order.price,
-      paymentDeadline: order.paymentDeadline,
       orderPaidDate: order.orderPaidDate,
       paidDate: order.orderPaidDate ?? 0,
       receiptAccountId: order.receiptAccountId,
