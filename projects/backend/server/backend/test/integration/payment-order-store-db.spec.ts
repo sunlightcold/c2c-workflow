@@ -212,6 +212,32 @@ describe('Payment order store database integration', () => {
     ).resolves.toEqual([{ status: 'SUCCESS', lastError: null }])
   })
 
+  it('lists the latest related payment batch number', async () => {
+    const previousBatchId = '00000000-0000-4000-8000-000000000106'
+    const latestBatchId = '00000000-0000-4000-8000-000000000107'
+    await dataSource.query(
+      `INSERT INTO payment_batch
+         (id, "tenantId", "merchantId", "batchNo", "paymentAccountId",
+          "paymentAccountChannelId", currency, "totalCount", "totalAmount", status)
+       VALUES ($1, $3, $4, 'BATCH-PREVIOUS', $5, $6, 'CNY', 1, 100.00, 'SUCCESS'),
+              ($2, $3, $4, 'BATCH-LATEST', $5, $6, 'CNY', 1, 100.00, 'SUCCESS')`,
+      [previousBatchId, latestBatchId, tenantId, merchantId, accountId, accountChannelId],
+    )
+    await dataSource.query(
+      `INSERT INTO payment_batch_item
+         ("tenantId", "merchantId", "batchId", "paymentOrderId", amount, status, "createdAt")
+       VALUES ($1, $2, $3, $5, 100.00, 'SUCCESS', '2026-09-14T09:00:00Z'),
+              ($1, $2, $4, $5, 100.00, 'SUCCESS', '2026-09-14T10:00:00Z')`,
+      [tenantId, merchantId, previousBatchId, latestBatchId, orderId],
+    )
+
+    const result = await paymentOrders.list(tenantId, { page: 1, pageSize: 20 })
+
+    expect(result.items).toEqual([
+      expect.objectContaining({ batchNo: 'BATCH-LATEST', id: orderId }),
+    ])
+  })
+
   it('restores the merchant order when payment was definitely not submitted', async () => {
     const claimed = await store.claim(tenantId, orderId)
     await store.transition(claimed, PaymentOrderState.FAILED, {

@@ -122,7 +122,7 @@ const formOptions: VbenFormProps = {
   wrapperClass: '2xl:grid-cols-4 xl:grid-cols-3 lg:grid-cols-2 md:grid-cols-1',
 };
 
-const gridOptions: VxeTableGridOptions<BusinessApi.PaymentOrder> = {
+const gridOptions: VxeTableGridOptions<BusinessApi.PaymentOrderListItem> = {
   cellConfig: { height: 96 },
   columns: [
     { type: 'seq', width: 70 },
@@ -131,6 +131,12 @@ const gridOptions: VxeTableGridOptions<BusinessApi.PaymentOrder> = {
       title: '订单号',
       minWidth: 280,
       slots: { default: 'orderNumbers' },
+    },
+    {
+      field: 'batchNo',
+      title: '批次号',
+      minWidth: 190,
+      slots: { default: 'batchNo' },
     },
     {
       field: 'sourceType',
@@ -186,7 +192,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.PaymentOrder> = {
 };
 
 const [Grid, gApi] = useResourceGrid<
-  BusinessApi.PaymentOrder,
+  BusinessApi.PaymentOrderListItem,
   SearchValues,
   QueryParams
 >({
@@ -318,6 +324,11 @@ onMounted(async () => {
         </AButton>
       </template>
       <template #amount="{ row }">{{ row.amount }} {{ row.currency }}</template>
+      <template #batchNo="{ row }">
+        <span class="block truncate" :title="row.batchNo || '-'">
+          {{ row.batchNo || '-' }}
+        </span>
+      </template>
       <template #orderNumbers="{ row }">
         <div
           class="grid min-h-[88px] grid-cols-[48px_minmax(0,1fr)] content-center items-center gap-x-2 gap-y-1 text-left"

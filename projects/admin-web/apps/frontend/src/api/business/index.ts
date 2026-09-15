@@ -224,6 +224,10 @@ export namespace BusinessApi {
     upstreamId: null | string;
   }
 
+  export interface PaymentOrderListItem extends PaymentOrder {
+    batchNo: null | string;
+  }
+
   export interface PaymentOrderUpstreamQueryResult {
     order: PaymentOrder;
     upstream: {
@@ -885,7 +889,7 @@ export const submitMerchantOrderAppealApi = (
 export async function getPaymentOrdersApi(
   params: BusinessApi.PaymentOrderQuery,
 ) {
-  return toPagination<BusinessApi.PaymentOrder>(
+  return toPagination<BusinessApi.PaymentOrderListItem>(
     await requestClient.get('/sys/payment-orders', { params }),
   );
 }

@@ -642,6 +642,7 @@ test.beforeEach(async ({ page }) => {
           items: [
             {
               amount: '70.00',
+              batchNo: 'BATCH202609140001',
               createdAt: '2026-09-14T09:01:00.000Z',
               currency: 'CNY',
               executionMode: 'BATCH',
@@ -919,7 +920,7 @@ test('loads payment orders and batches on first visit', async ({ page }) => {
   expect(paymentBatchListRequests).toBe(1);
 });
 
-test('shows payment, system, and platform order numbers together', async ({
+test('shows payment identifiers and batch number in separate columns', async ({
   page,
 }, testInfo) => {
   await page.goto('/business/payment-orders');
@@ -927,6 +928,7 @@ test('shows payment, system, and platform order numbers together', async ({
   await page.getByRole('button', { name: /搜\s*索/ }).click();
 
   await expect(page.getByText('订单号', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('批次号', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('支付单号', { exact: true })).toHaveCount(0);
   await expect(page.getByText('来源业务号', { exact: true })).toHaveCount(0);
   const row = page.locator('.vxe-body--row').filter({
@@ -942,6 +944,9 @@ test('shows payment, system, and platform order numbers together', async ({
   await expect(orderNumberCell).toContainText('ALIPAY202609140001');
   await expect(orderNumberCell).toContainText('PAY202609140001');
   await expect(orderNumberCell).toContainText('BINANCE202609140001');
+  await expect(
+    row.getByText('BATCH202609140001', { exact: true }),
+  ).toBeVisible();
   const orderTimeCell = row.getByTestId('order-time-cell');
   await expect(orderTimeCell.locator('.ant-tag')).toHaveText(['创建', '结束']);
   await expect(orderTimeCell.locator('time')).toHaveCount(2);

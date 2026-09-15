@@ -32,7 +32,7 @@ Controller：`PaymentOrderController`。基础路径：`/v1/sys/payment-orders`�
 `amount` 必须是大于零、最多两位小数的字符串，禁止 JSON 数值。`paymentMethod` 本期只能是
 `ALIPAY`，`executionMode` 为 `INSTANT` 或 `BATCH`。
 
-列表默认第 1 页、每页 20 条，`pageSize` 最大 100；按创建时间倒序。`executionMode`、`sourceType` 和 `status` 必须使用系统枚举。组建支付批次时使用 `executionMode=BATCH` 查询批量有密候选订单。详情只在当前所属单位内查找，不存在或跨所属单位均返回 `404`。
+列表默认第 1 页、每页 20 条，`pageSize` 最大 100；按创建时间倒序。每条记录额外返回最近关联支付批次的 `batchNo`，未进入支付批次时为 `null`。`executionMode`、`sourceType` 和 `status` 必须使用系统枚举。组建支付批次时使用 `executionMode=BATCH` 查询批量有密候选订单。详情只在当前所属单位内查找，不存在或跨所属单位均返回 `404`。
 
 ## 业务行为
 

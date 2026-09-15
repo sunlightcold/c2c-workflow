@@ -1,4 +1,4 @@
-import { definePermission, Permission, User } from '@/common/decorators'
+import { ApiResult, definePermission, Permission, User } from '@/common/decorators'
 import type { AuthUser } from '@/common/interfaces'
 import { PaymentSourceType } from '@admin/database'
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common'
@@ -7,6 +7,7 @@ import { BusinessScopeService } from '../business/business-scope.service'
 import {
   CreateManualPaymentOrderDto,
   PaymentOrderListDto,
+  PaymentOrderListResponseDto,
   PaymentTenantContextDto,
 } from './payment-order.dto'
 import { PaymentOrderService } from './payment-order.service'
@@ -31,6 +32,7 @@ export class PaymentOrderController {
   @Get()
   @Permission(PaymentOrderPermissions.READ)
   @ApiOperation({ summary: '分页查询支付订单' })
+  @ApiResult({ type: PaymentOrderListResponseDto })
   list(@Query() dto: PaymentOrderListDto, @User() actor: AuthUser) {
     return this.orders.list(this.scope.resolveTenantId(actor, dto.tenantId), dto)
   }

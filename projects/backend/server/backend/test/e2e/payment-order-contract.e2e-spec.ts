@@ -14,6 +14,7 @@ import {
 } from './helpers/admin-contract-test-app'
 
 jest.mock('@/common/decorators', () => ({
+  ApiResult: () => () => undefined,
   Permission: () => () => undefined,
   User: () => () => undefined,
   definePermission: (prefix: string, actions: string[]) =>
@@ -71,7 +72,12 @@ describe('Payment order API contract (e2e)', () => {
 
   it('lists and reads payment orders in the resolved tenant', async () => {
     const orderId = '00000000-0000-4000-8000-000000000030'
-    orders.list.mockResolvedValue({ items: [{ id: orderId }], total: 1, page: 1, pageSize: 20 })
+    orders.list.mockResolvedValue({
+      items: [{ batchNo: 'BATCH-1', id: orderId }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    })
     orders.detail.mockResolvedValue({ id: orderId, history: [] })
 
     const listed = await request(app.getHttpServer())
@@ -84,6 +90,9 @@ describe('Payment order API contract (e2e)', () => {
 
     expectWrappedSuccess(listed.body)
     expectWrappedSuccess(detail.body)
+    expect(listed.body.data.items).toEqual([
+      expect.objectContaining({ batchNo: 'BATCH-1', id: orderId }),
+    ])
     expect(orders.list).toHaveBeenCalledWith(
       'tenant-1',
       expect.objectContaining({

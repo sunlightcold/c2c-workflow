@@ -4,6 +4,7 @@ import {
   MerchantEntity,
   MerchantOrderEntity,
   MerchantOrderStatus,
+  PaymentBatchEntity,
   PaymentBatchItemEntity,
   PaymentExecutionMode,
   PaymentOrderEntity,
@@ -19,7 +20,7 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { DataSource, type EntityManager, QueryFailedError, Repository } from 'typeorm'
+import { DataSource, type EntityManager, In, QueryFailedError, Repository } from 'typeorm'
 import {
   PAYMENT_PLAN_RESOLVER,
   type PaymentPlanResolverPort,
@@ -65,7 +66,16 @@ export class PaymentOrderService {
       skip: (input.page - 1) * input.pageSize,
       take: input.pageSize,
     })
-    return { items, total, page: input.page, pageSize: input.pageSize }
+    const batchNumbers = await this.findLatestBatchNumbers(tenantId, items)
+    return {
+      items: items.map((order) => ({
+        ...order,
+        batchNo: batchNumbers.get(order.id) ?? null,
+      })),
+      total,
+      page: input.page,
+      pageSize: input.pageSize,
+    }
   }
 
   async detail(tenantId: string, orderId: string) {
@@ -167,6 +177,42 @@ export class PaymentOrderService {
         sourceBusinessNo: input.sourceBusinessNo,
       },
     })
+  }
+
+  private async findLatestBatchNumbers(
+    tenantId: string,
+    orders: PaymentOrderEntity[],
+  ): Promise<Map<string, string>> {
+    if (orders.length === 0) return new Map()
+    const merchantIds = [...new Set(orders.map(({ merchantId }) => merchantId))]
+    const items = await this.dataSource.getRepository(PaymentBatchItemEntity).find({
+      select: { batchId: true, paymentOrderId: true },
+      where: {
+        tenantId,
+        merchantId: In(merchantIds),
+        paymentOrderId: In(orders.map(({ id }) => id)),
+      },
+      order: { createdAt: 'DESC' },
+    })
+    const latestBatchByOrder = new Map<string, string>()
+    for (const item of items) {
+      if (!latestBatchByOrder.has(item.paymentOrderId)) {
+        latestBatchByOrder.set(item.paymentOrderId, item.batchId)
+      }
+    }
+    const batchIds = [...new Set(latestBatchByOrder.values())]
+    if (batchIds.length === 0) return new Map()
+    const batches = await this.dataSource.getRepository(PaymentBatchEntity).find({
+      select: { batchNo: true, id: true },
+      where: { id: In(batchIds), merchantId: In(merchantIds), tenantId },
+    })
+    const batchNoById = new Map(batches.map(({ batchNo, id }) => [id, batchNo]))
+    const result = new Map<string, string>()
+    for (const [paymentOrderId, batchId] of latestBatchByOrder) {
+      const batchNo = batchNoById.get(batchId)
+      if (batchNo) result.set(paymentOrderId, batchNo)
+    }
+    return result
   }
 
   private resolveRoute(tenantId: string, input: CreatePaymentOrderInput | PaymentOrderEntity) {

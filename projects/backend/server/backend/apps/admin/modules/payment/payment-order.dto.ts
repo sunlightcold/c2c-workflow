@@ -61,6 +61,39 @@ export class PaymentOrderListDto extends PaymentTenantContextDto {
   pageSize = 20
 }
 
+export class PaymentOrderListItemDto {
+  @ApiProperty({ format: 'uuid' }) id: string
+  @ApiProperty({ format: 'uuid' }) tenantId: string
+  @ApiProperty({ format: 'uuid' }) merchantId: string
+  @ApiProperty({ enum: PaymentSourceType }) sourceType: PaymentSourceType
+  @ApiProperty() sourceBusinessNo: string
+  @ApiProperty() paymentNo: string
+  @ApiProperty({ nullable: true, type: String }) batchNo: null | string
+  @ApiProperty() amount: string
+  @ApiProperty() currency: string
+  @ApiProperty() paymentMethod: string
+  @ApiProperty({ enum: PaymentExecutionMode }) executionMode: PaymentExecutionMode
+  @ApiProperty() payeeIdentity: string
+  @ApiProperty() payeeName: string
+  @ApiProperty({ format: 'uuid', nullable: true, type: String }) paymentPlanId: null | string
+  @ApiProperty({ format: 'uuid', nullable: true, type: String }) paymentAccountId: null | string
+  @ApiProperty({ format: 'uuid', nullable: true, type: String })
+  paymentAccountChannelId: null | string
+  @ApiProperty({ format: 'uuid', nullable: true, type: String }) batchPolicyId: null | string
+  @ApiProperty({ enum: PaymentOrderStatus }) status: PaymentOrderStatus
+  @ApiProperty({ nullable: true, type: String }) upstreamId: null | string
+  @ApiProperty({ nullable: true, type: String }) lastError: null | string
+  @ApiProperty({ format: 'date-time' }) createdAt: Date
+  @ApiProperty({ format: 'date-time' }) updatedAt: Date
+}
+
+export class PaymentOrderListResponseDto {
+  @ApiProperty({ type: [PaymentOrderListItemDto] }) items: PaymentOrderListItemDto[]
+  @ApiProperty() total: number
+  @ApiProperty() page: number
+  @ApiProperty() pageSize: number
+}
+
 export class CreateManualPaymentOrderDto extends PaymentTenantContextDto {
   @ApiProperty()
   @IsUUID()

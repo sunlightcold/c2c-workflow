@@ -1,5 +1,7 @@
 import {
   MerchantEntity,
+  PaymentBatchEntity,
+  PaymentBatchItemEntity,
   PaymentExecutionMode,
   PaymentOrderEntity,
   PaymentOrderStatus,
@@ -32,12 +34,19 @@ describe('PaymentOrderService', () => {
     findAndCount: jest.fn(),
     findOne: jest.fn(),
   }
+  const batchItems = { find: jest.fn() }
+  const batches = { find: jest.fn() }
   const manager = {
     findOne: jest.fn((_entity: unknown, options: unknown) => orders.findOne(options)),
     save: jest.fn(async (_entity: unknown, value: object) => ({ id: 'order-1', ...value })),
     insert: jest.fn(),
   }
   const dataSource = {
+    getRepository: jest.fn((entity: unknown) => {
+      if (entity === PaymentBatchItemEntity) return batchItems
+      if (entity === PaymentBatchEntity) return batches
+      throw new Error('Unexpected repository')
+    }),
     transaction: jest.fn((callback: (value: typeof manager) => unknown) => callback(manager)),
   }
   const merchants = { findOne: jest.fn() }
@@ -49,6 +58,8 @@ describe('PaymentOrderService', () => {
     dataSource.transaction.mockImplementation((callback) => callback(manager))
     merchants.findOne.mockResolvedValue({ id: merchantId, tenantId, status: 'active' })
     orders.findOne.mockResolvedValue(null)
+    batchItems.find.mockResolvedValue([])
+    batches.find.mockResolvedValue([])
     const module = await Test.createTestingModule({
       providers: [
         PaymentOrderService,
@@ -153,6 +164,32 @@ describe('PaymentOrderService', () => {
         },
       }),
     )
+  })
+
+  it('includes the latest payment batch number in the order list', async () => {
+    orders.findAndCount.mockResolvedValue([
+      [
+        { id: 'order-1', merchantId, tenantId },
+        { id: 'order-2', merchantId, tenantId },
+      ],
+      2,
+    ])
+    batchItems.find.mockResolvedValue([
+      { batchId: 'batch-latest', paymentOrderId: 'order-1' },
+      { batchId: 'batch-previous', paymentOrderId: 'order-1' },
+    ])
+    batches.find.mockResolvedValue([
+      { batchNo: 'BATCH-LATEST', id: 'batch-latest' },
+      { batchNo: 'BATCH-PREVIOUS', id: 'batch-previous' },
+    ])
+
+    await expect(service.list(tenantId, { page: 1, pageSize: 20 })).resolves.toMatchObject({
+      items: [
+        { batchNo: 'BATCH-LATEST', id: 'order-1' },
+        { batchNo: null, id: 'order-2' },
+      ],
+      total: 2,
+    })
   })
 
   it('rematches only pending-config orders and locks the newly available route', async () => {
