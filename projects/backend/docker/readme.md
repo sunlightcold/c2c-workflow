@@ -15,7 +15,7 @@ Actions 运行产物中还会生成 `c2c-backend-deploy-<SHA>` 部署文件包�
 - GHCR 包若为 private，服务器需要一个仅有 `read:packages` 权限的 GitHub token。
 - PostgreSQL、Redis、上传文件和日志目录必须纳入服务器备份。
 
-## 首次部署
+## 首次部署（GHCR 镜像）
 
 将 Actions 部署文件包解压到一个独立目录，确保该目录直接包含 `compose.yaml`、`backup.sh`、
 `.env.example` 和本说明，然后执行：
@@ -51,6 +51,34 @@ curl --fail --silent --show-error http://127.0.0.1:3000/v1/auth/captcha >/dev/nu
 
 `migrate` 在 PostgreSQL 健康后持有 advisory lock 并执行待运行的 TypeORM migrations。只有迁移
 成功退出且 Redis 健康，`app` 才会启动。`app` 的 Docker 健康检查同样请求真实 captcha 接口。
+
+## 首次部署（服务器本地构建镜像）
+
+部署包同时包含完整的后端 Docker 构建上下文（`Dockerfile`、`package.json`、`pnpm-lock.yaml`、
+`libs/` 和 `server/`），不需要登录 GHCR。解压部署包后执行：
+
+```bash
+cp .env.example .env
+chmod 600 .env
+mkdir -p volumes/logs volumes/static volumes/postgres_data volumes/redis_data
+sudo chown -R 1000:1000 volumes/logs volumes/static
+
+# 在 .env 中将镜像改成本地标签，并禁止 Compose 尝试拉取远端镜像：
+# C2C_BACKEND_IMAGE=c2c-workflow-backend:local
+# C2C_PULL_POLICY=never
+
+docker compose --env-file .env config --quiet
+docker compose --env-file .env build --pull app migrate
+docker compose --env-file .env up -d postgres redis
+docker compose --env-file .env up -d migrate
+docker compose --env-file .env up -d app
+docker compose --env-file .env ps
+docker compose --env-file .env logs --tail=200 migrate app
+curl --fail --silent --show-error http://127.0.0.1:3000/v1/auth/captcha >/dev/null
+```
+
+本地构建会从 Docker Hub 下载 `node:22-bookworm-slim` 和 `postgres`/`redis` 基础镜像，
+但不需要 GitHub Token。服务器需要 Docker Engine、Compose v2 和能访问 Docker Hub 的网络。
 
 ## 更新
 

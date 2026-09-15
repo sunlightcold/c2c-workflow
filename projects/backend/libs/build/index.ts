@@ -1,6 +1,22 @@
 import AdmZip from 'adm-zip'
-import { join } from 'path'
+import { cpSync } from 'node:fs'
+import { basename, join } from 'path'
 import Shell from 'shelljs'
+
+const excludedBuildContextDirectories = new Set([
+  'coverage',
+  'dist',
+  'logs',
+  'node_modules',
+  'pm2logs',
+])
+
+function copyBuildContextDirectory(source: string, destination: string) {
+  cpSync(source, destination, {
+    recursive: true,
+    filter: (path) => !excludedBuildContextDirectories.has(basename(path)),
+  })
+}
 
 async function handler() {
   // 获取工作区根目录
@@ -59,6 +75,15 @@ async function handler() {
   }
   // 复制 docker-compose
   Shell.cp('-R', join(dockerPath, 'compose.yaml'), outPath)
+  Shell.cp('-R', join(dockerPath, 'Dockerfile'), outPath)
+  Shell.cp('-R', join(workspaceRootPath, '.dockerignore'), join(outPath, '.dockerignore'))
+  // Include the backend workspace as a self-contained Docker build context so
+  // the server can build the image locally without GHCR access.
+  Shell.cp('-R', join(workspaceRootPath, 'package.json'), outPath)
+  Shell.cp('-R', join(workspaceRootPath, 'pnpm-workspace.yaml'), outPath)
+  Shell.cp('-R', join(workspaceRootPath, 'pnpm-lock.yaml'), outPath)
+  copyBuildContextDirectory(join(workspaceRootPath, 'libs'), join(outPath, 'libs'))
+  copyBuildContextDirectory(join(workspaceRootPath, 'server'), join(outPath, 'server'))
   Shell.cp('-R', join(dockerPath, 'backup.sh'), outPath)
   Shell.cp('-R', join(dockerPath, 'readme.md'), join(outPath, 'README.md'))
   // 复制服务器部署变量模板

@@ -1,8 +1,11 @@
 name: c2c-production
 
 x-backend-image: &backend-image
-  image: ${C2C_BACKEND_IMAGE:?C2C_BACKEND_IMAGE is required}
-  pull_policy: always
+  image: ${C2C_BACKEND_IMAGE:-ghcr.io/sunlightcold/c2c-workflow-backend:latest}
+  pull_policy: ${C2C_PULL_POLICY:-always}
+  build:
+    context: .
+    dockerfile: Dockerfile
 
 x-backend-env-files: &backend-env-files
   - ${C2C_RUNTIME_ENV_FILE:-.env}
