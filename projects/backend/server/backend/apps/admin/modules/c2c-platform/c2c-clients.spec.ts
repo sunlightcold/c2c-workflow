@@ -134,7 +134,6 @@ describe('C2C buy-order clients', () => {
     http.request.mockResolvedValue({
       code: 0,
       data: {
-        id: '123',
         side: 'buy',
         orderStatus: 'new',
         paymentStatus: 'unpaid',
@@ -148,7 +147,7 @@ describe('C2C buy-order clients', () => {
         detailUser: { realName: 'Payee', kycVerified: true },
       },
     })
-    await okx.getOrderDetail(
+    const detail = await okx.getOrderDetail(
       {
         cookie: 'session',
         authorization: 'token',
@@ -157,6 +156,7 @@ describe('C2C buy-order clients', () => {
       },
       '123',
     )
+    expect(detail.platformOrderId).toBe('123')
     expect(http.request).toHaveBeenCalledWith(
       expect.objectContaining({
         method: 'GET',
@@ -392,8 +392,8 @@ describe('C2C buy-order clients', () => {
           total: 1,
           items: [
             {
-              id: 'OKX-INTERNAL-1',
-              publicTradingOrderId: 'PUBLIC-1',
+              id: 260000000000001,
+              publicTradingOrderId: 260000000000000,
               side: 'buy',
               orderStatus: 'new',
               orderProcessStatus: 2,
@@ -410,7 +410,7 @@ describe('C2C buy-order clients', () => {
       .mockResolvedValueOnce({
         code: 0,
         data: {
-          id: 'OKX-INTERNAL-1',
+          publicOrderId: 260000000000001,
           side: 'buy',
           orderStatus: 'new',
           orderProcessStatus: 2,
@@ -420,15 +420,17 @@ describe('C2C buy-order clients', () => {
           quoteAmount: '70.00',
           quoteCurrency: 'cny',
           createdDate: 1_787_586_752_664,
-          receiptAccountId: '25990076',
-          sellerReceiptAccount: {
-            id: '25990076',
-            accountName: 'Li Si',
-            accountNo: 'payee@example.com',
-            type: 'aliPay',
-            bankCode: 'ALIPAY',
+          orderDetailUserVo: {
+            realName: 'Li Si',
+            kycVerified: true,
+            sellerSelectedReceiptAccount: {
+              id: 25990076,
+              accountName: 'Li Si',
+              accountNo: 'payee@example.com',
+              type: 'aliPay',
+              bankCode: 'ALIPAY',
+            },
           },
-          detailUser: { realName: 'Li Si', kycVerified: true },
         },
       })
     const credentials = {
@@ -451,7 +453,7 @@ describe('C2C buy-order clients', () => {
     ).resolves.toEqual({
       items: [
         expect.objectContaining({
-          platformOrderId: 'OKX-INTERNAL-1',
+          platformOrderId: '260000000000001',
           side: 'BUY',
           status: 'PENDING_PAYMENT',
         }),
@@ -463,8 +465,8 @@ describe('C2C buy-order clients', () => {
       expect.objectContaining({ orderType: 'pending', startTime: '1', endTime: '2' }),
     )
     expect(http.request.mock.calls[0][0].params).not.toHaveProperty('isBuy')
-    await expect(okx.getOrderDetail(credentials, 'OKX-INTERNAL-1')).resolves.toMatchObject({
-      platformOrderId: 'OKX-INTERNAL-1',
+    await expect(okx.getOrderDetail(credentials, '260000000000001')).resolves.toMatchObject({
+      platformOrderId: '260000000000001',
       platformPaymentMethodId: '25990076',
       paymentMethod: 'ALIPAY',
       payeeIdentity: 'payee@example.com',
@@ -472,6 +474,22 @@ describe('C2C buy-order clients', () => {
       identityName: 'Li Si',
       payable: true,
     })
+  })
+
+  it('rejects an OKX detail response for a different public order id', async () => {
+    http.request.mockResolvedValue({ code: 0, data: { publicOrderId: 260000000000002 } })
+
+    await expect(
+      okx.getOrderDetail(
+        {
+          cookie: 'session',
+          authorization: 'token',
+          timeoutMs: 5000,
+          baseUrl: 'https://www.okx.com',
+        },
+        '260000000000001',
+      ),
+    ).rejects.toThrow('欧易订单详情返回的订单号不匹配')
   })
 
   it('rejects OKX list records without an explicit buy side', async () => {

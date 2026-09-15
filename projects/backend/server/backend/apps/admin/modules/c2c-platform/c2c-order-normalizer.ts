@@ -123,15 +123,20 @@ export function normalizeOkxDetail(
   input: Record<string, unknown>,
   expectedOrderId: string,
 ): C2cBuyOrderDetail {
-  const summary = normalizeOkxSummary(input)
-  if (summary.platformOrderId !== expectedOrderId) throw new Error('欧易订单详情返回的订单号不匹配')
+  const responseOrderId = text(input.publicOrderId ?? input.id)
+  if (responseOrderId && responseOrderId !== expectedOrderId)
+    throw new Error('欧易订单详情返回的订单号不匹配')
+  const summary = normalizeOkxSummary({ ...input, id: expectedOrderId })
   const details = normalizeOkxPaymentDetails(input)
   return buildDetail(summary, summary.assetAmount, details, input)
 }
 
 function normalizeOkxPaymentDetails(input: Record<string, unknown>): PaymentDetails {
-  const selected = ((input.detailUser as { sellerSelectedReceiptAccount?: unknown } | undefined)
-    ?.sellerSelectedReceiptAccount ??
+  const selected = ((
+    input.orderDetailUserVo as { sellerSelectedReceiptAccount?: unknown } | undefined
+  )?.sellerSelectedReceiptAccount ??
+    (input.detailUser as { sellerSelectedReceiptAccount?: unknown } | undefined)
+      ?.sellerSelectedReceiptAccount ??
     input.sellerReceiptAccount ??
     (input.orderDetailUserVo as { sellerReceiptAccount?: unknown } | undefined)
       ?.sellerReceiptAccount ??
