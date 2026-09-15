@@ -14,7 +14,17 @@ interface BusinessPageDefinition {
   permission: string
 }
 
-const businessPages: BusinessPageDefinition[] = [
+interface BusinessMenuGroupDefinition {
+  icon: string
+  key: string
+  name: string
+  orderNo: number
+  pages: BusinessPageDefinition[]
+  path: string
+  permission: string
+}
+
+const merchantPages: BusinessPageDefinition[] = [
   {
     key: 'tenants',
     name: '所属单位',
@@ -57,6 +67,9 @@ const businessPages: BusinessPageDefinition[] = [
       ['appeal', '提交申诉'],
     ],
   },
+]
+
+const paymentPages: BusinessPageDefinition[] = [
   {
     key: 'paymentAccounts',
     name: '支付账号',
@@ -167,6 +180,36 @@ const telegramPages: BusinessPageDefinition[] = [
   },
 ]
 
+const businessMenuGroups: BusinessMenuGroupDefinition[] = [
+  {
+    key: 'merchantManagement',
+    name: '商家管理',
+    path: '/merchant-management',
+    permission: 'merchantManagement',
+    icon: 'lucide:store',
+    orderNo: 995,
+    pages: merchantPages,
+  },
+  {
+    key: 'paymentManagement',
+    name: '支付管理',
+    path: '/payment-management',
+    permission: 'paymentManagement',
+    icon: 'lucide:wallet-cards',
+    orderNo: 994,
+    pages: paymentPages,
+  },
+  {
+    key: 'robotManagement',
+    name: '机器人管理',
+    path: '/robot-management',
+    permission: 'robotManagement',
+    icon: 'lucide:bot',
+    orderNo: 993,
+    pages: telegramPages,
+  },
+]
+
 export const DEFAULT_ADMIN_MENUS: AdminMenuDefinition[] = [
   {
     key: 'dashboard',
@@ -190,55 +233,39 @@ export const DEFAULT_ADMIN_MENUS: AdminMenuDefinition[] = [
     orderNo: 10,
     keepAlive: enabled,
   },
-  {
-    key: 'business',
+  ...businessMenuGroups.map(({ icon, key, name, orderNo, path, permission }) => ({
+    key,
     type: SysMenuType.FOLDER,
-    name: '业务运营',
-    path: '/business',
-    permission: 'business',
-    icon: 'lucide:briefcase-business',
-    orderNo: 995,
+    name,
+    path,
+    permission,
+    icon,
+    orderNo,
     keepAlive: disabled,
-  },
-  ...businessPages.map(({ icon, key, name, path, permission }, index) => ({
-    key: `business.${key}`,
-    type: SysMenuType.MENU,
-    parentKey: 'business',
-    name,
-    path,
-    component: path,
-    permission,
-    icon,
-    orderNo: 60 - index * 10,
   })),
-  ...telegramPages.map(({ icon, key, name, path, permission }, index) => ({
-    key: `business.${key}`,
-    type: SysMenuType.MENU,
-    parentKey: 'business',
-    name,
-    path,
-    component: path,
-    permission,
-    icon,
-    orderNo: 5 - index,
-  })),
-  ...businessPages.flatMap(({ actions, key, permission }) =>
-    actions.map(([action, name]) => ({
-      key: `business.${key}.${action}`,
-      type: SysMenuType.PERMISSION,
-      parentKey: `business.${key}`,
+  ...businessMenuGroups.flatMap(({ key: parentKey, pages }) =>
+    pages.map(({ icon, key, name, path, permission }, index) => ({
+      key: `business.${key}`,
+      type: SysMenuType.MENU,
+      parentKey,
       name,
-      permission: `${permission}:${action}`,
+      path,
+      component: path,
+      permission,
+      icon,
+      orderNo: (pages.length - index) * 10,
     })),
   ),
-  ...telegramPages.flatMap(({ actions, key, permission }) =>
-    actions.map(([action, name]) => ({
-      key: `business.${key}.${action}`,
-      type: SysMenuType.PERMISSION,
-      parentKey: `business.${key}`,
-      name,
-      permission: `${permission}:${action}`,
-    })),
+  ...businessMenuGroups.flatMap(({ pages }) =>
+    pages.flatMap(({ actions, key, permission }) =>
+      actions.map(([action, name]) => ({
+        key: `business.${key}.${action}`,
+        type: SysMenuType.PERMISSION,
+        parentKey: `business.${key}`,
+        name,
+        permission: `${permission}:${action}`,
+      })),
+    ),
   ),
   {
     key: 'system',

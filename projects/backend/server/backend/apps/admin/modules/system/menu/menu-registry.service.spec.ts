@@ -33,30 +33,57 @@ import { DEFAULT_ADMIN_MENUS } from './registry/default-admin-menus'
 describe('MenuRegistryService', () => {
   const service = new MenuRegistryService({} as any, {} as any)
 
-  it('registers one business folder with operational pages and action permissions', () => {
-    const businessPages = DEFAULT_ADMIN_MENUS.filter(
-      ({ parentKey, type }) => parentKey === 'business' && type === SysMenuType.MENU,
-    )
+  it('groups business pages into merchant, payment, and robot menus without visible third levels', () => {
+    const visibleMenus = DEFAULT_ADMIN_MENUS.filter(({ type }) => type !== SysMenuType.PERMISSION)
     const permissions = new Set(
       DEFAULT_ADMIN_MENUS.map(({ permission }) => permission).filter(Boolean),
     )
 
-    expect(DEFAULT_ADMIN_MENUS).toContainEqual(
-      expect.objectContaining({ key: 'business', name: '业务运营', type: SysMenuType.FOLDER }),
-    )
-    expect(businessPages.map(({ key }) => key)).toEqual([
-      'business.tenants',
-      'business.merchants',
-      'business.merchantOrders',
+    expect(
+      visibleMenus.filter(({ key }) =>
+        ['merchantManagement', 'paymentManagement', 'robotManagement'].includes(key),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        key: 'merchantManagement',
+        name: '商家管理',
+        type: SysMenuType.FOLDER,
+      }),
+      expect.objectContaining({
+        key: 'paymentManagement',
+        name: '支付管理',
+        type: SysMenuType.FOLDER,
+      }),
+      expect.objectContaining({
+        key: 'robotManagement',
+        name: '机器人管理',
+        type: SysMenuType.FOLDER,
+      }),
+    ])
+    expect(
+      visibleMenus
+        .filter(({ parentKey }) => parentKey === 'merchantManagement')
+        .map(({ key }) => key),
+    ).toEqual(['business.tenants', 'business.merchants', 'business.merchantOrders'])
+    expect(
+      visibleMenus
+        .filter(({ parentKey }) => parentKey === 'paymentManagement')
+        .map(({ key }) => key),
+    ).toEqual([
       'business.paymentAccounts',
       'business.paymentBatchPolicies',
       'business.paymentOrders',
       'business.paymentBatches',
+    ])
+    expect(
+      visibleMenus.filter(({ parentKey }) => parentKey === 'robotManagement').map(({ key }) => key),
+    ).toEqual([
       'business.telegramBots',
       'business.telegramGroups',
       'business.telegramMembers',
       'business.telegramSuperAdmins',
     ])
+    expect(visibleMenus.some(({ parentKey }) => parentKey?.startsWith('business.'))).toBe(false)
     for (const permission of [
       'agency:tenant:read',
       'agency:tenant:create',

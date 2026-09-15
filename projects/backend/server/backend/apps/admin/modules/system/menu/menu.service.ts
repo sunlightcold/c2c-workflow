@@ -60,7 +60,7 @@ export class MenuService {
   }
 
   async findFrontendMenusByRoleIds(roleIds: number[]) {
-    return this.menuRepository.find({
+    const assignedMenus = await this.menuRepository.find({
       where: {
         type: Not(SysMenuType.PERMISSION),
         status: StatusEnum.ENABLED,
@@ -68,6 +68,23 @@ export class MenuService {
       },
       order: { orderNo: 'DESC' },
     })
+    if (assignedMenus.length === 0) return []
+
+    const allMenus = await this.findAllFrontendMenus()
+    const menuById = new Map(allMenus.map((menu) => [menu.id, menu]))
+    const accessibleIds = new Set(assignedMenus.map((menu) => menu.id))
+
+    for (const menu of assignedMenus) {
+      let parentId = menu.parentId
+      while (parentId) {
+        const parent = menuById.get(parentId)
+        if (!parent || accessibleIds.has(parent.id)) break
+        accessibleIds.add(parent.id)
+        parentId = parent.parentId
+      }
+    }
+
+    return allMenus.filter((menu) => accessibleIds.has(menu.id))
   }
 
   async findAllFrontendMenus() {

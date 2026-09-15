@@ -13,69 +13,110 @@ const testCertificatePem = `-----BEGIN CERTIFICATE-----
 ${testCertificateDerBase64}
 -----END CERTIFICATE-----`;
 
+const menuGroups = [
+  [
+    '100',
+    '商家管理',
+    '/merchant-management',
+    'merchantManagement',
+    'lucide:store',
+  ],
+  [
+    '200',
+    '支付管理',
+    '/payment-management',
+    'paymentManagement',
+    'lucide:wallet-cards',
+  ],
+  ['300', '机器人管理', '/robot-management', 'robotManagement', 'lucide:bot'],
+] as const;
+
 const pages = [
-  ['所属单位', '/business/tenants', '/business/tenants', 'agency:tenant'],
-  ['商家', '/business/merchants', '/business/merchants', 'merchant:account'],
+  [
+    '所属单位',
+    '/business/tenants',
+    '/business/tenants',
+    'agency:tenant',
+    '100',
+  ],
+  [
+    '商家账号',
+    '/business/merchants',
+    '/business/merchants',
+    'merchant:account',
+    '100',
+  ],
   [
     '商家订单',
     '/business/merchant-orders',
     '/business/merchant-orders',
     'merchant:order',
+    '100',
   ],
   [
     '支付账号',
     '/business/payment-accounts',
     '/business/payment-accounts',
     'payment:account',
-  ],
-  [
-    '支付订单',
-    '/business/payment-orders',
-    '/business/payment-orders',
-    'payment:order',
-  ],
-  [
-    '支付批次',
-    '/business/payment-batches',
-    '/business/payment-batches',
-    'payment:batch',
+    '200',
   ],
   [
     '批次策略',
     '/business/payment-batch-policies',
     '/business/payment-batch-policies',
     'payment:batchPolicy',
+    '200',
+  ],
+  [
+    '支付订单',
+    '/business/payment-orders',
+    '/business/payment-orders',
+    'payment:order',
+    '200',
+  ],
+  [
+    '支付批次',
+    '/business/payment-batches',
+    '/business/payment-batches',
+    'payment:batch',
+    '200',
   ],
   [
     '机器人实例',
     '/business/telegram-bots',
     '/business/telegram-bots',
     'telegram:bot',
+    '300',
   ],
   [
     '群组绑定',
     '/business/telegram-groups',
     '/business/telegram-groups',
     'telegram:group',
+    '300',
   ],
   [
     '群组成员',
     '/business/telegram-members',
     '/business/telegram-members',
     'telegram:member',
+    '300',
   ],
   [
     '超级管理员',
     '/business/telegram-super-admins',
     '/business/telegram-super-admins',
     'telegram:superAdmin',
+    '300',
   ],
 ] as const;
 
 const permissions = [
   'dashboard',
   'dashboard:workspace',
-  'business',
+  'merchantManagement',
+  'paymentManagement',
+  'robotManagement',
   'agency:tenant:read',
   'agency:tenant:create',
   'agency:tenant:update',
@@ -438,40 +479,44 @@ test.beforeEach(async ({ page }) => {
             status: 1,
             type: 'MENU',
           },
-          {
-            children: null,
-            component: '',
-            icon: 'lucide:briefcase-business',
-            id: '100',
-            keepAlive: 0,
-            name: '业务运营',
-            orderNo: 995,
-            parentId: null,
-            path: '/business',
-            permission: 'business',
-            redirect: null,
-            roles: [],
-            show: 1,
-            status: 1,
-            type: 'FOLDER',
-          },
-          ...pages.map(([name, routePath, component, permission], index) => ({
-            children: null,
-            component,
-            icon: 'lucide:circle',
-            id: String(101 + index),
-            keepAlive: 1,
-            name,
-            orderNo: 60 - index * 10,
-            parentId: '100',
-            path: routePath,
-            permission,
-            redirect: null,
-            roles: [],
-            show: 1,
-            status: 1,
-            type: 'MENU',
-          })),
+          ...menuGroups.map(
+            ([id, name, routePath, permission, icon], index) => ({
+              children: null,
+              component: '',
+              icon,
+              id,
+              keepAlive: 0,
+              name,
+              orderNo: 995 - index,
+              parentId: null,
+              path: routePath,
+              permission,
+              redirect: null,
+              roles: [],
+              show: 1,
+              status: 1,
+              type: 'FOLDER',
+            }),
+          ),
+          ...pages.map(
+            ([name, routePath, component, permission, parentId], index) => ({
+              children: null,
+              component,
+              icon: 'lucide:circle',
+              id: String(101 + index),
+              keepAlive: 1,
+              name,
+              orderNo: 60 - index * 10,
+              parentId,
+              path: routePath,
+              permission,
+              redirect: null,
+              roles: [],
+              show: 1,
+              status: 1,
+              type: 'MENU',
+            }),
+          ),
         ];
         break;
       }
@@ -963,15 +1008,26 @@ test('shows payment identifiers and batch number in separate columns', async ({
   });
 });
 
-test('loads all second-level business pages under one menu', async ({
+test('groups all business pages into two-level menus', async ({
   page,
 }, testInfo) => {
   testInfo.setTimeout(90_000);
   if (testInfo.project.name === 'desktop-chromium') {
-    await page.getByText('业务运营', { exact: true }).click();
-    for (const [name] of pages) {
-      await expect(page.getByText(name, { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('业务运营', { exact: true })).toHaveCount(0);
+    for (const [groupId, groupName] of menuGroups) {
+      await page.getByText(groupName, { exact: true }).click();
+      for (const pageDefinition of pages.filter(
+        (pageDefinition) => pageDefinition[4] === groupId,
+      )) {
+        await expect(
+          page.getByText(pageDefinition[0], { exact: true }).first(),
+        ).toBeVisible();
+      }
     }
+    await page.screenshot({
+      fullPage: true,
+      path: 'node_modules/.e2e/screenshots/business-menu-groups-desktop.png',
+    });
   }
 
   for (const [name, path] of pages) {
