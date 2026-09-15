@@ -69,13 +69,17 @@ export class TaskService {
     const { paginateOptions, params } = toPaginationParams(dto)
     const { name, status, type, description, source } = params
     return paginate(
-      this.taskRepository.createQueryBuilder().andWhere({
-        ...(name ? { name: Like(`%${name}%`) } : null),
-        ...(description ? { description: Like(`%${description}%`) } : null),
-        ...(isNotEmpty(status) ? { status } : null),
-        ...(isNotEmpty(type) ? { type } : null),
-        ...(source ? { source } : null),
-      }),
+      this.taskRepository
+        .createQueryBuilder('task')
+        .andWhere({
+          ...(name ? { name: Like(`%${name}%`) } : null),
+          ...(description ? { description: Like(`%${description}%`) } : null),
+          ...(isNotEmpty(status) ? { status } : null),
+          ...(isNotEmpty(type) ? { type } : null),
+          ...(source ? { source } : null),
+        })
+        .orderBy('task.createdAt', 'ASC')
+        .addOrderBy('task.id', 'ASC'),
       paginateOptions,
     )
   }
@@ -145,20 +149,24 @@ export class TaskService {
    * 每次任务完成时检查该任务队列是否已经结束并修改状态
    */
   async updateTaskCompleteStatus(jobId: string): Promise<void> {
-    // 通过 getJobScheduler 无法获取到 next，需要通过 getJobSchedulers 获取
-    const schedule = await this.taskQueue.getJobScheduler(jobId)
-    if (!schedule) return
-    const task = await this.taskRepository.findOneBy({ id: schedule.id! })
-    const jobs = await this.taskQueue.getJobSchedulers()
+    const taskId = this.getTaskIdFromJobId(jobId)
+    const [schedule, task] = await Promise.all([
+      this.taskQueue.getJobScheduler(taskId),
+      this.taskRepository.findOneBy({ id: taskId }),
+    ])
+    if (!schedule || !task) return
 
-    if (!task) return
-    for (const job of jobs) {
-      const currentTime = Date.now()
-      if (job.key === schedule.id && job.next! < currentTime) {
-        // 如果下次执行时间小于当前时间，则表示已经执行完成。
-        await this.stopInternal(task)
-        break
-      }
+    const reachedLimit =
+      typeof schedule.limit === 'number' &&
+      schedule.limit > 0 &&
+      typeof schedule.iterationCount === 'number' &&
+      schedule.iterationCount >= schedule.limit
+    const reachedEnd =
+      typeof schedule.endDate === 'number' &&
+      (typeof schedule.next !== 'number' || schedule.next <= Date.now())
+
+    if (reachedLimit || reachedEnd) {
+      await this.stopInternal(task)
     }
   }
 
@@ -167,8 +175,8 @@ export class TaskService {
 
     const jobId = task.id
 
-    // 先停掉之前存在的任务
-    await this.stopInternal(task)
+    // Replacing a schedule is not a user stop action and must not change persisted status.
+    await this.removeSchedule(task.id)
 
     const repeat: RepeatOptions = { tz: 'Asia/Shanghai', key: jobId }
     if (task.type === SysTaskTypeEnum.Cron) {
@@ -187,9 +195,7 @@ export class TaskService {
     )
 
     if (!job?.opts) {
-      // update status to 0，标识暂停任务，因为启动失败
       await job?.remove()
-      await this.taskRepository.update(task.id, { status: SysTaskStatus.Disabled })
       throw new BadRequestException('Task Start failed')
     }
 
@@ -216,6 +222,12 @@ export class TaskService {
     }
   }
 
+  private getTaskIdFromJobId(jobId: string) {
+    if (!jobId.startsWith('repeat:')) return jobId
+    const timestampSeparator = jobId.lastIndexOf(':')
+    return jobId.slice('repeat:'.length, timestampSeparator)
+  }
+
   private async upsertSystemTask(definition: SystemTaskDefinition) {
     const systemTask = {
       ...definition,
@@ -228,21 +240,25 @@ export class TaskService {
     }
 
     // Registry definitions seed new tasks; existing task settings remain operator-managed.
-    await this.taskRepository.update(definition.id, { source: SysTaskSource.System })
-    return Object.assign(existing, { source: SysTaskSource.System })
+    if (existing.source !== SysTaskSource.System) {
+      await this.taskRepository.update(definition.id, { source: SysTaskSource.System })
+      existing.source = SysTaskSource.System
+    }
+    return existing
   }
 
   private async stopInternal(task: SysTaskEntity) {
     if (!task) throw new BadRequestException(ErrorEnum.TASK_NOT_FOUND)
 
     const jobId = task.id
-    const exist = await this.existJob(jobId)
-    if (!exist) {
-      if (task.status === SysTaskStatus.Activated) {
-        await this.taskRepository.update(task.id, { status: SysTaskStatus.Disabled })
-      }
-      return
+    await this.removeSchedule(jobId)
+    if (task.status === SysTaskStatus.Activated) {
+      await this.taskRepository.update(task.id, { status: SysTaskStatus.Disabled })
     }
+  }
+
+  private async removeSchedule(jobId: string) {
+    if (!(await this.existJob(jobId))) return
 
     // 从调度器中移除任务
     await this.taskQueue.removeJobScheduler(jobId)
@@ -260,6 +276,5 @@ export class TaskService {
 
     // 控制事件流的大小，即控制 redis 中存储的 events 数量避免数据量过大
     await this.taskQueue.trimEvents(1000)
-    await this.taskRepository.update(task.id, { status: SysTaskStatus.Disabled })
   }
 }

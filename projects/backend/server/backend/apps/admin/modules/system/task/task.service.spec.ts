@@ -63,6 +63,11 @@ describe('TaskService', () => {
     createQueryBuilder: jest.Mock
     existsBy: jest.Mock
   }
+  let taskQueryBuilder: {
+    andWhere: jest.Mock
+    orderBy: jest.Mock
+    addOrderBy: jest.Mock
+  }
   let taskQueue: {
     add: jest.Mock
     removeJobScheduler: jest.Mock
@@ -79,12 +84,17 @@ describe('TaskService', () => {
   let service: TaskService
 
   beforeEach(async () => {
+    taskQueryBuilder = {
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+    }
     taskRepository = {
       save: jest.fn().mockResolvedValue({ id: 'task-1', status: 0 }),
       update: jest.fn().mockResolvedValue(undefined),
       delete: jest.fn().mockResolvedValue(undefined),
       findOneBy: jest.fn().mockResolvedValue({ id: 'task-1', source: 'custom', status: 1 }),
-      createQueryBuilder: jest.fn(),
+      createQueryBuilder: jest.fn().mockReturnValue(taskQueryBuilder),
       existsBy: jest.fn().mockResolvedValue(true),
     }
     taskQueue = {
@@ -133,6 +143,99 @@ describe('TaskService', () => {
     await service.create(dto)
 
     expect(taskRepository.save).toHaveBeenCalledWith(expect.objectContaining({ source: 'custom' }))
+  })
+
+  it('returns tasks in a stable creation order', async () => {
+    await service.filter({ pageIndex: 1, pageSize: 20 } as any)
+
+    expect(taskRepository.createQueryBuilder).toHaveBeenCalledWith('task')
+    expect(taskQueryBuilder.orderBy).toHaveBeenCalledWith('task.createdAt', 'ASC')
+    expect(taskQueryBuilder.addOrderBy).toHaveBeenCalledWith('task.id', 'ASC')
+  })
+
+  it('keeps a recurring task active when its next occurrence is overdue', async () => {
+    jest.spyOn(Date, 'now').mockReturnValue(10_000)
+    const task = {
+      id: 'task-1',
+      status: SysTaskStatus.Activated,
+      type: SysTaskTypeEnum.Interval,
+      every: 5_000,
+    }
+    taskQueue.getJobScheduler.mockResolvedValue({ key: task.id })
+    taskQueue.getJobSchedulers.mockResolvedValue([{ key: task.id, next: 9_000 }])
+    taskRepository.findOneBy.mockResolvedValue(task)
+
+    await service.updateTaskCompleteStatus(`repeat:${task.id}:9000`)
+
+    expect(taskQueue.getJobScheduler).toHaveBeenCalledWith(task.id)
+    expect(taskRepository.findOneBy).toHaveBeenCalledWith({ id: task.id })
+    expect(taskQueue.removeJobScheduler).not.toHaveBeenCalled()
+    expect(taskRepository.update).not.toHaveBeenCalledWith(task.id, {
+      status: SysTaskStatus.Disabled,
+    })
+  })
+
+  it('disables a finite recurring task after its execution limit is reached', async () => {
+    const task = {
+      id: 'task-1',
+      status: SysTaskStatus.Activated,
+      type: SysTaskTypeEnum.Interval,
+      every: 5_000,
+      limit: 2,
+    }
+    const scheduler = {
+      key: task.id,
+      iterationCount: 2,
+      limit: 2,
+      next: 9_000,
+    }
+    taskQueue.getJobScheduler.mockResolvedValue(scheduler)
+    taskQueue.getJobSchedulers.mockResolvedValue([scheduler])
+    taskRepository.findOneBy.mockResolvedValue(task)
+
+    await service.updateTaskCompleteStatus(`repeat:${task.id}:9000`)
+
+    expect(taskQueue.removeJobScheduler).toHaveBeenCalledWith(task.id)
+    expect(taskRepository.update).toHaveBeenCalledWith(task.id, {
+      status: SysTaskStatus.Disabled,
+    })
+  })
+
+  it('does not persist a disabled state while rescheduling an active task', async () => {
+    const task = {
+      id: 'task-1',
+      service: 'HttpRequestJob.handle',
+      status: SysTaskStatus.Activated,
+      type: SysTaskTypeEnum.Interval,
+      every: 5_000,
+      limit: -1,
+    }
+    taskQueue.getJobSchedulers.mockResolvedValue([{ key: task.id }])
+
+    await service.start(task as SysTaskEntity)
+
+    expect(taskQueue.removeJobScheduler).toHaveBeenCalledWith(task.id)
+    expect(taskRepository.update).not.toHaveBeenCalledWith(task.id, {
+      status: SysTaskStatus.Disabled,
+    })
+  })
+
+  it('preserves the configured active state when scheduling fails', async () => {
+    const task = {
+      id: 'task-1',
+      service: 'HttpRequestJob.handle',
+      status: SysTaskStatus.Activated,
+      type: SysTaskTypeEnum.Interval,
+      every: 5_000,
+      limit: -1,
+    }
+    taskQueue.add.mockResolvedValue(undefined)
+
+    await expect(service.start(task as SysTaskEntity)).rejects.toThrow('Task Start failed')
+
+    expect(taskRepository.update).not.toHaveBeenCalledWith(task.id, {
+      status: SysTaskStatus.Disabled,
+    })
   })
 
   it('rejects manual configuration of system task services', async () => {
@@ -252,7 +355,7 @@ describe('TaskService', () => {
     await service.syncSystemTasks()
 
     expect(taskRepository.save).not.toHaveBeenCalled()
-    expect(taskRepository.update).toHaveBeenCalledWith(task.id, { source: 'system' })
+    expect(taskRepository.update).not.toHaveBeenCalledWith(task.id, { source: 'system' })
     expect(taskRepository.update).not.toHaveBeenCalledWith(
       task.id,
       expect.objectContaining({ service: SYSTEM_TASKS[0].service }),
