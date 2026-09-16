@@ -73,12 +73,12 @@ export class C2cCompletionReplyService {
     const merchant = await this.merchants.findOne({ where: { id: merchantId, tenantId } })
     if (!merchant || !this.isEligibleMerchant(merchant)) return
     const orders = await this.orders
-      .createQueryBuilder('merchantOrder')
-      .where('merchantOrder."tenantId" = :tenantId', { tenantId })
-      .andWhere('merchantOrder."merchantId" = :merchantId', { merchantId })
-      .andWhere('merchantOrder.id IN (:...ids)', { ids: merchantOrderIds })
-      .andWhere('merchantOrder.status = :status', { status: MerchantOrderStatus.COMPLETED })
-      .andWhere('merchantOrder."platformCreatedAt" >= :enabledAt', {
+      .createQueryBuilder('merchant_order')
+      .where('merchant_order."tenantId" = :tenantId', { tenantId })
+      .andWhere('merchant_order."merchantId" = :merchantId', { merchantId })
+      .andWhere('merchant_order.id IN (:...ids)', { ids: merchantOrderIds })
+      .andWhere('merchant_order.status = :status', { status: MerchantOrderStatus.COMPLETED })
+      .andWhere('merchant_order."platformCreatedAt" >= :enabledAt', {
         enabledAt: merchant.c2cChatOrderCompletedEnabledAt!,
       })
       .getMany()
@@ -91,36 +91,36 @@ export class C2cCompletionReplyService {
     }
     const staleBefore = new Date(now.getTime() - CLAIM_LEASE_MS)
     const candidates = await this.orders
-      .createQueryBuilder('merchantOrder')
-      .where('merchantOrder."tenantId" = :tenantId', { tenantId: merchant.tenantId })
-      .andWhere('merchantOrder."merchantId" = :merchantId', { merchantId: merchant.id })
-      .andWhere('merchantOrder."platformCreatedAt" >= :enabledAt', {
+      .createQueryBuilder('merchant_order')
+      .where('merchant_order."tenantId" = :tenantId', { tenantId: merchant.tenantId })
+      .andWhere('merchant_order."merchantId" = :merchantId', { merchantId: merchant.id })
+      .andWhere('merchant_order."platformCreatedAt" >= :enabledAt', {
         enabledAt: merchant.c2cChatOrderCompletedEnabledAt!,
       })
-      .andWhere('merchantOrder.status IN (:...statuses)', {
+      .andWhere('merchant_order.status IN (:...statuses)', {
         statuses: [MerchantOrderStatus.PENDING_RELEASE, MerchantOrderStatus.COMPLETED],
       })
       .andWhere(
         new Brackets((query) => {
           query
-            .where('merchantOrder."completionReplyStatus" IS NULL')
-            .orWhere('merchantOrder."completionReplyStatus" = :pending', {
+            .where('merchant_order."completionReplyStatus" IS NULL')
+            .orWhere('merchant_order."completionReplyStatus" = :pending', {
               pending: MerchantOrderCompletionReplyStatus.PENDING,
             })
             .orWhere(
-              '(merchantOrder."completionReplyStatus" = :failed AND ' +
-                '(merchantOrder."completionReplyNextRetryAt" IS NULL OR ' +
-                'merchantOrder."completionReplyNextRetryAt" <= :now))',
+              '(merchant_order."completionReplyStatus" = :failed AND ' +
+                '(merchant_order."completionReplyNextRetryAt" IS NULL OR ' +
+                'merchant_order."completionReplyNextRetryAt" <= :now))',
               { failed: MerchantOrderCompletionReplyStatus.FAILED, now },
             )
             .orWhere(
-              '(merchantOrder."completionReplyStatus" = :sending AND ' +
-                'merchantOrder."completionReplyClaimedAt" <= :staleBefore)',
+              '(merchant_order."completionReplyStatus" = :sending AND ' +
+                'merchant_order."completionReplyClaimedAt" <= :staleBefore)',
               { sending: MerchantOrderCompletionReplyStatus.SENDING, staleBefore },
             )
         }),
       )
-      .orderBy('merchantOrder."platformCreatedAt"', 'ASC')
+      .orderBy('merchant_order."platformCreatedAt"', 'ASC')
       .take(SCAN_LIMIT)
       .getMany()
 

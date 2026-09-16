@@ -5,6 +5,7 @@ import {
   MerchantOrderEntity,
   MerchantOrderStatus,
   MerchantPlatform,
+  PaymentOrderEntity,
   PaymentOrderStatus,
   PaymentSourceType,
   PlatformConfirmationStatus,
@@ -60,39 +61,40 @@ export class C2cAutoAppealService {
     }
     const paidBefore = new Date(now.getTime() - merchant.autoAppealDelayMinutes * 60_000)
     const candidates = await this.orders
-      .createQueryBuilder('merchantOrder')
+      .createQueryBuilder('merchant_order')
       .innerJoin(
+        PaymentOrderEntity,
         'payment_order',
-        'paymentOrder',
-        'paymentOrder."tenantId" = merchantOrder."tenantId" AND ' +
-          'paymentOrder."merchantId" = merchantOrder."merchantId" AND ' +
-          'paymentOrder."sourceType" = :sourceType AND ' +
-          'paymentOrder."sourceBusinessNo" = merchantOrder."platformOrderId"',
+        'payment_order."tenantId" = merchant_order."tenantId" AND ' +
+          'payment_order."merchantId" = merchant_order."merchantId" AND ' +
+          'payment_order."sourceType" = :sourceType AND ' +
+          'payment_order."sourceBusinessNo" = merchant_order."platformOrderId"',
         { sourceType: PaymentSourceType.C2C_BUY },
       )
-      .where('merchantOrder."tenantId" = :tenantId', { tenantId: merchant.tenantId })
-      .andWhere('merchantOrder."merchantId" = :merchantId', { merchantId: merchant.id })
-      .andWhere('merchantOrder.status = :status', { status: MerchantOrderStatus.PENDING_RELEASE })
-      .andWhere('merchantOrder."appealStatus" IS NULL')
-      .andWhere('merchantOrder."platformCreatedAt" >= :enabledAt', {
+      .addSelect('payment_order.updatedAt')
+      .where('merchant_order."tenantId" = :tenantId', { tenantId: merchant.tenantId })
+      .andWhere('merchant_order."merchantId" = :merchantId', { merchantId: merchant.id })
+      .andWhere('merchant_order.status = :status', { status: MerchantOrderStatus.PENDING_RELEASE })
+      .andWhere('merchant_order."appealStatus" IS NULL')
+      .andWhere('merchant_order."platformCreatedAt" >= :enabledAt', {
         enabledAt: merchant.autoAppealEnabledAt,
       })
       .andWhere(
-        '(merchantOrder."autoAppealStatus" IS NULL OR merchantOrder."autoAppealStatus" = :retry)',
+        '(merchant_order."autoAppealStatus" IS NULL OR merchant_order."autoAppealStatus" = :retry)',
         { retry: MerchantOrderAutoAppealStatus.RETRY },
       )
       .andWhere(
-        '(merchantOrder."autoAppealNextAttemptAt" IS NULL OR merchantOrder."autoAppealNextAttemptAt" <= :now)',
+        '(merchant_order."autoAppealNextAttemptAt" IS NULL OR merchant_order."autoAppealNextAttemptAt" <= :now)',
         { now },
       )
-      .andWhere('paymentOrder.status = :paymentStatus', {
+      .andWhere('payment_order.status = :paymentStatus', {
         paymentStatus: PaymentOrderStatus.SUCCESS,
       })
-      .andWhere('paymentOrder."platformConfirmStatus" = :platformConfirmStatus', {
+      .andWhere('payment_order."platformConfirmStatus" = :platformConfirmStatus', {
         platformConfirmStatus: PlatformConfirmationStatus.SUCCESS,
       })
-      .andWhere('paymentOrder."updatedAt" <= :paidBefore', { paidBefore })
-      .orderBy('paymentOrder."updatedAt"', 'ASC')
+      .andWhere('payment_order."updatedAt" <= :paidBefore', { paidBefore })
+      .orderBy('payment_order.updatedAt', 'ASC')
       .take(20)
       .getMany()
 

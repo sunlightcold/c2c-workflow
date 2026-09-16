@@ -30,6 +30,7 @@ describe('C2cAutoAppealService', () => {
   const merchants = { find: jest.fn() }
   const query = {
     innerJoin: jest.fn(),
+    addSelect: jest.fn(),
     where: jest.fn(),
     andWhere: jest.fn(),
     orderBy: jest.fn(),
@@ -58,11 +59,11 @@ describe('C2cAutoAppealService', () => {
       expect.objectContaining({ candidates: 1, submitted: 1, retry: 0 }),
     ])
     expect(appeals.submitForAuto).toHaveBeenCalledWith('tenant-1', 'merchant-1', 'order-1')
-    expect(query.andWhere).toHaveBeenCalledWith('paymentOrder.status = :paymentStatus', {
+    expect(query.andWhere).toHaveBeenCalledWith('payment_order.status = :paymentStatus', {
       paymentStatus: 'SUCCESS',
     })
     expect(query.andWhere).toHaveBeenCalledWith(
-      'paymentOrder."platformConfirmStatus" = :platformConfirmStatus',
+      'payment_order."platformConfirmStatus" = :platformConfirmStatus',
       { platformConfirmStatus: 'SUCCESS' },
     )
     expect(orders.update).toHaveBeenCalledWith(
