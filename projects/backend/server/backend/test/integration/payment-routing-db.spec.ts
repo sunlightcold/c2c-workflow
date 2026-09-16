@@ -32,6 +32,9 @@ import { migratePaymentAccountCredentials } from '@/apps/admin/database/migratio
 import { migrateC2cAutomaticPayments } from '@/apps/admin/database/migrations/c2c-automatic-payments.migration'
 import { migrateC2cPaymentBatchPolicies } from '@/apps/admin/database/migrations/c2c-payment-batch-policies.migration'
 import { migrateC2cPaymentPlanAutomation } from '@/apps/admin/database/migrations/c2c-payment-plan-automation.migration'
+import { migrateC2cPlatformConfirmationControl } from '@/apps/admin/database/migrations/c2c-platform-confirmation-control.migration'
+import { migrateC2cFullProviderParity } from '@/apps/admin/database/migrations/c2c-full-provider-parity.migration'
+import { migrateC2cPaymentPlatformStateSeparation } from '@/apps/admin/database/migrations/c2c-payment-platform-state-separation.migration'
 import { PaymentOrderService } from '@/apps/admin/modules/payment/payment-order.service'
 import { PaymentPlanResolver } from '@/apps/admin/modules/payment/payment-plan-resolver'
 import { PaymentConfigService } from '@/apps/admin/modules/business/payment-config.service'
@@ -107,6 +110,9 @@ describe('Payment routing database integration', () => {
     await migrateC2cAutomaticPayments(dataSource.manager)
     await migrateC2cPaymentBatchPolicies(dataSource.manager)
     await migrateC2cPaymentPlanAutomation({ query: dataSource.query.bind(dataSource) })
+    await migrateC2cPlatformConfirmationControl({ query: dataSource.query.bind(dataSource) })
+    await migrateC2cFullProviderParity(dataSource.manager)
+    await migrateC2cPaymentPlatformStateSeparation({ query: dataSource.query.bind(dataSource) })
     await seedConfiguration()
     resolver = new PaymentPlanResolver(dataSource)
     orders = new PaymentOrderService(

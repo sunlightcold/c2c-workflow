@@ -150,6 +150,17 @@ export function businessEnumText(value?: null | string) {
   return value ? (statusLabels[value] ?? value) : '-';
 }
 
+export function platformConfirmationText(value?: null | string) {
+  const labels: Record<string, string> = {
+    FAILED: '确认失败',
+    NOT_REQUIRED: '无需确认',
+    PENDING: '待确认',
+    PROCESSING: '确认中',
+    SUCCESS: '确认成功',
+  };
+  return value ? (labels[value] ?? value) : '-';
+}
+
 export function businessStateColor(status: string) {
   if (['COMPLETED', 'SUCCESS'].includes(status)) return 'success';
   if (['FAILED', 'FUND_EXCEPTION', 'FUNDS_EXCEPTION'].includes(status))

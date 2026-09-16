@@ -25,13 +25,17 @@ import {
 import { migrateC2cMerchantPlatformCredentials } from '@/apps/admin/database/migrations/c2c-merchant-platform-credentials.migration'
 import { migrateC2cMerchantOrders } from '@/apps/admin/database/migrations/c2c-merchant-orders.migration'
 import { migrateC2cMerchantOrderAppeals } from '@/apps/admin/database/migrations/c2c-merchant-order-appeals.migration'
+import { migrateC2cMerchantAccountOperations } from '@/apps/admin/database/migrations/c2c-merchant-account-operations.migration'
 import { migrateC2cPaymentBatches } from '@/apps/admin/database/migrations/c2c-payment-batches.migration'
 import { migrateC2cPaymentBatchPolicies } from '@/apps/admin/database/migrations/c2c-payment-batch-policies.migration'
 import { migrateC2cPaymentReconciliationPolicy } from '@/apps/admin/database/migrations/c2c-payment-reconciliation-policy.migration'
 import { migrateC2cAutomaticPayments } from '@/apps/admin/database/migrations/c2c-automatic-payments.migration'
 import { migrateC2cPaymentPlanAutomation } from '@/apps/admin/database/migrations/c2c-payment-plan-automation.migration'
+import { migrateC2cPaymentPlatformStateSeparation } from '@/apps/admin/database/migrations/c2c-payment-platform-state-separation.migration'
 import { migrateC2cPaymentOrders } from '@/apps/admin/database/migrations/c2c-payment-orders.migration'
 import { migrateC2cPaymentRouting } from '@/apps/admin/database/migrations/c2c-payment-routing.migration'
+import { migrateC2cPlatformConfirmationControl } from '@/apps/admin/database/migrations/c2c-platform-confirmation-control.migration'
+import { migrateC2cFullProviderParity } from '@/apps/admin/database/migrations/c2c-full-provider-parity.migration'
 import { migratePaymentAccountCredentials } from '@/apps/admin/database/migrations/payment-account-credentials.migration'
 import { PaymentBatchService } from '@/apps/admin/modules/payment/payment-batch.service'
 import { TypeOrmPaymentBatchStore } from '@/apps/admin/modules/payment/typeorm-payment-batch.store'
@@ -105,15 +109,19 @@ describe('Payment batch migration database integration', () => {
       await migrateC2cPaymentRouting(manager)
       await migrateC2cMerchantPlatformCredentials(manager)
       await migrateC2cMerchantOrders(manager)
+      await migrateC2cMerchantAccountOperations(manager)
       await migrateC2cMerchantOrderAppeals(manager)
       await migrateC2cPaymentBatches(manager)
       await migrateC2cAutomaticPayments(manager)
       await migrateC2cPaymentBatchPolicies(manager)
       await migrateC2cPaymentReconciliationPolicy(manager)
       await migrateC2cPaymentPlanAutomation({ query: manager.query.bind(manager) })
+      await migrateC2cPlatformConfirmationControl({ query: manager.query.bind(manager) })
+      await migrateC2cFullProviderParity(manager)
+      await migrateC2cPaymentPlatformStateSeparation({ query: manager.query.bind(manager) })
       await manager.query(
-        `INSERT INTO merchant (id, "tenantId", code, name, platform)
-         VALUES ($1, $2, 'merchant-1', 'Merchant 1', 'BINANCE')`,
+        `INSERT INTO merchant (id, "tenantId", code, name, platform, "apiBaseUrl")
+         VALUES ($1, $2, 'merchant-1', 'Merchant 1', 'BINANCE', 'https://api.binance.com')`,
         [merchantId, tenantId],
       )
       await manager.query(
@@ -433,7 +441,7 @@ describe('Payment batch migration database integration', () => {
     ).resolves.toEqual([{ status: 'SUCCESS', successCount: 1, failedCount: 0 }])
     await expect(
       dataSource.query(`SELECT status, "upstreamId" FROM payment_order WHERE id = $1`, [orderId]),
-    ).resolves.toEqual([{ status: 'COMPLETED', upstreamId: 'ALI-ORDER-1' }])
+    ).resolves.toEqual([{ status: 'SUCCESS', upstreamId: 'ALI-ORDER-1' }])
   })
 
   it('keeps a mismatched Alipay detail unknown without changing the payment result', async () => {
@@ -495,7 +503,7 @@ describe('Payment batch migration database integration', () => {
     await expect(readMerchantOrderStatus()).resolves.toBe('PAYMENT_PROCESSING')
   })
 
-  it('returns an already successful C2C detail for another platform confirmation attempt', async () => {
+  it('does not reconfirm an already platform-confirmed C2C batch detail', async () => {
     await configureC2cPayment()
     const secondOrderId = '00000000-0000-4000-8000-000000000206'
     await insertPaymentOrder(secondOrderId, 'source-2', 'PAY-2')
@@ -526,15 +534,13 @@ describe('Payment batch migration database integration', () => {
     }
     await store.applyQuery(processing, partialQuery)
     await dataSource.query(
-      `UPDATE payment_order SET status = 'PLATFORM_CONFIRM_PENDING' WHERE id = $1`,
+      `UPDATE payment_order SET "platformConfirmStatus" = 'SUCCESS' WHERE id = $1`,
       [orderId],
     )
 
     const retried = await store.applyQuery(processing, partialQuery)
 
-    expect(retried.paymentsToConfirm).toEqual([
-      expect.objectContaining({ id: orderId, status: 'PLATFORM_CONFIRM_PENDING' }),
-    ])
+    expect(retried.paymentsToConfirm).toEqual([])
   })
 
   function successfulQuery(batchNo: string) {

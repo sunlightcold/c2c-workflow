@@ -14,11 +14,12 @@ import {
   type C2cPlatformCredentials,
   C2cPlatformCredentialFactory,
   type C2cBuyOrderDetail,
+  C2cCredentialRejectedError,
 } from '../c2c-platform'
 import { C2C_SECRET_RESOLVER, type C2cSecretResolver } from './c2c-secret-resolver'
 import type { C2cOrderSyncStore } from './c2c-order-sync.types'
 import { EVENT_KEYS, EventEmitterService } from '../event-emitter'
-import { C2cPlatformChatService } from './c2c-platform-chat.service'
+import { C2cCompletionReplyService } from './c2c-completion-reply.service'
 
 export const C2C_ORDER_SYNC_STORE = Symbol('C2C_ORDER_SYNC_STORE')
 const INITIAL_LOOKBACK_MS = 24 * 60 * 60 * 1000
@@ -34,7 +35,7 @@ export class C2cOrderSyncService {
     private readonly platformClient: C2cPlatformClient,
     @Inject(C2C_ORDER_SYNC_STORE) private readonly store: C2cOrderSyncStore,
     @Optional() private readonly eventEmitter?: EventEmitterService,
-    @Optional() private readonly platformChat?: C2cPlatformChatService,
+    @Optional() private readonly completionReplies?: C2cCompletionReplyService,
   ) {}
 
   async sync(tenantId: string, merchantId: string, now = new Date()) {
@@ -61,7 +62,7 @@ export class C2cOrderSyncService {
         orders,
         now,
       )
-      await this.platformChat?.sendCompletedOrders(
+      await this.completionReplies?.sendCompletedOrders(
         tenantId,
         merchantId,
         result.changedOrderIds ?? [],
@@ -79,12 +80,32 @@ export class C2cOrderSyncService {
       return { scanned: orders.length, created: result.created, updated: result.updated }
     } catch (error) {
       await this.store.recordFailure(tenantId, merchantId, now, this.errorMessage(error))
-      this.eventEmitter?.emit(EVENT_KEYS.TELEGRAM_EXCEPTION, {
-        tenantId,
-        merchantId,
-        code: 'C2C_ORDER_SYNC_FAILED',
-        message: this.errorMessage(error),
-      })
+      const credentialRejected = error instanceof C2cCredentialRejectedError
+      if (credentialRejected) {
+        const disabled = await this.credentialService.disableRejectedCredential(
+          tenantId,
+          merchantId,
+        )
+        if (disabled) {
+          this.eventEmitter?.emit(EVENT_KEYS.TELEGRAM_EXCEPTION, {
+            tenantId,
+            merchantId,
+            code: 'C2C_CREDENTIAL_REJECTED',
+            message: this.errorMessage(error),
+            referenceId: merchant.code,
+            platform: merchant.platform,
+            merchantNo: merchant.externalMerchantId ?? merchant.code,
+          })
+        }
+      }
+      if (!credentialRejected) {
+        this.eventEmitter?.emit(EVENT_KEYS.TELEGRAM_EXCEPTION, {
+          tenantId,
+          merchantId,
+          code: 'C2C_ORDER_SYNC_FAILED',
+          message: this.errorMessage(error),
+        })
+      }
       throw error
     }
   }

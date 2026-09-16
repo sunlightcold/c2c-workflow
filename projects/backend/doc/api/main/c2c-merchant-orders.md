@@ -25,9 +25,9 @@ Controller：`C2cOrderController`。基础路径：`/v1/sys`。所有接口均�
 
 作废仅允许商家订单仍为 `PENDING_PAYMENT`，且关联支付单为 `PENDING_CONFIG`、`CREATED` 或
 `READY`。已加入未提交批次的支付单会从批次中移除并重算汇总；资金请求进入 `SUBMITTING` 后拒绝
-普通作废。平台确认补偿仅处理 `PLATFORM_CONFIRM_PENDING`，`COMPLETED` 幂等返回。
+普通作废。平台确认补偿仅处理支付状态为 `SUCCESS` 且平台确认状态为 `FAILED` 的订单；平台确认状态 `SUCCESS` 时幂等返回。
 
-申诉仅支持币安买币订单，并要求本地订单为 `PENDING_RELEASE`、关联支付单为 `COMPLETED`、币安实时
+申诉仅支持币安买币订单，并要求本地订单为 `PENDING_RELEASE`、关联支付单资金状态为 `SUCCESS`、平台确认状态为 `SUCCESS`、币安实时
 订单状态为 `PAID`。原因码必须来自本次实时查询。提交前系统原子占用订单；系统通过支付通道回单能力获取 PDF，下载后转换为最多 5 页 JPEG，再上传币安；回单处理或材料上传前失败会释放占用，
 允许人工重试；最终提交请求发出后若结果不确定则保留 `PROCESSING`，禁止重复提交，等待人工核对。
 回单只在请求期间保留于内存并上传至币安预签名地址，系统不保存图片二进制或预签名地址。欧易当前

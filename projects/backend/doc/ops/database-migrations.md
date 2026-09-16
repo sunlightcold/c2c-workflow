@@ -77,3 +77,8 @@ Compose 会等待 PostgreSQL 健康检查通过，启动一次性 `migrate` 服�
 6. `C2cMerchantOrders1789004000000`：买币商家订单、状态历史和每商家同步检查点。
 7. `C2cPaymentBatches1789005000000`：批量支付、批次明细和状态历史。
 8. `C2cTelegramIdentities1789018000000`：移除 Telegram 群组成员和超级管理员对 `sys_user` 的依赖，Telegram 身份独立按所属单位隔离。
+9. `C2cAutomaticPaymentFailureNotices1789022000000`：持久化自动支付异常通知登记，按所属单位、商家、错误码和关联单号保证一次性投递。
+10. `C2cPlatformConfirmationControl1789023000000`：拆分平台标记付款状态，增加原子认领、失败终止与 OKX 商家账号级持久化节流锁。
+11. `C2cFullProviderParity1789024000000`：补齐 KYC、自动申诉、完成回复状态机、币安启用窗口与自动批次 Telegram 消息关联。
+12. `C2cPaidNotificationCapability1789025000000`：为现有支付机器人和群组恢复默认启用的 C2C 标记付款通知能力。
+13. `C2cPaymentPlatformStateSeparation1789026000000`：将历史 `PLATFORM_CONFIRM_PENDING / COMPLETED` 支付状态迁移为资金结果 `SUCCESS`，平台标记进度和错误改由独立字段承载，并重建 15 秒恢复索引。

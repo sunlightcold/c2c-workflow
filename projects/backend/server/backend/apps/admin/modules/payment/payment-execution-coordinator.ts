@@ -3,6 +3,7 @@ import { PaymentExecutionStatus, type PaymentExecutionResult } from './payment-a
 import { PaymentOrderState } from './payment-order-state-machine'
 import { PaymentNotSubmittedError, PlatformFundsExceptionError } from './payment-execution.errors'
 import { EVENT_KEYS, EventEmitterService } from '../event-emitter'
+import { PaymentSourceType, PlatformConfirmationStatus } from '@admin/database'
 
 export { PaymentNotSubmittedError, PlatformFundsExceptionError } from './payment-execution.errors'
 
@@ -14,6 +15,13 @@ export interface ExecutablePaymentOrder {
   merchantId?: string
   paymentNo?: string
   sourceBusinessNo?: string
+  platformConfirmStatus?: PlatformConfirmationStatus
+  platformConfirmLastAttemptAt?: Date | null
+  platformConfirmLastError?: string | null
+  lastError?: string | null
+  amount?: string
+  currency?: string
+  sourceType?: PaymentSourceType
 }
 
 export interface PaymentOrderStore {
@@ -23,6 +31,16 @@ export interface PaymentOrderStore {
     order: ExecutablePaymentOrder,
     status: PaymentOrderState,
     detail?: { upstreamId?: string; errorMessage?: string },
+  ) => Promise<ExecutablePaymentOrder>
+  claimPlatformConfirmation: (
+    order: ExecutablePaymentOrder,
+    allowed: readonly PlatformConfirmationStatus[],
+  ) => Promise<ExecutablePaymentOrder | null>
+  completePlatformConfirmation: (order: ExecutablePaymentOrder) => Promise<ExecutablePaymentOrder>
+  failPlatformConfirmation: (
+    order: ExecutablePaymentOrder,
+    errorMessage: string,
+    fundsException: boolean,
   ) => Promise<ExecutablePaymentOrder>
 }
 
@@ -42,7 +60,7 @@ export interface PaymentUpstreamQueryResult {
 }
 
 export interface PlatformPaymentConfirmer {
-  confirmPaid: (order: ExecutablePaymentOrder) => Promise<void>
+  confirmPaid: (order: ExecutablePaymentOrder, options?: { queryOnly?: boolean }) => Promise<void>
 }
 
 export const PAYMENT_ORDER_STORE = Symbol('PAYMENT_ORDER_STORE')
@@ -78,7 +96,8 @@ export class PaymentExecutionCoordinator {
       return failed
     }
     const paid = await this.applyPaymentResult(claimed, result)
-    if (paid.status !== PaymentOrderState.SUCCESS) return paid
+    if (paid.status !== PaymentOrderState.SUCCESS || paid.sourceType !== PaymentSourceType.C2C_BUY)
+      return paid
     return this.confirmPlatform(paid)
   }
 
@@ -104,7 +123,8 @@ export class PaymentExecutionCoordinator {
       return unknown
     }
     const paid = await this.applyPaymentResult(order, result)
-    if (paid.status !== PaymentOrderState.SUCCESS) return paid
+    if (paid.status !== PaymentOrderState.SUCCESS || paid.sourceType !== PaymentSourceType.C2C_BUY)
+      return paid
     return this.confirmPlatform(paid)
   }
 
@@ -122,7 +142,10 @@ export class PaymentExecutionCoordinator {
         ].includes(order.status)
       ) {
         current = await this.applyPaymentResult(order, result)
-        if (current.status === PaymentOrderState.SUCCESS)
+        if (
+          current.status === PaymentOrderState.SUCCESS &&
+          current.sourceType === PaymentSourceType.C2C_BUY
+        )
           current = await this.confirmPlatform(current)
       }
       return {
@@ -159,27 +182,48 @@ export class PaymentExecutionCoordinator {
     }
   }
 
-  async confirmPlatform(order: ExecutablePaymentOrder): Promise<ExecutablePaymentOrder> {
-    const pending =
-      order.status === PaymentOrderState.PLATFORM_CONFIRM_PENDING
-        ? order
-        : await this.store.transition(order, PaymentOrderState.PLATFORM_CONFIRM_PENDING)
+  async confirmPlatform(
+    order: ExecutablePaymentOrder,
+    options: {
+      manualRetry?: boolean
+      recoverProcessing?: boolean
+      suppressFailureNotification?: boolean
+    } = {},
+  ): Promise<ExecutablePaymentOrder> {
+    if (order.status !== PaymentOrderState.SUCCESS)
+      throw new ConflictException('只有支付成功的订单可以进行平台确认')
+    const allowed = options.manualRetry
+      ? [PlatformConfirmationStatus.FAILED]
+      : options.recoverProcessing
+        ? [PlatformConfirmationStatus.PROCESSING]
+        : [PlatformConfirmationStatus.PENDING]
+    const claimed = await this.store.claimPlatformConfirmation(order, allowed)
+    if (!claimed) return this.store.get(order.tenantId, order.id)
     try {
-      await this.confirmer.confirmPaid(pending)
-      const completed = await this.store.transition(pending, PaymentOrderState.COMPLETED)
-      this.emitStatus(completed)
-      return completed
+      await this.confirmer.confirmPaid(claimed, { queryOnly: options.recoverProcessing })
     } catch (error) {
-      const status =
-        error instanceof PlatformFundsExceptionError
-          ? PaymentOrderState.FUND_EXCEPTION
-          : PaymentOrderState.PLATFORM_CONFIRM_PENDING
-      const failed = await this.store.transition(pending, status, {
-        errorMessage: this.errorMessage(error),
-      })
-      this.emitStatus(failed, this.errorMessage(error))
+      const message = this.errorMessage(error)
+      const fundsException = error instanceof PlatformFundsExceptionError
+      const failed = await this.store.failPlatformConfirmation(claimed, message, fundsException)
+      if (fundsException) this.emitStatus(failed, message)
+      if (
+        failed.merchantId &&
+        !fundsException &&
+        !options.manualRetry &&
+        !options.recoverProcessing &&
+        !options.suppressFailureNotification
+      ) {
+        this.eventEmitter?.emit(EVENT_KEYS.TELEGRAM_PLATFORM_CONFIRMATION_FAILED, {
+          tenantId: failed.tenantId,
+          merchantId: failed.merchantId,
+          paymentOrderId: failed.id,
+          sourceBusinessNo: failed.sourceBusinessNo,
+          errorMessage: message,
+        })
+      }
       return failed
     }
+    return this.store.completePlatformConfirmation(claimed)
   }
 
   private async applyPaymentResult(order: ExecutablePaymentOrder, result: PaymentExecutionResult) {

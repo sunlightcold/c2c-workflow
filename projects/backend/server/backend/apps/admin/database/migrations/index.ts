@@ -30,6 +30,11 @@ import { C2cTelegramIdentities1789018000000 } from './c2c-telegram-identities.mi
 import { C2cTelegramCapabilityCleanup1789019000000 } from './c2c-telegram-capability-cleanup.migration'
 import { C2cPaymentReconciliationPolicy1789020000000 } from './c2c-payment-reconciliation-policy.migration'
 import { C2cPaymentPlanAutomation1789021000000 } from './c2c-payment-plan-automation.migration'
+import { C2cAutomaticPaymentFailureNotices1789022000000 } from './c2c-automatic-payment-failure-notices.migration'
+import { C2cPlatformConfirmationControl1789023000000 } from './c2c-platform-confirmation-control.migration'
+import { C2cFullProviderParity1789024000000 } from './c2c-full-provider-parity.migration'
+import { C2cPaidNotificationCapability1789025000000 } from './c2c-paid-notification-capability.migration'
+import { C2cPaymentPlatformStateSeparation1789026000000 } from './c2c-payment-platform-state-separation.migration'
 
 export type AdminMigrationConstructor = new () => MigrationInterface
 
@@ -65,4 +70,9 @@ export const adminMigrations: AdminMigrationConstructor[] = [
   C2cTelegramCapabilityCleanup1789019000000,
   C2cPaymentReconciliationPolicy1789020000000,
   C2cPaymentPlanAutomation1789021000000,
+  C2cAutomaticPaymentFailureNotices1789022000000,
+  C2cPlatformConfirmationControl1789023000000,
+  C2cFullProviderParity1789024000000,
+  C2cPaidNotificationCapability1789025000000,
+  C2cPaymentPlatformStateSeparation1789026000000,
 ]

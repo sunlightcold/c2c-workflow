@@ -28,6 +28,9 @@ import { migrateC2cPaymentBatchPolicies } from '@/apps/admin/database/migrations
 import { migratePaymentAccountCredentials } from '@/apps/admin/database/migrations/payment-account-credentials.migration'
 import { migrateC2cAutomaticPayments } from '@/apps/admin/database/migrations/c2c-automatic-payments.migration'
 import { migrateC2cPaymentPlanAutomation } from '@/apps/admin/database/migrations/c2c-payment-plan-automation.migration'
+import { migrateC2cPlatformConfirmationControl } from '@/apps/admin/database/migrations/c2c-platform-confirmation-control.migration'
+import { migrateC2cFullProviderParity } from '@/apps/admin/database/migrations/c2c-full-provider-parity.migration'
+import { migrateC2cPaymentPlatformStateSeparation } from '@/apps/admin/database/migrations/c2c-payment-platform-state-separation.migration'
 import { PaymentNotSubmittedError } from '@/apps/admin/modules/payment/payment-execution-coordinator'
 import { TypeOrmPaymentPreflightStore } from '@/apps/admin/modules/payment/typeorm-payment-preflight.store'
 import developmentConfig from '@/config/development'
@@ -99,6 +102,9 @@ describe('Payment preflight store database integration', () => {
       await migrateC2cAutomaticPayments(manager)
       await migrateC2cPaymentBatchPolicies(manager)
       await migrateC2cPaymentPlanAutomation({ query: manager.query.bind(manager) })
+      await migrateC2cPlatformConfirmationControl({ query: manager.query.bind(manager) })
+      await migrateC2cFullProviderParity(manager)
+      await migrateC2cPaymentPlatformStateSeparation({ query: manager.query.bind(manager) })
       await manager.query(
         `INSERT INTO merchant (id, "tenantId", code, name, platform, "apiBaseUrl")
          VALUES ($1, $2, 'preflight-merchant', 'Preflight Merchant', 'BINANCE',

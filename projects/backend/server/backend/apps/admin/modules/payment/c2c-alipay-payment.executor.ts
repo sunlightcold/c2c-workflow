@@ -1,6 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common'
 import { PaymentAdapterCode } from '@admin/database'
-import { C2cPaymentPreflightVerifier } from './c2c-payment-preflight-verifier'
+import {
+  C2cPaymentPreflightVerifier,
+  PAYMENT_QUERY_CONTEXT_STORE,
+  type PaymentQueryContextStore,
+} from './c2c-payment-preflight-verifier'
 import type { PaymentExecutionResult } from './payment-adapter.types'
 import {
   PAYMENT_CHANNEL_CAPABILITY_FACTORY,
@@ -16,6 +20,8 @@ import {
 export class C2cAlipayPaymentExecutor implements PaymentExecutor {
   constructor(
     private readonly preflight: C2cPaymentPreflightVerifier,
+    @Inject(PAYMENT_QUERY_CONTEXT_STORE)
+    private readonly queryContexts: PaymentQueryContextStore,
     @Inject(PAYMENT_CHANNEL_CAPABILITY_FACTORY)
     private readonly channels: PaymentChannelCapabilityFactory,
   ) {}
@@ -40,11 +46,18 @@ export class C2cAlipayPaymentExecutor implements PaymentExecutor {
   }
 
   async query(order: ExecutablePaymentOrder): Promise<PaymentExecutionResult> {
-    const context = await this.preflight.loadContext(order.tenantId, order.id)
+    const context = await this.queryContexts.loadQueryContext(order.tenantId, order.id)
     const channel = await this.channels.create(
-      PaymentAdapterCode.ALIPAY_MERCHANT_TRANSFER,
-      context.account.credentialRef,
+      context.adapterCode,
+      context.paymentAccountCredentialRef,
     )
+    if (context.executionMode === 'BATCH') {
+      if (context.adapterCode !== PaymentAdapterCode.ALIPAY_BATCH || !context.batchNo)
+        throw new Error('批次支付订单查单上下文不完整')
+      return channel.batch.queryOrder(context.batchNo, context.order.paymentNo)
+    }
+    if (context.adapterCode !== PaymentAdapterCode.ALIPAY_MERCHANT_TRANSFER)
+      throw new Error('即时支付订单查单通道不匹配')
     return channel.order.query(context.order.paymentNo)
   }
 

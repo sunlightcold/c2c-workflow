@@ -1,7 +1,11 @@
 import { Test } from '@nestjs/testing'
 import { BinanceC2cClient } from './binance-c2c.client'
 import { OkxWebPrivateClient } from './okx-web-private.client'
-import { C2C_HTTP_TRANSPORT, C2cBuyOrderStatus } from './c2c-platform.types'
+import {
+  C2C_HTTP_TRANSPORT,
+  C2cBuyOrderStatus,
+  C2cCredentialRejectedError,
+} from './c2c-platform.types'
 import { generateKeyPairSync, verify } from 'node:crypto'
 
 describe('C2C buy-order clients', () => {
@@ -31,7 +35,7 @@ describe('C2C buy-order clients', () => {
       checkAntiFraud: false,
       getOrderDetail: true,
       listOrders: true,
-      listReportOrders: false,
+      listReportOrders: true,
       markOrderAsPaid: true,
       releaseCrypto: false,
       sellOrders: false,
@@ -43,7 +47,7 @@ describe('C2C buy-order clients', () => {
       checkAntiFraud: true,
       getOrderDetail: true,
       listOrders: true,
-      listReportOrders: false,
+      listReportOrders: true,
       markOrderAsPaid: true,
       releaseCrypto: false,
       sellOrders: false,
@@ -76,6 +80,86 @@ describe('C2C buy-order clients', () => {
     ).toEqual({
       paymentProof: 'REQUIRED',
     })
+  })
+
+  it('reads OKX merchant reports from the completed upstream order list', async () => {
+    http.request.mockResolvedValueOnce({
+      code: 0,
+      data: {
+        items: [
+          {
+            id: 260903152326945,
+            side: 'buy',
+            orderStatus: 'completed',
+            orderProcessStatus: 4,
+            baseAmount: '214.00',
+            baseCurrency: 'usdt',
+            quoteAmount: '1420.96',
+            quoteCurrency: 'cny',
+            createdDate: 1_788_420_207_000,
+          },
+          {
+            id: 260903152326946,
+            side: 'buy',
+            orderStatus: 'cancelled',
+            orderProcessStatus: 3,
+            baseAmount: '10.00',
+            baseCurrency: 'usdt',
+            quoteAmount: '66.40',
+            quoteCurrency: 'cny',
+            createdDate: 1_788_420_208_000,
+          },
+        ],
+        pageInfo: { pageCount: 2, pageIndex: 1, pageSize: 2, totalItemCount: 3 },
+      },
+    })
+
+    await expect(
+      okx.listReportOrders(
+        {
+          cookie: 'session',
+          authorization: 'token',
+          timeoutMs: 5000,
+          baseUrl: 'https://www.okx.com',
+        },
+        {
+          startTimestamp: 1,
+          endTimestamp: 2,
+          page: 1,
+          rows: 2,
+          tradeType: 'BUY',
+        },
+      ),
+    ).resolves.toEqual({
+      items: [
+        expect.objectContaining({
+          platformOrderId: '260903152326945',
+          status: C2cBuyOrderStatus.COMPLETED,
+          assetAmount: '214.00',
+          fiatAmount: '1420.96',
+        }),
+        expect.objectContaining({
+          platformOrderId: '260903152326946',
+          status: C2cBuyOrderStatus.CANCELLED,
+        }),
+      ],
+      total: 3,
+      hasMore: true,
+    })
+    expect(http.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'GET',
+        params: expect.objectContaining({
+          orderType: 'completed',
+          isBuy: 'true',
+          startTime: '1',
+          endTime: '2',
+          pageIndex: '1',
+          pageSize: '2',
+        }),
+        url: 'https://www.okx.com/v4/c2c/order/getOrderList',
+      }),
+    )
   })
 
   it('signs the Binance list request against the configured API gateway and permits BUY orders only', async () => {
@@ -350,6 +434,47 @@ describe('C2C buy-order clients', () => {
     ).rejects.toThrow('人工复核')
     expect(http.request).toHaveBeenCalledTimes(1)
   })
+
+  it.each([401, 403])('classifies OKX HTTP %s as an expired Web credential', async (status) => {
+    http.request.mockRejectedValue({ response: { status, data: { msg: 'Forbidden' } } })
+
+    await expect(
+      okx.listOrders(
+        { cookie: 'session', authorization: 'token', timeoutMs: 5000 },
+        {
+          tradeType: 'BUY',
+          asset: 'USDT',
+          startDate: 1,
+          endDate: 2,
+          page: 1,
+          rows: 20,
+          orderStatusList: [1],
+        },
+      ),
+    ).rejects.toBeInstanceOf(C2cCredentialRejectedError)
+  })
+
+  it.each(['800', '805'])(
+    'classifies OKX response code %s as an expired Web credential',
+    async (code) => {
+      http.request.mockResolvedValue({ code, msg: 'Token expired' })
+
+      await expect(
+        okx.listOrders(
+          { cookie: 'session', authorization: 'token', timeoutMs: 5000 },
+          {
+            tradeType: 'BUY',
+            asset: 'USDT',
+            startDate: 1,
+            endDate: 2,
+            page: 1,
+            rows: 20,
+            orderStatusList: [1],
+          },
+        ),
+      ).rejects.toBeInstanceOf(C2cCredentialRejectedError)
+    },
+  )
 
   it('requires manual review when OKX anti-fraud requests a popup', async () => {
     http.request.mockResolvedValue({ code: 0, data: { shouldShowPopup: true } })

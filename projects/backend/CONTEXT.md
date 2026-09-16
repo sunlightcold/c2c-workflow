@@ -68,6 +68,14 @@ _Avoid_: Merchant Profile, Organization, Platform Account
 
 由 C2C 买币订单、机器人手工支付或退款申请产生的一笔独立付款业务。Payment Order 在提交前锁定本次使用的支付账号与账号通道，后续结果始终归属于同一笔付款业务。
 
+## Payment Result
+
+Payment Order 对资金通道执行结果的表达。资金通道返回成功后结果保持成功，不因币安或欧易尚未确认付款而退回处理中或改写为平台确认状态。
+
+## Platform Payment Confirmation
+
+C2C 资金支付成功后，向币安或欧易标记已付款的独立后置流程。它拥有自己的待处理、处理中、失败和成功状态；失败时可以补偿重试，但不得重新提交资金请求，也不得改写 Payment Result。
+
 ## Locked Payment Combination
 
 Payment Order 已选定的支付账号与该账号下支付通道的组合。组合在资金请求提交后不可更换；即使相关配置随后停用，系统仍须使用原组合查询和收口既有请求。

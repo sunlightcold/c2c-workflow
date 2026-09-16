@@ -39,6 +39,11 @@ describe('migration data source', () => {
         'C2cTelegramCapabilityCleanup1789019000000',
         'C2cPaymentReconciliationPolicy1789020000000',
         'C2cPaymentPlanAutomation1789021000000',
+        'C2cAutomaticPaymentFailureNotices1789022000000',
+        'C2cPlatformConfirmationControl1789023000000',
+        'C2cFullProviderParity1789024000000',
+        'C2cPaidNotificationCapability1789025000000',
+        'C2cPaymentPlatformStateSeparation1789026000000',
       ])
     } finally {
       if (originalNodeEnv === undefined) delete process.env.NODE_ENV

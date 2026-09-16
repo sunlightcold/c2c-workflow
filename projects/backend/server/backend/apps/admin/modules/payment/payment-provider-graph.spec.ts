@@ -12,9 +12,11 @@ import { C2cAlipayPaymentExecutor } from './c2c-alipay-payment.executor'
 import {
   C2cPaymentPreflightVerifier,
   PAYMENT_PREFLIGHT_STORE,
+  PAYMENT_QUERY_CONTEXT_STORE,
 } from './c2c-payment-preflight-verifier'
 import { C2cPlatformPaymentConfirmer } from './c2c-platform-payment.confirmer'
 import { C2cPaymentProofService } from './c2c-payment-proof.service'
+import { C2cPaidConfirmationThrottleService } from './c2c-paid-confirmation-throttle.service'
 import {
   PAYMENT_EXECUTOR,
   PAYMENT_ORDER_STORE,
@@ -52,9 +54,11 @@ describe('Payment provider graph', () => {
         { provide: PAYMENT_BATCH_PREFLIGHT, useExisting: C2cPaymentPreflightVerifier },
         { provide: PLATFORM_PAYMENT_CONFIRMER, useExisting: C2cPlatformPaymentConfirmer },
         { provide: PAYMENT_PREFLIGHT_STORE, useValue: {} },
+        { provide: PAYMENT_QUERY_CONTEXT_STORE, useValue: {} },
         { provide: C2C_SECRET_RESOLVER, useValue: {} },
         { provide: PAYMENT_CHANNEL_CAPABILITY_FACTORY, useValue: {} },
         { provide: C2cPaymentProofService, useValue: {} },
+        { provide: C2cPaidConfirmationThrottleService, useValue: {} },
         { provide: C2cPlatformClient, useValue: {} },
       ],
     }).compile()

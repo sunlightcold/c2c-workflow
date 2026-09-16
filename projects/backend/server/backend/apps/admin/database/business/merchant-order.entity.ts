@@ -7,6 +7,21 @@ export enum MerchantOrderAppealStatus {
   SUBMITTED = 'SUBMITTED',
 }
 
+export enum MerchantOrderAutoAppealStatus {
+  RETRY = 'RETRY',
+  SUBMITTED = 'SUBMITTED',
+  SKIPPED = 'SKIPPED',
+  MANUAL_REQUIRED = 'MANUAL_REQUIRED',
+}
+
+export enum MerchantOrderCompletionReplyStatus {
+  PENDING = 'PENDING',
+  SENDING = 'SENDING',
+  SENT = 'SENT',
+  FAILED = 'FAILED',
+  SKIPPED = 'SKIPPED',
+}
+
 @Entity('merchant_order')
 @Check('ck_merchant_order_buy_only_v1', `"side" = 'BUY'`)
 @Index('uq_merchant_order_platform_order', ['merchantId', 'platform', 'platformOrderId'], {
@@ -40,6 +55,7 @@ export class MerchantOrderEntity extends CommonUuidEntity {
   @Column({ type: 'varchar', length: 255, nullable: true }) payeeIdentity: string | null
   @Column({ type: 'varchar', length: 128, nullable: true }) payeeName: string | null
   @Column({ type: 'varchar', length: 128, nullable: true }) identityName: string | null
+  @Column({ type: 'varchar', length: 32, nullable: true }) kycStatus: string | null
   @Column({ type: 'boolean', default: false }) identityMatched: boolean
   @Column({ type: 'boolean', default: false }) payable: boolean
   @Column({ type: 'timestamptz', nullable: true }) paymentDeadline: Date | null
@@ -60,6 +76,19 @@ export class MerchantOrderEntity extends CommonUuidEntity {
   @Column({ type: 'timestamptz', nullable: true }) appealClaimedAt: Date | null
   @Column({ type: 'timestamptz', nullable: true }) appealSubmittedAt: Date | null
   @Column({ type: 'varchar', length: 512, nullable: true }) appealLastError: string | null
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  autoAppealStatus: MerchantOrderAutoAppealStatus | null
+  @Column({ type: 'integer', default: 0 }) autoAppealAttempts: number
+  @Column({ type: 'timestamptz', nullable: true }) autoAppealNextAttemptAt: Date | null
+  @Column({ type: 'timestamptz', nullable: true }) autoAppealProcessedAt: Date | null
+  @Column({ type: 'varchar', length: 512, nullable: true }) autoAppealLastError: string | null
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  completionReplyStatus: MerchantOrderCompletionReplyStatus | null
+  @Column({ type: 'timestamptz', nullable: true }) completionReplyClaimedAt: Date | null
+  @Column({ type: 'timestamptz', nullable: true }) completionReplySentAt: Date | null
+  @Column({ type: 'timestamptz', nullable: true }) completionReplyNextRetryAt: Date | null
+  @Column({ type: 'integer', default: 0 }) completionReplyAttempts: number
+  @Column({ type: 'varchar', length: 512, nullable: true }) completionReplyLastError: string | null
   @VersionColumn() version: number
 }
 

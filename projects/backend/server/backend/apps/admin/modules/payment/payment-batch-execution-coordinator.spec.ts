@@ -11,6 +11,7 @@ describe('PaymentBatchExecutionCoordinator', () => {
   const batch: ExecutablePaymentBatch = {
     id: 'batch-1',
     tenantId: 'tenant-1',
+    merchantId: 'merchant-1',
     batchNo: 'BAT-1',
     status: PaymentBatchStatus.READY,
     credentialRef: 'secret://alipay/account-1',
@@ -196,6 +197,49 @@ describe('PaymentBatchExecutionCoordinator', () => {
       expect.objectContaining({ status: PaymentBatchStatus.PROCESSING }),
       '支付宝批次包含未知支付明细',
       expect.objectContaining({ reconciliationAttempts: 1 }),
+    )
+  })
+
+  it('suppresses child failure alerts and emits one aggregate platform-confirmation result', async () => {
+    store.prepare.mockResolvedValue({ ...batch, status: PaymentBatchStatus.PROCESSING })
+    executor.query.mockResolvedValue({ status: PaymentExecutionStatus.SUCCESS, raw: {} })
+    store.applyQuery.mockResolvedValue({
+      batch: { ...batch, status: PaymentBatchStatus.SUCCESS },
+      paymentsToConfirm: [
+        {
+          id: 'order-1',
+          tenantId: 'tenant-1',
+          merchantId: 'merchant-1',
+          sourceBusinessNo: 'C2C-1',
+          amount: '10.00',
+          currency: 'CNY',
+          status: 'SUCCESS',
+        },
+      ],
+    })
+    payments.confirmPlatform.mockResolvedValue({
+      id: 'order-1',
+      tenantId: 'tenant-1',
+      merchantId: 'merchant-1',
+      sourceBusinessNo: 'C2C-1',
+      amount: '10.00',
+      currency: 'CNY',
+      status: 'PLATFORM_CONFIRM_PENDING',
+      lastError: '平台尚未确认已付款',
+    })
+
+    await coordinator.reconcile('tenant-1', 'batch-1')
+
+    expect(payments.confirmPlatform).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'order-1' }),
+      { suppressFailureNotification: true },
+    )
+    expect(eventEmitter.emit).toHaveBeenCalledWith(
+      'telegram.batch-platform-confirmation.result',
+      expect.objectContaining({
+        batchNo: 'BAT-1',
+        items: [expect.objectContaining({ sourceBusinessNo: 'C2C-1', success: false })],
+      }),
     )
   })
 })

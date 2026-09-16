@@ -8,9 +8,9 @@ import {
 describe('TelegramNotificationService', () => {
   const groups = { find: jest.fn() }
   const bots = { findOne: jest.fn() }
-  const merchantOrders = { find: jest.fn() }
+  const merchantOrders = { find: jest.fn(), findOne: jest.fn() }
   const paymentOrders = { findOne: jest.fn() }
-  const paymentBatches = { findOne: jest.fn() }
+  const paymentBatches = { findOne: jest.fn(), update: jest.fn() }
   const telegram = { sendMessage: jest.fn() } as unknown as TelegramApiClient
   const service = new TelegramNotificationService(
     groups as never,
@@ -23,6 +23,7 @@ describe('TelegramNotificationService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks()
+    ;(telegram.sendMessage as jest.Mock).mockResolvedValue({ messageId: 1 })
     groups.find.mockResolvedValue([])
     merchantOrders.find.mockResolvedValue([
       {
@@ -40,6 +41,8 @@ describe('TelegramNotificationService', () => {
     ])
     paymentOrders.findOne.mockResolvedValue(null)
     paymentBatches.findOne.mockResolvedValue(null)
+    paymentBatches.update.mockResolvedValue({ affected: 1 })
+    merchantOrders.findOne.mockResolvedValue(null)
     bots.findOne.mockResolvedValue({
       id: 'bot-1',
       tenantId: 'tenant-a',
@@ -112,7 +115,7 @@ describe('TelegramNotificationService', () => {
                 callback_data: 'c2c:confirm:00000000-0000-4000-8000-000000000001',
               },
               {
-                text: '作废订单',
+                text: '取消订单',
                 callback_data: 'c2c:cancel:00000000-0000-4000-8000-000000000001',
               },
             ],
@@ -175,7 +178,7 @@ describe('TelegramNotificationService', () => {
       tenantId: 'tenant-a',
       merchantId: 'merchant-a',
       paymentOrderId: '00000000-0000-4000-8000-000000000001',
-      status: 'COMPLETED',
+      status: 'SUCCESS',
     })
 
     expect(telegram.sendMessage).toHaveBeenCalledWith(
@@ -200,6 +203,7 @@ describe('TelegramNotificationService', () => {
         chatId: 'chat-a',
         bindingState: TelegramGroupBindingState.ACTIVE,
         notificationsEnabled: true,
+        capabilities: ['C2C_PAID_NOTIFICATION'],
         notificationEvents: [TelegramNotificationEvent.BATCH_STATUS],
       },
     ])
@@ -221,13 +225,287 @@ describe('TelegramNotificationService', () => {
     )
   })
 
+  it('keeps an all-success mark-paid batch silent when the notification capability is disabled', async () => {
+    groups.find.mockResolvedValue([
+      {
+        tenantId: 'tenant-a',
+        merchantId: 'merchant-a',
+        botId: 'bot-1',
+        chatId: 'chat-a',
+        bindingState: TelegramGroupBindingState.ACTIVE,
+        notificationsEnabled: true,
+        capabilities: ['ORDER_QUERY'],
+        notificationEvents: [TelegramNotificationEvent.BATCH_STATUS],
+      },
+    ])
+
+    await service.onBatchPlatformConfirmationResult({
+      tenantId: 'tenant-a',
+      merchantId: 'merchant-a',
+      batchId: 'batch-1',
+      batchNo: 'BAT-1',
+      items: [
+        {
+          paymentOrderId: 'payment-1',
+          sourceBusinessNo: 'C2C-1',
+          amount: '10.00',
+          currency: 'CNY',
+          success: true,
+          errorMessage: null,
+        },
+      ],
+    })
+
+    expect(telegram.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('still sends failure details and retry actions when the notification capability is disabled', async () => {
+    groups.find.mockResolvedValue([
+      {
+        tenantId: 'tenant-a',
+        merchantId: 'merchant-a',
+        botId: 'bot-1',
+        chatId: 'chat-a',
+        bindingState: TelegramGroupBindingState.ACTIVE,
+        notificationsEnabled: true,
+        capabilities: ['ORDER_QUERY'],
+        notificationEvents: [],
+      },
+    ])
+    merchantOrders.find.mockResolvedValue([
+      {
+        id: '00000000-0000-4000-8000-000000000020',
+        platformOrderId: 'C2C-2',
+      },
+    ])
+
+    await service.onBatchPlatformConfirmationResult({
+      tenantId: 'tenant-a',
+      merchantId: 'merchant-a',
+      batchId: 'batch-1',
+      batchNo: 'BAT-1',
+      items: [
+        {
+          paymentOrderId: 'payment-1',
+          sourceBusinessNo: 'C2C-1',
+          amount: '10.00',
+          currency: 'CNY',
+          success: true,
+          errorMessage: null,
+        },
+        {
+          paymentOrderId: 'payment-2',
+          sourceBusinessNo: 'C2C-2',
+          amount: '20.00',
+          currency: 'CNY',
+          success: false,
+          errorMessage: '平台状态未确认',
+        },
+      ],
+    })
+
+    expect(telegram.sendMessage).toHaveBeenCalledTimes(1)
+    expect(telegram.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining('<b>⚠️ C2C 标记付款失败</b>'),
+        replyMarkup: {
+          inline_keyboard: [
+            [
+              {
+                text: '重试 C2C-2',
+                callback_data: 'c2c:confirm-paid:00000000-0000-4000-8000-000000000020',
+              },
+            ],
+          ],
+        },
+      }),
+    )
+  })
+
+  it('sends a dedicated mark-paid failure notice with a retry button', async () => {
+    groups.find.mockResolvedValue([
+      {
+        tenantId: 'tenant-a',
+        merchantId: 'merchant-a',
+        botId: 'bot-1',
+        chatId: 'chat-a',
+        bindingState: TelegramGroupBindingState.ACTIVE,
+        notificationsEnabled: true,
+        notificationEvents: [TelegramNotificationEvent.EXCEPTION],
+      },
+    ])
+    paymentOrders.findOne.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000010',
+      paymentNo: 'PAY-1',
+      sourceBusinessNo: 'ORD-1',
+      amount: '100.00',
+      currency: 'CNY',
+    })
+    merchantOrders.findOne.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000020',
+      platformOrderId: 'ORD-1',
+      identityName: '张三',
+      payeeIdentity: 'account@example.com',
+      paymentMethod: 'ALIPAY',
+    })
+
+    await service.onPlatformConfirmationFailed({
+      tenantId: 'tenant-a',
+      merchantId: 'merchant-a',
+      paymentOrderId: '00000000-0000-4000-8000-000000000010',
+      errorMessage: '平台尚未确认已付款',
+    })
+
+    expect(telegram.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining('<b>⚠️ C2C 确认付款失败</b>'),
+        replyMarkup: {
+          inline_keyboard: [
+            [
+              {
+                text: '重试',
+                callback_data: 'c2c:confirm-paid:00000000-0000-4000-8000-000000000020',
+              },
+            ],
+          ],
+        },
+      }),
+    )
+  })
+
+  it('sends one aggregate batch mark-paid result with retry buttons only for failures', async () => {
+    groups.find.mockResolvedValue([
+      {
+        tenantId: 'tenant-a',
+        merchantId: 'merchant-a',
+        botId: 'bot-1',
+        chatId: 'chat-a',
+        bindingState: TelegramGroupBindingState.ACTIVE,
+        notificationsEnabled: true,
+        capabilities: ['C2C_PAID_NOTIFICATION'],
+        notificationEvents: [],
+      },
+    ])
+    merchantOrders.find.mockResolvedValue([
+      {
+        id: '00000000-0000-4000-8000-000000000020',
+        platformOrderId: 'C2C-2',
+      },
+    ])
+
+    await service.onBatchPlatformConfirmationResult({
+      tenantId: 'tenant-a',
+      merchantId: 'merchant-a',
+      batchId: 'batch-1',
+      batchNo: 'BAT-1',
+      items: [
+        {
+          paymentOrderId: 'payment-1',
+          sourceBusinessNo: 'C2C-1',
+          amount: '10.00',
+          currency: 'CNY',
+          success: true,
+          errorMessage: null,
+        },
+        {
+          paymentOrderId: 'payment-2',
+          sourceBusinessNo: 'C2C-2',
+          amount: '20.00',
+          currency: 'CNY',
+          success: false,
+          errorMessage: '平台状态未确认',
+        },
+      ],
+    })
+
+    expect(telegram.sendMessage).toHaveBeenCalledTimes(1)
+    expect(telegram.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining('<b>🔔 C2C 标记付款结果</b>'),
+        replyMarkup: {
+          inline_keyboard: [
+            [
+              {
+                text: '重试 C2C-2',
+                callback_data: 'c2c:confirm-paid:00000000-0000-4000-8000-000000000020',
+              },
+            ],
+          ],
+        },
+      }),
+    )
+  })
+
+  it('stores automatic submission message ids and replies with the final batch result', async () => {
+    groups.find.mockResolvedValue([
+      {
+        id: 'group-a',
+        tenantId: 'tenant-a',
+        merchantId: 'merchant-a',
+        botId: 'bot-1',
+        chatId: 'chat-a',
+        bindingState: TelegramGroupBindingState.ACTIVE,
+        notificationsEnabled: true,
+        notificationEvents: [TelegramNotificationEvent.BATCH_STATUS],
+      },
+    ])
+    ;(telegram.sendMessage as jest.Mock).mockResolvedValueOnce({ messageId: 77 })
+
+    await service.onBatchSubmitted({
+      tenantId: 'tenant-a',
+      merchantId: 'merchant-a',
+      totalCount: 2,
+      totalAmount: '30.00',
+      groups: 1,
+      submitted: 1,
+      failed: 0,
+      batchIds: ['batch-1'],
+    })
+
+    expect(paymentBatches.update).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: 'tenant-a', merchantId: 'merchant-a' }),
+      { telegramSubmissionMessages: [{ groupId: 'group-a', messageId: 77 }] },
+    )
+
+    paymentBatches.findOne.mockResolvedValue({
+      id: 'batch-1',
+      batchNo: 'BAT-1',
+      tenantId: 'tenant-a',
+      merchantId: 'merchant-a',
+      triggerSource: 'AUTOMATIC',
+      currency: 'CNY',
+      status: 'SUCCESS',
+      totalCount: 2,
+      totalAmount: '30.00',
+      successCount: 2,
+      failedCount: 0,
+      telegramSubmissionMessages: [{ groupId: 'group-a', messageId: 77 }],
+    })
+    ;(telegram.sendMessage as jest.Mock).mockResolvedValueOnce({ messageId: 78 })
+
+    await service.notifyBatchStatus({
+      tenantId: 'tenant-a',
+      merchantId: 'merchant-a',
+      batchId: 'batch-1',
+      batchNo: 'BAT-1',
+      status: 'SUCCESS',
+      totalCount: 2,
+      successCount: 2,
+      failedCount: 0,
+    })
+
+    expect(telegram.sendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ chatId: 'chat-a', replyToMessageId: 77 }),
+    )
+  })
+
   it.each([
     'CREATED',
     'SUBMITTING',
     'PROCESSING',
-    'SUCCESS',
     'UNKNOWN',
     'PLATFORM_CONFIRM_PENDING',
+    'COMPLETED',
   ])('does not notify payment intermediate status %s', async (status) => {
     groups.find.mockResolvedValue([
       {
@@ -335,7 +613,7 @@ describe('TelegramNotificationService', () => {
       tenantId: 'tenant-a',
       merchantId: 'merchant-a',
       paymentOrderId: '00000000-0000-4000-8000-000000000001',
-      status: 'COMPLETED',
+      status: 'SUCCESS',
     })
 
     expect(batchItems.findOne).toHaveBeenCalled()

@@ -19,6 +19,7 @@ import {
   PaymentOrderStatusHistoryEntity,
   PaymentPlatformEntity,
   PaymentSourceType,
+  PlatformConfirmationStatus,
 } from '@admin/database'
 import { ConflictException, Injectable } from '@nestjs/common'
 import { DataSource, EntityManager, In, Not } from 'typeorm'
@@ -398,26 +399,30 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
         order.status = PaymentOrderStatus.SUCCESS
         order.upstreamId = detail.alipayOrderNo ?? detail.detailId
         order.lastError = null
+        order.platformConfirmStatus =
+          order.sourceType === PaymentSourceType.C2C_BUY
+            ? PlatformConfirmationStatus.PENDING
+            : PlatformConfirmationStatus.NOT_REQUIRED
         await manager.save(order)
         await this.paymentHistory(manager, order, previous, order.status)
-        if (order.sourceType === PaymentSourceType.BOT_MANUAL) {
-          const paid = order.status
-          order.status = PaymentOrderStatus.COMPLETED
-          await manager.save(order)
-          await this.paymentHistory(manager, order, paid, order.status)
-        }
       }
       if (
         order.sourceType === PaymentSourceType.C2C_BUY &&
-        [PaymentOrderStatus.SUCCESS, PaymentOrderStatus.PLATFORM_CONFIRM_PENDING].includes(
-          order.status,
-        )
+        order.status === PaymentOrderStatus.SUCCESS &&
+        order.platformConfirmStatus !== PlatformConfirmationStatus.SUCCESS
       ) {
         paymentsToConfirm.push({
           id: order.id,
           tenantId: order.tenantId,
+          merchantId: order.merchantId,
+          paymentNo: order.paymentNo,
+          sourceBusinessNo: order.sourceBusinessNo,
+          amount: order.amount,
+          currency: order.currency,
+          sourceType: order.sourceType,
           status: order.status,
           upstreamId: order.upstreamId,
+          platformConfirmStatus: order.platformConfirmStatus,
         })
       }
     } else if (detail.status === 'FAIL') {

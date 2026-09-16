@@ -18,7 +18,7 @@ describe('C2cPlatformPaymentConfirmer', () => {
   const executable = {
     id: 'payment-1',
     tenantId: 'tenant-1',
-    status: PaymentOrderStatus.PLATFORM_CONFIRM_PENDING,
+    status: PaymentOrderStatus.SUCCESS,
     upstreamId: 'ALIPAY-1',
   }
   const pendingPlatformOrder = {
@@ -54,7 +54,7 @@ describe('C2cPlatformPaymentConfirmer', () => {
       paymentPlanId: 'plan-1',
       paymentAccountId: 'account-1',
       paymentAccountChannelId: 'account-channel-1',
-      status: PaymentOrderStatus.PLATFORM_CONFIRM_PENDING,
+      status: PaymentOrderStatus.SUCCESS,
     },
     merchant: {
       id: 'merchant-1',
@@ -130,6 +130,7 @@ describe('C2cPlatformPaymentConfirmer', () => {
     getMarkPaidPolicy: jest.fn(),
   }
   const paymentProofs = { load: jest.fn() }
+  const throttle = { execute: jest.fn((_merchant, task) => task()) }
   const platformChat = { sendOrderPaid: jest.fn(), sendOrderCompleted: jest.fn() }
   let confirmer: C2cPlatformPaymentConfirmer
 
@@ -156,6 +157,7 @@ describe('C2cPlatformPaymentConfirmer', () => {
       credentials as never,
       platformClient as never,
       paymentProofs as never,
+      throttle as never,
       platformChat as never,
     )
   })
@@ -204,7 +206,7 @@ describe('C2cPlatformPaymentConfirmer', () => {
     )
   })
 
-  it('marks an OKX order paid with its receipt account id after anti-fraud clearance', async () => {
+  it('marks an OKX order as paid without a receipt when its policy skips proof upload', async () => {
     const okxContext = {
       ...context,
       merchant: { ...context.merchant, platform: MerchantPlatform.OKX },
@@ -231,14 +233,17 @@ describe('C2cPlatformPaymentConfirmer', () => {
     expect(paymentProofs.load).not.toHaveBeenCalled()
     expect(platformClient.markOrderAsPaid).toHaveBeenCalledWith(
       MerchantPlatform.OKX,
-      expect.anything(),
+      expect.objectContaining({ cookie: 'cookie' }),
       'platform-order-1',
       '901',
-      { fiat: 'CNY', skipPaymentProofUpload: true },
+      {
+        fiat: 'CNY',
+        skipPaymentProofUpload: true,
+      },
     )
   })
 
-  it('loads and uploads the Alipay receipt when OKX proof skipping is disabled', async () => {
+  it('loads and uploads an OKX receipt when its policy requires proof', async () => {
     const okxContext = {
       ...context,
       merchant: { ...context.merchant, platform: MerchantPlatform.OKX },
@@ -284,7 +289,7 @@ describe('C2cPlatformPaymentConfirmer', () => {
     })
     expect(platformClient.markOrderAsPaid).toHaveBeenCalledWith(
       MerchantPlatform.OKX,
-      expect.anything(),
+      expect.objectContaining({ cookie: 'cookie' }),
       'platform-order-1',
       '901',
       {
@@ -295,7 +300,7 @@ describe('C2cPlatformPaymentConfirmer', () => {
     )
   })
 
-  it('does not mark the OKX order paid when its required receipt is unavailable', async () => {
+  it('keeps an OKX order pending when its required receipt is not ready', async () => {
     const okxContext = {
       ...context,
       merchant: { ...context.merchant, platform: MerchantPlatform.OKX },
@@ -313,8 +318,20 @@ describe('C2cPlatformPaymentConfirmer', () => {
     paymentProofs.load.mockRejectedValue(new Error('付款回单暂不可用：回单生成中'))
     platformClient.getMarkPaidPolicy.mockReturnValue({ paymentProof: 'REQUIRED' })
 
-    await expect(confirmer.confirmPaid(executable)).rejects.toThrow('付款回单暂不可用')
+    await expect(confirmer.confirmPaid(executable)).rejects.toThrow('付款回单暂不可用：回单生成中')
 
+    expect(paymentProofs.load).toHaveBeenCalledTimes(1)
+    expect(platformClient.markOrderAsPaid).not.toHaveBeenCalled()
+  })
+
+  it('rejects the legacy mixed payment state as a platform confirmation input', async () => {
+    store.load.mockResolvedValue({
+      ...context,
+      order: { ...context.order, status: PaymentOrderStatus.PLATFORM_CONFIRM_PENDING },
+    })
+
+    await expect(confirmer.confirmPaid(executable)).rejects.toThrow('支付订单未处于平台确认阶段')
+    expect(platformClient.getOrderDetail).not.toHaveBeenCalled()
     expect(platformClient.markOrderAsPaid).not.toHaveBeenCalled()
   })
 
@@ -399,5 +416,22 @@ describe('C2cPlatformPaymentConfirmer', () => {
       '902',
       undefined,
     )
+  })
+
+  it('only queries during stale-worker recovery and leaves a pending platform order for manual retry', async () => {
+    store.load.mockResolvedValue({
+      ...context,
+      merchantOrder: {
+        ...context.merchantOrder,
+        status: MerchantOrderStatus.PAID_PENDING_PLATFORM_CONFIRM,
+      },
+    })
+    platformClient.getOrderDetail.mockResolvedValue(pendingPlatformOrder)
+
+    await expect(confirmer.confirmPaid(executable, { queryOnly: true })).rejects.toThrow(
+      '平台订单仍待付款，请人工重试标记付款',
+    )
+    expect(platformClient.getOrderDetail).toHaveBeenCalledTimes(1)
+    expect(platformClient.markOrderAsPaid).not.toHaveBeenCalled()
   })
 })

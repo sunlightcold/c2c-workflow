@@ -121,6 +121,36 @@ export class AlipayBatchAdapter {
     return this.mapSuccessfulResponse(merged, response.batchStatus)
   }
 
+  async queryOrder(
+    batchNo: string,
+    businessNo: string,
+  ): Promise<PaymentExecutionResult<AlipayBatchResponse>> {
+    const result = await this.query(batchNo)
+    const response = result.raw
+    if (response.code !== '10000') return result
+    const detail = response.accDetailList?.find((item) => item.outBizNo === businessNo)
+    if (!detail) {
+      return {
+        status: PaymentExecutionStatus.PROCESSING,
+        upstreamId: response.batchTransId,
+        raw: response,
+      }
+    }
+    const statuses: Record<AlipayBatchDetailStatus, PaymentExecutionStatus> = {
+      INIT: PaymentExecutionStatus.PROCESSING,
+      WAIT_PAY: PaymentExecutionStatus.PROCESSING,
+      DEALING: PaymentExecutionStatus.PROCESSING,
+      SUCCESS: PaymentExecutionStatus.SUCCESS,
+      FAIL: PaymentExecutionStatus.FAILED,
+    }
+    return {
+      status: statuses[detail.status],
+      upstreamId: detail.alipayOrderNo ?? response.batchTransId,
+      errorMessage: detail.errorMsg ?? detail.errorCode,
+      raw: response,
+    }
+  }
+
   private mapCreateResponse(
     response: AlipayBatchResponse,
   ): PaymentExecutionResult<AlipayBatchResponse> {

@@ -10,6 +10,8 @@ import {
   type C2cMarkPaidPolicy,
   type C2cPaymentProofImage,
   type C2cPlatformAdapter,
+  type C2cReportInput,
+  C2cCredentialRejectedError,
 } from './c2c-platform.types'
 import { normalizeOkxDetail, normalizeOkxSummary } from './c2c-order-normalizer'
 
@@ -31,6 +33,19 @@ interface OkxEnvelope<T> {
   requestId?: string
 }
 
+interface OkxOrderListData {
+  items?: Record<string, unknown>[]
+  orders?: Record<string, unknown>[]
+  total?: number
+  totalItemCount?: number
+  pageInfo?: {
+    pageCount?: number
+    pageIndex?: number
+    pageSize?: number
+    totalItemCount?: number
+  }
+}
+
 @Injectable()
 export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCredentials> {
   private readonly logger = new Logger(OkxWebPrivateClient.name)
@@ -39,16 +54,7 @@ export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCred
   async listOrders(credentials: OkxWebPrivateCredentials, input: C2cListInput) {
     if (input.tradeType !== 'BUY') throw new Error('欧易 C2C 仅支持 BUY 买币订单')
     const timestamp = Date.now()
-    const response = await this.get<
-      | Record<string, unknown>[]
-      | {
-          items?: Record<string, unknown>[]
-          orders?: Record<string, unknown>[]
-          total?: number
-          totalItemCount?: number
-          pageInfo?: { totalItemCount?: number }
-        }
-    >(
+    const response = await this.get<Record<string, unknown>[] | OkxOrderListData>(
       credentials,
       '/v4/c2c/order/getOrderList',
       {
@@ -74,6 +80,44 @@ export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCred
           !input.orderStatusList.length ||
           input.orderStatusList.includes(this.toNumericStatus(item.status)),
       )
+    const upstreamTotal = Array.isArray(data)
+      ? undefined
+      : (data?.total ?? data?.totalItemCount ?? data?.pageInfo?.totalItemCount)
+    const hasUpstreamTotal = upstreamTotal !== undefined && Number.isFinite(Number(upstreamTotal))
+    const total = hasUpstreamTotal ? Number(upstreamTotal) : rawItems.length
+    return {
+      items,
+      total,
+      hasMore:
+        rawItems.length > 0 &&
+        (hasUpstreamTotal ? input.page * input.rows < total : rawItems.length === input.rows),
+    }
+  }
+
+  async listReportOrders(credentials: OkxWebPrivateCredentials, input: C2cReportInput) {
+    const timestamp = Date.now()
+    const response = await this.get<Record<string, unknown>[] | OkxOrderListData>(
+      credentials,
+      '/v4/c2c/order/getOrderList',
+      {
+        orderType: 'completed',
+        startTime: String(input.startTimestamp),
+        endTime: String(input.endTimestamp),
+        isBuy: 'true',
+        pageSize: String(input.rows),
+        pageIndex: String(input.page),
+        t: String(timestamp),
+      },
+      {
+        Referer: `${(credentials.baseUrl ?? 'https://www.okx.com').replace(/\/$/, '')}/p2p/orders-new`,
+        'x-request-timestamp': String(timestamp),
+      },
+    )
+    const data = response.data
+    const rawItems = Array.isArray(data) ? data : (data?.items ?? data?.orders ?? [])
+    const items = rawItems
+      .filter((item) => String(item.side).toLowerCase() === 'buy')
+      .map(normalizeOkxSummary)
     const upstreamTotal = Array.isArray(data)
       ? undefined
       : (data?.total ?? data?.totalItemCount ?? data?.pageInfo?.totalItemCount)
@@ -181,7 +225,7 @@ export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCred
       chat: false,
       checkAntiFraud: true,
       listOrders: true,
-      listReportOrders: false,
+      listReportOrders: true,
       getOrderDetail: true,
       markOrderAsPaid: true,
       releaseCrypto: false,
@@ -242,14 +286,26 @@ export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCred
         },
       })
     } catch (error) {
-      const status = (error as { response?: { status?: number } })?.response?.status
-      if (status === 401 || status === 403) throw new Error(`欧易 Web 凭据失效 [${status}]`)
+      const credentialError = this.credentialErrorFromFailure(error)
+      if (credentialError) throw credentialError
       throw error
     }
     const code = String(response.code ?? response.error_code ?? '')
-    if (['401', '403', '800', '805'].includes(code)) throw new Error(`欧易 Web 凭据失效 [${code}]`)
+    if (['401', '403', '800', '805'].includes(code))
+      throw new C2cCredentialRejectedError(`欧易 Web 凭据失效 [${code}]`, code)
     if (code !== '0') throw new Error(response.msg ?? response.error_message ?? '欧易 C2C 请求失败')
     return response
+  }
+
+  private credentialErrorFromFailure(error: unknown): C2cCredentialRejectedError | null {
+    const status = (error as { response?: { status?: number } })?.response?.status
+    const responseData = (error as { response?: { data?: OkxEnvelope<unknown> } })?.response?.data
+    const responseCode = String(responseData?.code ?? responseData?.error_code ?? '')
+    if (status !== 401 && status !== 403 && !['401', '403', '800', '805'].includes(responseCode)) {
+      return null
+    }
+    const code = responseCode || String(status)
+    return new C2cCredentialRejectedError(`欧易 Web 凭据失效 [${code}]`, responseCode, status)
   }
 
   private async uploadPaymentProof(

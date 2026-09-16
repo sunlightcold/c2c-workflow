@@ -10,6 +10,7 @@ export const telegramCapabilityOptions: Array<{
   { label: '支付宝批量支付', value: 'ALIPAY_BATCH_PAYMENT' },
   { label: '提交支付批次', value: 'PAYMENT_BATCH_SUBMIT' },
   { label: 'C2C 买币订单支付', value: 'C2C_ORDER_PAYMENT' },
+  { label: 'C2C 标记付款通知', value: 'C2C_PAID_NOTIFICATION' },
   { label: 'C2C 订单申诉', value: 'C2C_APPEAL' },
   { label: 'C2C 日报', value: 'C2C_DAILY_REPORT' },
   { label: '机器人状态管理', value: 'BOT_STATUS_MANAGE' },

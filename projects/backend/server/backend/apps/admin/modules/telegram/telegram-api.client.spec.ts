@@ -13,7 +13,9 @@ describe('TelegramApiClient', () => {
   afterAll(() => delete process.env.TG_TEST_TOKEN)
 
   it('sends messages only through the fixed Telegram Bot API endpoint', async () => {
-    const post = jest.spyOn(axios, 'post').mockResolvedValue({ data: { ok: true } })
+    const post = jest
+      .spyOn(axios, 'post')
+      .mockResolvedValue({ data: { ok: true, result: { message_id: 101 } } })
     const client = new TelegramApiClient()
 
     await client.sendMessage({
@@ -48,7 +50,9 @@ describe('TelegramApiClient', () => {
   })
 
   it('uploads a JPG receipt as a Telegram photo', async () => {
-    const post = jest.spyOn(axios, 'post').mockResolvedValue({ data: { ok: true } })
+    const post = jest
+      .spyOn(axios, 'post')
+      .mockResolvedValue({ data: { ok: true, result: { message_id: 102 } } })
     const client = new TelegramApiClient()
 
     await client.sendPhoto({
@@ -77,7 +81,9 @@ describe('TelegramApiClient', () => {
   })
 
   it('decrypts encrypted bot token references before calling Telegram', async () => {
-    const post = jest.spyOn(axios, 'post').mockResolvedValue({ data: { ok: true } })
+    const post = jest
+      .spyOn(axios, 'post')
+      .mockResolvedValue({ data: { ok: true, result: { message_id: 103 } } })
     const cipher = { decrypt: jest.fn().mockReturnValue(token) }
     const client = new TelegramApiClient(cipher as never)
 

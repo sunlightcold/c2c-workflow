@@ -7,6 +7,7 @@ import {
   merchantPlatformApiBaseUrl,
   merchantPlatformOptions,
   paymentRouteKey,
+  platformConfirmationText,
   resolveBusinessEndTime,
   toBusinessGridData,
 } from './business-ui';
@@ -41,6 +42,8 @@ describe('business status and source labels', () => {
     expect(businessEnumText('PENDING_RELEASE')).toBe('待放币');
     expect(businessEnumText('PLATFORM_CONFIRM_PENDING')).toBe('待平台确认');
     expect(businessEnumText('PARTIAL_SUCCESS')).toBe('部分成功');
+    expect(platformConfirmationText('SUCCESS')).toBe('确认成功');
+    expect(platformConfirmationText('FAILED')).toBe('确认失败');
   });
 });
 

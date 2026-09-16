@@ -38,7 +38,7 @@ describe('TelegramRuntimeService', () => {
     status: jest.fn(),
   }
   const groups = { bindByMerchant: jest.fn() }
-  const c2cOrderActions = { confirm: jest.fn(), cancel: jest.fn() }
+  const c2cOrderActions = { confirm: jest.fn(), cancel: jest.fn(), retryConfirmPaid: jest.fn() }
   const c2cAppeals = { prepare: jest.fn(), confirmReason: jest.fn() }
 
   beforeEach(() => {
@@ -107,6 +107,49 @@ describe('TelegramRuntimeService', () => {
       })
     },
   )
+
+  it('reauthorizes and retries a failed platform confirmation in the bound merchant scope', async () => {
+    const orderId = '00000000-0000-4000-8000-000000000061'
+    authorization.authorize.mockResolvedValueOnce({
+      allowed: true,
+      capabilities: [TelegramCapability.C2C_ORDER_PAYMENT],
+      group: { merchantId: 'merchant-1' },
+    })
+    c2cOrderActions.retryConfirmPaid.mockResolvedValue({ text: 'C2C 标记付款成功' })
+    const runtime = new TelegramRuntimeService(
+      bots as never,
+      authorization as never,
+      telegram as never,
+      manualPayments as never,
+      batchPayments as never,
+      queries as never,
+      groups as never,
+      c2cOrderActions as never,
+    )
+
+    await runtime.handle({
+      botId: 'bot-1',
+      tenantId: 'tenant-1',
+      payload: {
+        callback_query: {
+          id: 'callback-retry',
+          data: `c2c:confirm-paid:${orderId}`,
+          from: { id: 88 },
+          message: { message_id: 13, chat: { id: -1001, type: 'supergroup' } },
+        },
+      },
+    })
+
+    expect(c2cOrderActions.retryConfirmPaid).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      merchantId: 'merchant-1',
+      orderId,
+      operator: 'TG:88',
+    })
+    expect(telegram.answerCallbackQuery).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '标记付款成功', showAlert: false }),
+    )
+  })
 
   it('replies with the Telegram user ID without requiring a group binding', async () => {
     const runtime = new TelegramRuntimeService(

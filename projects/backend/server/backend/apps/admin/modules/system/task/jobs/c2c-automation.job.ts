@@ -6,6 +6,8 @@ import {
 } from '../../../c2c-order/c2c-order-sync.service'
 import type { C2cOrderSyncStore } from '../../../c2c-order/c2c-order-sync.types'
 import { C2cAutomaticPaymentService } from '../../../payment/c2c-automatic-payment.service'
+import { C2cAutoAppealService } from '../../../c2c-order/c2c-auto-appeal.service'
+import { C2cCompletionReplyService } from '../../../c2c-order/c2c-completion-reply.service'
 import { ScheduleTask } from '../task.decorator'
 
 const SYNC_CLAIM_LIMIT = 20
@@ -20,6 +22,10 @@ export class C2cAutomationJob {
     @Inject(C2C_ORDER_SYNC_STORE) private readonly syncStore: C2cOrderSyncStore,
     private readonly orderSync: C2cOrderSyncService,
     private readonly automaticPayments: C2cAutomaticPaymentService,
+    @Inject(C2cAutoAppealService)
+    private readonly autoAppeals: Pick<C2cAutoAppealService, 'scanAll'>,
+    @Inject(C2cCompletionReplyService)
+    private readonly completionReplies: Pick<C2cCompletionReplyService, 'scanAll'>,
   ) {}
 
   async syncDueOrders(now = new Date()) {
@@ -61,6 +67,14 @@ export class C2cAutomationJob {
 
   recoverPayments() {
     return this.automaticPayments.recover()
+  }
+
+  processAutomaticAppeals(now = new Date()) {
+    return this.autoAppeals.scanAll(now)
+  }
+
+  processCompletionReplies(now = new Date()) {
+    return this.completionReplies.scanAll(now)
   }
 
   private errorMessage(error: unknown): string {

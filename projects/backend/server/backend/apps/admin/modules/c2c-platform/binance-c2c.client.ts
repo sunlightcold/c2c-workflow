@@ -11,6 +11,7 @@ import {
   type C2cMarkPaidOptions,
   type C2cMarkPaidPolicy,
   type C2cPlatformAdapter,
+  type C2cReportInput,
 } from './c2c-platform.types'
 import { normalizeBinanceDetail, normalizeBinanceSummary } from './c2c-order-normalizer'
 
@@ -77,6 +78,28 @@ export class BinanceC2cClient implements C2cPlatformAdapter<BinanceCredentials> 
       { adOrderNo: orderNumber },
     )
     return normalizeBinanceDetail(response.data, orderNumber)
+  }
+
+  async listReportOrders(credentials: BinanceCredentials, input: C2cReportInput) {
+    const response = await this.getList<Record<string, unknown>[]>(
+      credentials,
+      '/sapi/v1/c2c/orderMatch/listUserOrderHistory',
+      {
+        startTimestamp: String(input.startTimestamp),
+        endTimestamp: String(input.endTimestamp),
+        page: String(input.page),
+        rows: String(input.rows),
+        tradeType: input.tradeType,
+      },
+    )
+    const total = Number.isFinite(Number(response.total))
+      ? Number(response.total)
+      : response.data.length
+    return {
+      items: response.data.map(normalizeBinanceSummary),
+      total,
+      hasMore: input.page * input.rows < total,
+    }
   }
 
   markOrderAsPaid(
@@ -198,7 +221,7 @@ export class BinanceC2cClient implements C2cPlatformAdapter<BinanceCredentials> 
       chat: true,
       checkAntiFraud: false,
       listOrders: true,
-      listReportOrders: false,
+      listReportOrders: true,
       getOrderDetail: true,
       markOrderAsPaid: true,
       releaseCrypto: false,
@@ -224,6 +247,14 @@ export class BinanceC2cClient implements C2cPlatformAdapter<BinanceCredentials> 
     params: Record<string, string>,
   ) {
     return this.request<BinanceEnvelope<T>>(credentials, path, undefined, 'GET', params)
+  }
+
+  private async getList<T>(
+    credentials: BinanceCredentials,
+    path: string,
+    params: Record<string, string>,
+  ) {
+    return this.request<BinanceListEnvelope<T>>(credentials, path, undefined, 'GET', params)
   }
 
   private async request<T extends BinanceEnvelope<unknown>>(

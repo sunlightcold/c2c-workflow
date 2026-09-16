@@ -47,6 +47,15 @@ export class MerchantEntity extends CommonUuidEntity {
   @Column({ type: 'integer', default: 0 })
   paidConfirmIntervalMaxMs: number
 
+  @Column({ type: 'uuid', nullable: true })
+  paidConfirmLockId: string | null
+
+  @Column({ type: 'timestamptz', nullable: true })
+  paidConfirmLockUntil: Date | null
+
+  @Column({ type: 'timestamptz', nullable: true })
+  paidConfirmNextAt: Date | null
+
   @Column({ type: 'boolean', default: false })
   automaticPaymentEnabled: boolean
 
@@ -79,11 +88,17 @@ export class MerchantEntity extends CommonUuidEntity {
   @Column({ type: 'boolean', default: false })
   c2cChatOrderCompletedEnabled: boolean
 
+  @Column({ type: 'timestamptz', nullable: true })
+  c2cChatOrderCompletedEnabledAt: Date | null
+
   @Column({ type: 'varchar', length: 500, nullable: true })
   c2cChatOrderCompletedMessage: string | null
 
   @Column({ type: 'boolean', default: false })
   autoAppealEnabled: boolean
+
+  @Column({ type: 'timestamptz', nullable: true })
+  autoAppealEnabledAt: Date | null
 
   @Column({ type: 'integer', default: 18 })
   autoAppealDelayMinutes: number

@@ -164,6 +164,25 @@ export class MerchantPlatformCredentialService {
     return { success: true, platform: merchant.platform }
   }
 
+  async disableRejectedCredential(tenantId: string, merchantId: string): Promise<boolean> {
+    return this.dataSource.transaction(async (manager) => {
+      const merchantRepository = manager.getRepository(MerchantEntity)
+      const credentialRepository = manager.getRepository(MerchantPlatformCredentialEntity)
+      const merchant = await merchantRepository.findOne({
+        where: { id: merchantId, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      })
+      if (!merchant || merchant.status !== BusinessStatus.ACTIVE) return false
+      merchant.status = BusinessStatus.DISABLED
+      await merchantRepository.save(merchant)
+      await credentialRepository.update(
+        { tenantId, merchantId, status: BusinessStatus.ACTIVE },
+        { status: BusinessStatus.DISABLED },
+      )
+      return true
+    })
+  }
+
   private async requireMerchant(tenantId: string, merchantId: string): Promise<void> {
     const merchant = await this.merchantRepository.findOne({ where: { id: merchantId, tenantId } })
     if (!merchant) throw new NotFoundException('商家不存在')

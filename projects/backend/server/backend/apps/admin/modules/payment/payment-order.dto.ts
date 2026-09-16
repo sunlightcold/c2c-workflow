@@ -1,4 +1,9 @@
-import { PaymentExecutionMode, PaymentOrderStatus, PaymentSourceType } from '@admin/database'
+import {
+  PaymentExecutionMode,
+  PaymentOrderStatus,
+  PaymentSourceType,
+  PlatformConfirmationStatus,
+} from '@admin/database'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { Transform } from 'class-transformer'
 import { Type } from 'class-transformer'
@@ -93,6 +98,9 @@ export class PaymentOrderListItemDto {
   @ApiProperty({ enum: PaymentOrderStatus }) status: PaymentOrderStatus
   @ApiProperty({ nullable: true, type: String }) upstreamId: null | string
   @ApiProperty({ nullable: true, type: String }) lastError: null | string
+  @ApiProperty({ enum: PlatformConfirmationStatus })
+  platformConfirmStatus: PlatformConfirmationStatus
+  @ApiProperty({ nullable: true, type: String }) platformConfirmLastError: null | string
   @ApiProperty({ format: 'date-time' }) createdAt: Date
   @ApiProperty({ format: 'date-time' }) updatedAt: Date
 }

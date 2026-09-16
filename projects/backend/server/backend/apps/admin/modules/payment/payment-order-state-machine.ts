@@ -26,15 +26,8 @@ const transitions: Record<PaymentOrderState, readonly PaymentOrderState[]> = {
     PaymentOrderState.SUCCESS,
     PaymentOrderState.FAILED,
   ],
-  [PaymentOrderState.SUCCESS]: [
-    PaymentOrderState.PLATFORM_CONFIRM_PENDING,
-    PaymentOrderState.FUND_EXCEPTION,
-  ],
-  [PaymentOrderState.PLATFORM_CONFIRM_PENDING]: [
-    PaymentOrderState.PLATFORM_CONFIRM_PENDING,
-    PaymentOrderState.COMPLETED,
-    PaymentOrderState.FUND_EXCEPTION,
-  ],
+  [PaymentOrderState.SUCCESS]: [PaymentOrderState.FUND_EXCEPTION],
+  [PaymentOrderState.PLATFORM_CONFIRM_PENDING]: [],
   [PaymentOrderState.FAILED]: [],
   [PaymentOrderState.CANCELLED]: [],
   [PaymentOrderState.COMPLETED]: [],

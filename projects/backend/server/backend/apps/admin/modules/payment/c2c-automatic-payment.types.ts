@@ -1,4 +1,9 @@
-import type { PaymentBatchStatus, PaymentExecutionMode, PaymentOrderStatus } from '@admin/database'
+import type {
+  PaymentBatchStatus,
+  PaymentExecutionMode,
+  PaymentOrderStatus,
+  PlatformConfirmationStatus,
+} from '@admin/database'
 
 export interface AutomaticPaymentCandidate {
   tenantId: string
@@ -17,13 +22,16 @@ export interface AutomaticPaymentScope {
 export interface RecoverablePayment {
   id: string
   tenantId: string
+  merchantId: string
   status: PaymentOrderStatus
   upstreamId: string | null
+  platformConfirmStatus: PlatformConfirmationStatus
 }
 
 export interface RecoverableBatch {
   id: string
   tenantId: string
+  merchantId: string
   status: PaymentBatchStatus
 }
 
@@ -32,5 +40,12 @@ export interface C2cAutomaticPaymentStore {
   findBatchScopes: (limit: number) => Promise<AutomaticPaymentScope[]>
   findRecoverablePayments: (limit: number) => Promise<RecoverablePayment[]>
   findRecoverableBatches: (limit: number) => Promise<RecoverableBatch[]>
+  claimFailureNotification: (input: {
+    tenantId: string
+    merchantId: string
+    code: string
+    referenceId: string
+    message: string
+  }) => Promise<boolean>
   runLocked: <T>(key: string, work: () => Promise<T>) => Promise<T | undefined>
 }

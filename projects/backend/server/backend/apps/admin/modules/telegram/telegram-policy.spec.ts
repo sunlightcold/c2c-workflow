@@ -9,9 +9,12 @@ import {
 
 describe('TelegramPolicy', () => {
   it('exposes only the payment bot type', () => {
-    expect(getTelegramCapabilityPolicy().botTypes).toEqual([
-      expect.objectContaining({ botType: 'PAYMENT' }),
-    ])
+    const policy = getTelegramCapabilityPolicy()
+    expect(policy.botTypes).toEqual([expect.objectContaining({ botType: 'PAYMENT' })])
+    expect(policy.capabilities).toContainEqual({
+      value: TelegramCapability.C2C_PAID_NOTIFICATION,
+      label: 'C2C 标记付款通知',
+    })
   })
 
   it('accepts group capabilities that are enabled by the bot', () => {

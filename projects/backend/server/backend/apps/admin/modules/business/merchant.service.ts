@@ -139,6 +139,15 @@ export class MerchantService {
       input.paidConfirmIntervalMinMs ?? 0,
       input.paidConfirmIntervalMaxMs ?? 0,
     )
+    const supportsBinanceFeatures = input.platform === MerchantPlatform.BINANCE
+    const c2cChatOrderCreatedEnabled =
+      supportsBinanceFeatures && this.valueOr(input.c2cChatOrderCreatedEnabled, false)
+    const c2cChatOrderPaidEnabled =
+      supportsBinanceFeatures && this.valueOr(input.c2cChatOrderPaidEnabled, false)
+    const c2cChatOrderCompletedEnabled =
+      supportsBinanceFeatures && this.valueOr(input.c2cChatOrderCompletedEnabled, false)
+    const autoAppealEnabled =
+      supportsBinanceFeatures && this.valueOr(input.autoAppealEnabled, false)
     return this.dataSource.transaction(async (manager) => {
       const merchants = manager.getRepository(MerchantEntity)
       const merchant = await merchants.save(
@@ -157,16 +166,18 @@ export class MerchantService {
           paidConfirmIntervalMaxMs: this.valueOr(input.paidConfirmIntervalMaxMs, 0),
           botCode: null,
           chatId: null,
-          c2cChatOrderCreatedEnabled: this.valueOr(input.c2cChatOrderCreatedEnabled, false),
+          c2cChatOrderCreatedEnabled,
           c2cChatOrderCreatedMessage:
             input.c2cChatOrderCreatedMessage?.trim() || DEFAULT_ORDER_CREATED_CHAT_MESSAGE,
-          c2cChatOrderPaidEnabled: this.valueOr(input.c2cChatOrderPaidEnabled, false),
+          c2cChatOrderPaidEnabled,
           c2cChatOrderPaidMessage:
             input.c2cChatOrderPaidMessage?.trim() || DEFAULT_ORDER_PAID_CHAT_MESSAGE,
-          c2cChatOrderCompletedEnabled: this.valueOr(input.c2cChatOrderCompletedEnabled, false),
+          c2cChatOrderCompletedEnabled,
+          c2cChatOrderCompletedEnabledAt: c2cChatOrderCompletedEnabled ? new Date() : null,
           c2cChatOrderCompletedMessage:
             input.c2cChatOrderCompletedMessage?.trim() || DEFAULT_ORDER_COMPLETED_CHAT_MESSAGE,
-          autoAppealEnabled: this.valueOr(input.autoAppealEnabled, false),
+          autoAppealEnabled,
+          autoAppealEnabledAt: autoAppealEnabled ? new Date() : null,
           autoAppealDelayMinutes: this.valueOr(input.autoAppealDelayMinutes, 18),
           description: this.valueOr(input.description, null),
           status: BusinessStatus.ACTIVE,
@@ -204,6 +215,7 @@ export class MerchantService {
         lock: { mode: 'pessimistic_write' },
       })
       if (!merchant) throw new NotFoundException('商家账号不存在')
+      const completionReplyWasEnabled = merchant.c2cChatOrderCompletedEnabled
       const editable: Array<keyof UpdateMerchantInput> = [
         'name',
         'externalMerchantId',
@@ -225,6 +237,26 @@ export class MerchantService {
       for (const key of editable) {
         if (input[key] !== undefined)
           (merchant as unknown as Record<string, unknown>)[key] = input[key]
+      }
+      if (input.autoAppealEnabled !== undefined) {
+        merchant.autoAppealEnabledAt = input.autoAppealEnabled
+          ? merchant.autoAppealEnabledAt || new Date()
+          : null
+      }
+      if (input.c2cChatOrderCompletedEnabled !== undefined) {
+        merchant.c2cChatOrderCompletedEnabledAt = input.c2cChatOrderCompletedEnabled
+          ? completionReplyWasEnabled
+            ? merchant.c2cChatOrderCompletedEnabledAt || new Date()
+            : new Date()
+          : null
+      }
+      if (merchant.platform !== MerchantPlatform.BINANCE) {
+        merchant.c2cChatOrderCreatedEnabled = false
+        merchant.c2cChatOrderPaidEnabled = false
+        merchant.c2cChatOrderCompletedEnabled = false
+        merchant.c2cChatOrderCompletedEnabledAt = null
+        merchant.autoAppealEnabled = false
+        merchant.autoAppealEnabledAt = null
       }
       if ('telegramGroupId' in input) {
         await this.applyTelegramGroup(manager, merchant, input.telegramGroupId)

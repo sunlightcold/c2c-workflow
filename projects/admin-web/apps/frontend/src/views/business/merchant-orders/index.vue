@@ -38,6 +38,7 @@ import {
   businessStateColor,
   formatBusinessTime,
   merchantPlatformText,
+  platformConfirmationText,
   resolveBusinessEndTime,
   resolvePaymentRoute,
 } from '../shared/business-ui';
@@ -419,14 +420,18 @@ function canCancel(order: BusinessApi.MerchantOrder) {
 }
 
 function canConfirm(order: BusinessApi.MerchantOrder) {
-  return order.paymentOrder?.status === 'PLATFORM_CONFIRM_PENDING';
+  return (
+    order.paymentOrder?.status === 'SUCCESS' &&
+    order.paymentOrder.platformConfirmStatus === 'FAILED'
+  );
 }
 
 function canAppeal(order: BusinessApi.MerchantOrder) {
   return (
     order.platform === 'BINANCE' &&
     order.status === 'PENDING_RELEASE' &&
-    order.paymentOrder?.status === 'COMPLETED' &&
+    order.paymentOrder?.status === 'SUCCESS' &&
+    order.paymentOrder.platformConfirmStatus === 'SUCCESS' &&
     !order.appealStatus
   );
 }
@@ -603,6 +608,24 @@ onMounted(async () => {
             </ADescriptionsItem>
             <ADescriptionsItem label="支付状态">
               {{ businessEnumText(detail.paymentOrder?.status) }}
+            </ADescriptionsItem>
+            <ADescriptionsItem
+              v-if="
+                detail.paymentOrder?.platformConfirmStatus !== 'NOT_REQUIRED'
+              "
+              label="平台确认状态"
+            >
+              {{
+                platformConfirmationText(
+                  detail.paymentOrder?.platformConfirmStatus,
+                )
+              }}
+            </ADescriptionsItem>
+            <ADescriptionsItem
+              v-if="detail.paymentOrder?.platformConfirmLastError"
+              label="平台确认异常"
+            >
+              {{ detail.paymentOrder.platformConfirmLastError }}
             </ADescriptionsItem>
             <ADescriptionsItem label="申诉状态">
               {{ businessEnumText(detail.appealStatus) }}

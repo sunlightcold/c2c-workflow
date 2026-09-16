@@ -45,6 +45,10 @@ export interface PaymentBatchChannelCapability {
     }>
   }) => Promise<PaymentExecutionResult<AlipayBatchResponse>>
   query: (batchNo: string) => Promise<PaymentExecutionResult<AlipayBatchResponse>>
+  queryOrder: (
+    batchNo: string,
+    businessNo: string,
+  ) => Promise<PaymentExecutionResult<AlipayBatchResponse>>
   getReconciliationPolicy: () => PaymentReconciliationPolicy
 }
 

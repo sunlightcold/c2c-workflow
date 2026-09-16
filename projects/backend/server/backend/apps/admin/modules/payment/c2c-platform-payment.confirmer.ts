@@ -23,6 +23,7 @@ import { PlatformFundsExceptionError } from './payment-execution.errors'
 import { normalizeCnyAmount } from './payment-adapter.types'
 import { C2cPaymentProofService } from './c2c-payment-proof.service'
 import { C2cPlatformChatService } from '../c2c-order/c2c-platform-chat.service'
+import { C2cPaidConfirmationThrottleService } from './c2c-paid-confirmation-throttle.service'
 import type {
   ExecutablePaymentOrder,
   PlatformPaymentConfirmer,
@@ -45,10 +46,14 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
     private readonly credentialFactory: C2cPlatformCredentialFactory,
     private readonly platformClient: C2cPlatformClient,
     private readonly paymentProofs: C2cPaymentProofService,
+    private readonly throttle: C2cPaidConfirmationThrottleService,
     @Optional() private readonly platformChat?: C2cPlatformChatService,
   ) {}
 
-  async confirmPaid(order: ExecutablePaymentOrder): Promise<void> {
+  async confirmPaid(
+    order: ExecutablePaymentOrder,
+    options: { queryOnly?: boolean } = {},
+  ): Promise<void> {
     const context = await this.store.load(order.tenantId, order.id)
     this.verifyContext(context)
     if (
@@ -62,6 +67,7 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
       await this.toFundsException(context, this.toPlatformStatus(context.merchantOrder.status))
     }
     const recovering =
+      options.queryOnly ||
       context.merchantOrder.status === MerchantOrderStatus.PAID_PENDING_PLATFORM_CONFIRM
     await this.store.transitionMerchantOrder(
       context.order.tenantId,
@@ -86,9 +92,12 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
       if (current.status !== C2cBuyOrderStatus.PENDING_PAYMENT || !current.payable) {
         throw new Error(`平台订单状态 ${current.status} 不允许确认已付款`)
       }
+      if (options.queryOnly) throw new Error('平台订单仍待付款，请人工重试标记付款')
       paymentMethodId = current.platformPaymentMethodId
     }
-    await this.markPaid(context, credentials, paymentMethodId)
+    await this.throttle.execute(context.merchant, () =>
+      this.markPaid(context, credentials, paymentMethodId),
+    )
     if (context.merchant.platform === MerchantPlatform.BINANCE) {
       await this.store.transitionMerchantOrder(
         context.order.tenantId,
@@ -111,11 +120,7 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
   private verifyContext(context: PaymentPreflightConfiguration): void {
     if (context.order.sourceType !== PaymentSourceType.C2C_BUY)
       throw new Error('支付订单不是 C2C 买币来源')
-    if (
-      ![PaymentOrderStatus.SUCCESS, PaymentOrderStatus.PLATFORM_CONFIRM_PENDING].includes(
-        context.order.status,
-      )
-    ) {
+    if (context.order.status !== PaymentOrderStatus.SUCCESS) {
       throw new Error('支付订单未处于平台确认阶段')
     }
     if (context.credential.status !== BusinessStatus.ACTIVE) throw new Error('商家平台凭据不可用')

@@ -1,4 +1,6 @@
 <script lang="tsx" setup>
+import type { PaymentOrderDetail } from './payment-order-detail';
+
 import type { VbenFormProps } from '#/adapter/form';
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { BusinessApi } from '#/api';
@@ -13,7 +15,6 @@ import {
   getPaymentAccountsApi,
   getPaymentOrderApi,
   getPaymentOrdersApi,
-  queryPaymentOrderUpstreamApi,
   rematchPaymentOrderApi,
 } from '#/api';
 import { runResourceAction, useFormModal, useResourceGrid } from '#/hooks';
@@ -25,17 +26,14 @@ import {
   businessStateColor,
   formatBusinessTime,
   merchantPlatformText,
+  platformConfirmationText,
   resolveBusinessEndTime,
   resolvePaymentRoute,
 } from '../shared/business-ui';
 import OrderTimeCell from '../shared/OrderTimeCell.vue';
 import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
+import { queryPaymentOrderDetail } from './payment-order-detail';
 
-type PaymentOrderDetail = BusinessApi.PaymentOrder & {
-  batchItems: BusinessApi.PaymentBatchItem[];
-  history: BusinessApi.StatusHistory[];
-  upstream?: BusinessApi.PaymentOrderUpstreamQueryResult['upstream'];
-};
 type SearchValues = {
   merchantId?: string;
   orderNo?: string;
@@ -65,8 +63,6 @@ const statusOptions = [
   'PROCESSING',
   'UNKNOWN',
   'SUCCESS',
-  'PLATFORM_CONFIRM_PENDING',
-  'COMPLETED',
   'FAILED',
   'CANCELLED',
   'FUND_EXCEPTION',
@@ -182,9 +178,16 @@ const gridOptions: VxeTableGridOptions<BusinessApi.PaymentOrderListItem> = {
     },
     {
       field: 'status',
-      title: '状态',
+      title: '支付状态',
       width: 150,
       slots: { default: 'status' },
+    },
+    {
+      field: 'platformConfirmStatus',
+      title: '平台确认',
+      width: 130,
+      formatter: ({ cellValue }) =>
+        platformConfirmationText(cellValue as string),
     },
     {
       field: 'orderTime',
@@ -291,15 +294,10 @@ async function openDetail(order: BusinessApi.PaymentOrder) {
 }
 
 async function queryUpstream(order: BusinessApi.PaymentOrder) {
-  const result = await queryPaymentOrderUpstreamApi(order.id, {
-    tenantId: selectedTenantId.value,
-  });
-  detail.value = {
-    ...result.order,
-    batchItems: [],
-    history: [],
-    upstream: result.upstream,
-  };
+  detail.value = await queryPaymentOrderDetail(
+    order.id,
+    selectedTenantId.value,
+  );
   detailOpen.value = true;
   await gApi.query();
 }
@@ -466,8 +464,17 @@ onMounted(async () => {
           <ADescriptionsItem label="执行方式">
             {{ businessEnumText(detail.executionMode) }}
           </ADescriptionsItem>
-          <ADescriptionsItem label="状态">
+          <ADescriptionsItem label="支付状态">
             {{ businessEnumText(detail.status) }}
+          </ADescriptionsItem>
+          <ADescriptionsItem label="平台确认状态">
+            {{ platformConfirmationText(detail.platformConfirmStatus) }}
+          </ADescriptionsItem>
+          <ADescriptionsItem
+            v-if="detail.platformConfirmLastError"
+            label="平台确认异常"
+          >
+            {{ detail.platformConfirmLastError }}
           </ADescriptionsItem>
           <ADescriptionsItem v-if="detail.upstream" label="上游查询状态">
             {{ businessEnumText(detail.upstream.status) }}

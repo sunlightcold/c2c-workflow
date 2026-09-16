@@ -10,7 +10,7 @@ import type {
   DashboardSummaryDto,
 } from './dashboard.dto'
 
-const PAYMENT_SUCCESS_STATUSES = "'SUCCESS', 'PLATFORM_CONFIRM_PENDING', 'COMPLETED'"
+const PAYMENT_SUCCESS_STATUSES = "'SUCCESS'"
 
 type SummaryRow = Record<keyof DashboardSummaryDto, string>
 
@@ -118,7 +118,7 @@ export class DashboardService {
           COALESCE(SUM(amount), 0)::text AS "paymentAmount",
           COUNT(*) FILTER (WHERE status IN (${PAYMENT_SUCCESS_STATUSES}))::text AS "paymentSuccessCount",
           COALESCE(SUM(amount) FILTER (WHERE status IN (${PAYMENT_SUCCESS_STATUSES})), 0)::text AS "paymentSuccessAmount",
-          COUNT(*) FILTER (WHERE status IN ('SUBMITTING', 'PROCESSING', 'PLATFORM_CONFIRM_PENDING'))::text AS "paymentProcessingCount",
+          COUNT(*) FILTER (WHERE status IN ('SUBMITTING', 'PROCESSING'))::text AS "paymentProcessingCount",
           COUNT(*) FILTER (WHERE status IN ('UNKNOWN', 'FAILED', 'FUND_EXCEPTION'))::text AS "paymentExceptionCount"
         FROM payment_order
         WHERE "tenantId" = $1 AND "createdAt" >= $2 AND "createdAt" < $3

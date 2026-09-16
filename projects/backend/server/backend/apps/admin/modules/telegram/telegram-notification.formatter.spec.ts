@@ -3,13 +3,30 @@ import {
   formatBatchStatusMessage,
   formatAutomaticBatchSubmissionMessage,
   formatC2cCreatedMessage,
-  formatOrderDiscoveredMessage,
+  formatExceptionMessage,
   formatPaymentStatusMessage,
   shouldNotifyBatchStatus,
+  shouldNotifyOrderDiscovered,
   shouldNotifyPaymentStatus,
 } from './telegram-notification.formatter'
 
 describe('Telegram notification formatting policy', () => {
+  it('matches the pfa-pay credential rejection fields and Chinese platform label', () => {
+    expect(
+      formatExceptionMessage('C2C_CREDENTIAL_REJECTED', 'Token expired', 'mock-hq-okx', {
+        platform: 'OKX',
+        merchantNo: 'okx-merchant-1',
+      }),
+    ).toBe(
+      '<b>⚠️ C2C 凭证失效，账号已停用</b>\n\n' +
+        '平台：<code>欧易</code>\n' +
+        '账号：<code>mock-hq-okx</code>\n' +
+        '商户号：<code>okx-merchant-1</code>\n' +
+        '原因：<code>Token expired</code>\n\n' +
+        '请在后台更新该账号的凭证后，将账号重新启用。',
+    )
+  })
+
   it('matches the pfa-pay C2C auto-created message sections and field order', () => {
     const message = formatC2cCreatedMessage({
       merchantOrderId: 'merchant-order-1',
@@ -45,7 +62,7 @@ describe('Telegram notification formatting policy', () => {
       paymentMethod: 'ALIPAY',
       payeeName: '张三 <test>',
       payeeIdentity: 'buyer@example.com',
-      status: PaymentOrderStatus.COMPLETED,
+      status: PaymentOrderStatus.SUCCESS,
       upstreamId: 'TRADE-1',
     })
 
@@ -56,8 +73,8 @@ describe('Telegram notification formatting policy', () => {
     expect(message).toContain('状态：<b>🟢 成功</b>')
   })
 
-  it('shows the platform KYC rejection reason instead of reporting a name mismatch', () => {
-    const message = formatOrderDiscoveredMessage({
+  it('does not offer manual confirmation for an order rejected by platform KYC', () => {
+    const order = {
       platformOrderId: 'BN-KYC-1',
       fiatAmount: '70',
       fiatCurrency: 'CNY',
@@ -71,10 +88,9 @@ describe('Telegram notification formatting policy', () => {
       identityMatched: true,
       payable: false,
       lastError: '卖方 KYC 未通过',
-    })
+    }
 
-    expect(message).toContain('<b>卖方 KYC 未通过</b>')
-    expect(message).toContain('KYC：<code>FAIL</code>')
+    expect(shouldNotifyOrderDiscovered(order)).toBe(false)
   })
 
   it('formats one aggregate partial-success batch result with failure details', () => {
@@ -122,7 +138,8 @@ describe('Telegram notification formatting policy', () => {
     expect(shouldNotifyPaymentStatus(PaymentOrderStatus.READY)).toBe(true)
     expect(shouldNotifyPaymentStatus(PaymentOrderStatus.PENDING_CONFIG)).toBe(true)
     expect(shouldNotifyPaymentStatus(PaymentOrderStatus.PROCESSING)).toBe(false)
-    expect(shouldNotifyPaymentStatus(PaymentOrderStatus.COMPLETED)).toBe(true)
+    expect(shouldNotifyPaymentStatus(PaymentOrderStatus.SUCCESS)).toBe(true)
+    expect(shouldNotifyPaymentStatus(PaymentOrderStatus.PROCESSING)).toBe(false)
     expect(shouldNotifyBatchStatus(PaymentBatchStatus.PROCESSING)).toBe(false)
     expect(shouldNotifyBatchStatus(PaymentBatchStatus.PARTIAL_SUCCESS)).toBe(true)
   })

@@ -126,6 +126,37 @@ describe('MerchantService', () => {
     expect(dataSource.transaction).not.toHaveBeenCalled()
   })
 
+  it('does not persist Binance-only chat or appeal switches for an OKX merchant', async () => {
+    const { privateKey } = await import('node:crypto').then(({ generateKeyPairSync }) =>
+      generateKeyPairSync('ec', { namedCurve: 'prime256v1' }),
+    )
+
+    await service.create(tenantId, {
+      name: 'OKX Merchant',
+      platform: MerchantPlatform.OKX,
+      externalMerchantId: 'okx-merchant-1',
+      authMode: 'WEB_COOKIE',
+      sessionCookie: 'cookie',
+      authorization: 'authorization',
+      signaturePrivateKey: privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64'),
+      c2cChatOrderCreatedEnabled: true,
+      c2cChatOrderPaidEnabled: true,
+      c2cChatOrderCompletedEnabled: true,
+      autoAppealEnabled: true,
+    })
+
+    expect(merchantTxRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        c2cChatOrderCreatedEnabled: false,
+        c2cChatOrderPaidEnabled: false,
+        c2cChatOrderCompletedEnabled: false,
+        c2cChatOrderCompletedEnabledAt: null,
+        autoAppealEnabled: false,
+        autoAppealEnabledAt: null,
+      }),
+    )
+  })
+
   it('does not expose platform as an editable field', async () => {
     const maliciousInput = {
       name: 'Renamed',

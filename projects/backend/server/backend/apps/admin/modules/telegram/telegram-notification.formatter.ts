@@ -149,8 +149,8 @@ export function formatManualPaymentAcceptedMessage(order: {
 }
 
 const PAYMENT_TERMINAL_STATUSES = new Set<string>([
+  PaymentOrderStatus.SUCCESS,
   PaymentOrderStatus.FAILED,
-  PaymentOrderStatus.COMPLETED,
   PaymentOrderStatus.CANCELLED,
   PaymentOrderStatus.FUND_EXCEPTION,
 ])
@@ -185,7 +185,7 @@ export function shouldNotifyOrderDiscovered(
   order: Pick<TelegramOrderMessageInput, 'status' | 'identityMatched' | 'payable'>,
 ) {
   if (order.status === MerchantOrderStatus.PENDING_PAYMENT) {
-    return !order.identityMatched || !order.payable
+    return !order.identityMatched && order.payable
   }
   return [
     MerchantOrderStatus.DISPUTED,
@@ -229,13 +229,28 @@ export function sumMoney(values: unknown[]): string {
   return `${sign}${absolute / 100n}.${(absolute % 100n).toString().padStart(2, '0')}`
 }
 
+function paymentMethodLabel(value: string | null | undefined): string {
+  const normalized = String(value ?? '')
+    .trim()
+    .toUpperCase()
+  const labels: Record<string, string> = {
+    ALIPAY: '支付宝',
+    ALI_PAY: '支付宝',
+    BANK: '银行卡',
+    BANK_CARD: '银行卡',
+    WECHAT: '微信支付',
+    WECHAT_PAY: '微信支付',
+  }
+  return labels[normalized] ?? value?.trim() ?? '未记录'
+}
+
 function compact(value: unknown, maxLength: number): string {
   const text = String(value ?? '')
   return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text
 }
 
 function orderStatusMeta(status: string): { icon: string; text: string } {
-  if (status === MerchantOrderStatus.PENDING_PAYMENT) return { icon: '🔴', text: '等待人工处理' }
+  if (status === MerchantOrderStatus.PENDING_PAYMENT) return { icon: '🔴', text: '不一致' }
   if (status === MerchantOrderStatus.DISPUTED) return { icon: '🟠', text: '争议中' }
   if (status === MerchantOrderStatus.EXPIRED) return { icon: '🟠', text: '已过期' }
   if (status === MerchantOrderStatus.CANCELLED) return { icon: '🟠', text: '已取消' }
@@ -272,24 +287,22 @@ function batchStatusMeta(status: string): { icon: string; text: string } {
 
 export function formatOrderDiscoveredMessage(order: TelegramOrderMessageInput): string {
   const meta = orderStatusMeta(order.status)
-  const reviewReason =
-    order.lastError || (order.identityMatched ? '当前订单不可自动付款' : '收款人与平台实名不一致')
   const kycStatus = order.lastError === '卖方 KYC 未通过' ? 'FAIL' : 'PASS'
   return (
-    `${meta.icon} <b>${escapeTelegramHtml(reviewReason)}</b>\n\n` +
+    `🔴 <b>实名不一致，等待确认</b>\n\n` +
     `<b>订单信息</b>\n` +
-    `平台订单号：<code>${escapeTelegramHtml(order.platformOrderId)}</code>\n` +
+    `商家订单号：<code>${escapeTelegramHtml(order.platformOrderId)}</code>\n` +
     `金额：<code>${escapeTelegramHtml(money(order.fiatAmount))} ${escapeTelegramHtml(order.fiatCurrency)}</code>\n` +
-    `资产：<code>${escapeTelegramHtml(order.assetAmount)} ${escapeTelegramHtml(order.asset)}</code>\n\n` +
+    `资产：<code>${escapeTelegramHtml(order.asset)}</code>\n\n` +
     `<b>收款信息</b>\n` +
     `姓名：<code>${escapeTelegramHtml(order.identityName || '未记录')}</code>\n` +
     `账号：<code>${escapeTelegramHtml(order.payeeIdentity || '未记录')}</code>\n` +
-    `方式：<code>${escapeTelegramHtml(order.paymentMethod || '未记录')}</code>\n\n` +
+    `方式：<code>${escapeTelegramHtml(paymentMethodLabel(order.paymentMethod))}</code>\n\n` +
     `<b>实名核验</b>\n` +
     `KYC：<code>${escapeTelegramHtml(kycStatus)}</code>\n` +
-    `平台实名：<code>${escapeTelegramHtml(order.identityName || '未记录')}</code>\n` +
+    `实名：<code>${escapeTelegramHtml(order.identityName || '未记录')}</code>\n` +
     `持有人：<code>${escapeTelegramHtml(order.payeeName || '未记录')}</code>\n` +
-    `结果：<b>${meta.icon} ${escapeTelegramHtml(meta.text)}</b>`
+    `结果：<b>${escapeTelegramHtml(meta.text)}</b>`
   )
 }
 
@@ -303,13 +316,10 @@ export function formatC2cCreatedMessage(order: TelegramC2cCreatedMessageInput): 
     `商家订单号：<code>${escapeTelegramHtml(order.platformOrderId)}</code>\n` +
     `系统订单号：<code>${escapeTelegramHtml(order.paymentNo || order.paymentOrderId || '未生成')}</code>\n` +
     `金额：<code>${escapeTelegramHtml(money(order.fiatAmount))} ${escapeTelegramHtml(order.fiatCurrency)}</code>` +
-    (order.asset && order.assetAmount
-      ? `\n资产：<code>${escapeTelegramHtml(order.assetAmount)} ${escapeTelegramHtml(order.asset)}</code>`
-      : '') +
     `\n\n<b>收款信息</b>\n` +
     `姓名：<code>${escapeTelegramHtml(order.identityName || '未记录')}</code>\n` +
     `账号：<code>${escapeTelegramHtml(order.payeeIdentity || '未记录')}</code>\n` +
-    `方式：<code>${escapeTelegramHtml(order.paymentMethod || '未记录')}</code>\n\n` +
+    `方式：<code>${escapeTelegramHtml(paymentMethodLabel(order.paymentMethod))}</code>\n\n` +
     `<b>实名核验</b>\n` +
     `KYC：<code>${escapeTelegramHtml(order.kycStatus || 'PASS')}</code>\n` +
     `持有人：<code>${escapeTelegramHtml(order.payeeName || '未记录')}</code>\n` +
@@ -357,12 +367,112 @@ export function formatExceptionMessage(
   code: string,
   message: string,
   referenceId?: string,
+  details?: { platform?: string; merchantNo?: string },
 ): string {
+  if (code === 'C2C_CREDENTIAL_REJECTED') {
+    return (
+      `<b>⚠️ C2C 凭证失效，账号已停用</b>\n\n` +
+      (details?.platform
+        ? `平台：<code>${escapeTelegramHtml(platformLabel(details.platform))}</code>\n`
+        : '') +
+      (referenceId ? `账号：<code>${escapeTelegramHtml(referenceId)}</code>\n` : '') +
+      (details?.merchantNo
+        ? `商户号：<code>${escapeTelegramHtml(details.merchantNo)}</code>\n`
+        : '') +
+      `原因：<code>${escapeTelegramHtml(compact(message, 400))}</code>\n\n` +
+      `请在后台更新该账号的凭证后，将账号重新启用。`
+    )
+  }
   return (
     `🔴 <b>支付异常通知</b>\n\n` +
     `错误码：<code>${escapeTelegramHtml(code)}</code>\n` +
     `原因：<code>${escapeTelegramHtml(compact(message, 400))}</code>` +
     (referenceId ? `\n关联单号：<code>${escapeTelegramHtml(referenceId)}</code>` : '')
+  )
+}
+
+function platformLabel(value: string): string {
+  const labels: Record<string, string> = { BINANCE: '币安', OKX: '欧易' }
+  return labels[value.toUpperCase()] ?? value
+}
+
+export function formatPlatformConfirmationFailedMessage(input: {
+  platformOrderId: string
+  paymentNo: string
+  amount: string
+  currency: string
+  identityName?: string | null
+  payeeIdentity?: string | null
+  paymentMethod?: string | null
+  reason: string
+}): string {
+  return (
+    `<b>⚠️ C2C 确认付款失败</b>\n\n` +
+    `姓名：<code>${escapeTelegramHtml(input.identityName || '未记录')}</code>\n` +
+    `收款账号：<code>${escapeTelegramHtml(input.payeeIdentity || '未记录')}</code>\n` +
+    (input.paymentMethod
+      ? `收款方式：<code>${escapeTelegramHtml(paymentMethodLabel(input.paymentMethod))}</code>\n`
+      : '') +
+    `金额：<code>¥${escapeTelegramHtml(money(input.amount))}</code>\n` +
+    `商家订单号：<code>${escapeTelegramHtml(input.platformOrderId)}</code>\n` +
+    `失败原因：<code>${escapeTelegramHtml(compact(input.reason, 240))}</code>`
+  )
+}
+
+export function formatBatchPlatformConfirmationResultMessage(input: {
+  batchNo: string
+  items: Array<{
+    sourceBusinessNo: string
+    amount: string
+    currency: string
+    success: boolean
+    errorMessage: string | null
+  }>
+}): string {
+  const success = input.items.filter((item) => item.success)
+  const failed = input.items.filter((item) => !item.success)
+  const failedLines = failed
+    .map(
+      (item) =>
+        `\n失败订单：<code>${escapeTelegramHtml(item.sourceBusinessNo)}</code> ¥${escapeTelegramHtml(money(item.amount))}\n` +
+        `原因：<code>${escapeTelegramHtml(compact(item.errorMessage || '未知错误', 240))}</code>`,
+    )
+    .join('')
+  return (
+    `<b>🔔 C2C 标记付款结果</b>\n` +
+    `批次号：<code>${escapeTelegramHtml(input.batchNo)}</code>\n` +
+    `总笔数：<code>${escapeTelegramHtml(input.items.length)}</code> 笔\n` +
+    `成功：<code>${escapeTelegramHtml(success.length)}</code> 笔 / ` +
+    `<code>¥${escapeTelegramHtml(money(sumMoney(success.map((item) => item.amount))))}</code>\n` +
+    `失败：<code>${escapeTelegramHtml(failed.length)}</code> 笔 / ` +
+    `<code>¥${escapeTelegramHtml(money(sumMoney(failed.map((item) => item.amount))))}</code>` +
+    failedLines
+  )
+}
+
+export function formatBatchPlatformConfirmationFailureMessage(input: {
+  batchNo: string
+  items: Array<{
+    sourceBusinessNo: string
+    amount: string
+    success: boolean
+    errorMessage: string | null
+  }>
+}): string {
+  const failed = input.items.filter((item) => !item.success)
+  const failedLines = failed
+    .map(
+      (item) =>
+        `\n失败订单：<code>${escapeTelegramHtml(item.sourceBusinessNo)}</code> ¥${escapeTelegramHtml(money(item.amount))}\n` +
+        `原因：<code>${escapeTelegramHtml(compact(item.errorMessage || '未知错误', 240))}</code>`,
+    )
+    .join('')
+  return (
+    `<b>⚠️ C2C 标记付款失败</b>\n` +
+    `批次号：<code>${escapeTelegramHtml(input.batchNo)}</code>\n` +
+    `失败：<code>${escapeTelegramHtml(failed.length)}</code> 笔 / ` +
+    `<code>¥${escapeTelegramHtml(money(sumMoney(failed.map((item) => item.amount))))}</code>` +
+    failedLines
   )
 }
 

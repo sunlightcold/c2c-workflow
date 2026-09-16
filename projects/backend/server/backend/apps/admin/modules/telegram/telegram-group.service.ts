@@ -81,7 +81,10 @@ export class TelegramGroupService {
     const botId = input.botId ?? group.botId
     const merchantId = input.merchantId ?? group.merchantId
     const capabilities = input.capabilities ?? (group.capabilities as TelegramCapability[])
-    await this.assertRelations(tenantId, botId, merchantId, capabilities)
+    const merchantChanged = input.merchantId !== undefined && input.merchantId !== group.merchantId
+    await this.assertRelations(tenantId, botId, merchantId, capabilities, {
+      requireActiveMerchant: merchantChanged,
+    })
     Object.assign(group, {
       ...input,
       botId,
@@ -231,12 +234,16 @@ export class TelegramGroupService {
     botId: string,
     merchantId: string,
     capabilities: readonly TelegramCapability[],
+    options: { requireActiveMerchant?: boolean } = {},
   ) {
+    const merchantWhere = {
+      id: merchantId,
+      tenantId,
+      ...(options.requireActiveMerchant === false ? {} : { status: BusinessStatus.ACTIVE }),
+    }
     const [bot, merchant] = await Promise.all([
       this.bots.findOne({ where: { id: botId, tenantId, status: BusinessStatus.ACTIVE } }),
-      this.merchants.findOne({
-        where: { id: merchantId, tenantId, status: BusinessStatus.ACTIVE },
-      }),
+      this.merchants.findOne({ where: merchantWhere }),
     ])
     if (!bot) throw new BadRequestException('机器人不可用或不属于当前所属单位')
     if (!merchant) throw new BadRequestException('商家不可用或不属于当前所属单位')

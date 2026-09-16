@@ -15,6 +15,7 @@ export namespace BusinessApi {
     | 'C2C_APPEAL'
     | 'C2C_DAILY_REPORT'
     | 'C2C_ORDER_PAYMENT'
+    | 'C2C_PAID_NOTIFICATION'
     | 'ORDER_QUERY'
     | 'PAYMENT_BATCH_SUBMIT'
     | 'PAYMENT_STATISTICS'
@@ -212,6 +213,13 @@ export namespace BusinessApi {
     paymentMethod: string;
     paymentNo: string;
     paymentPlanId: null | string;
+    platformConfirmLastError: null | string;
+    platformConfirmStatus:
+      | 'FAILED'
+      | 'NOT_REQUIRED'
+      | 'PENDING'
+      | 'PROCESSING'
+      | 'SUCCESS';
     sourceBusinessNo: string;
     sourceType: PaymentSourceType;
     status: string;
@@ -224,8 +232,22 @@ export namespace BusinessApi {
     batchNo: null | string;
   }
 
+  export type PaymentOrderExecutionSnapshot = Partial<
+    Pick<
+      PaymentOrder,
+      | 'amount'
+      | 'currency'
+      | 'lastError'
+      | 'merchantId'
+      | 'paymentNo'
+      | 'sourceBusinessNo'
+      | 'upstreamId'
+    >
+  > &
+    Pick<PaymentOrder, 'id' | 'status' | 'tenantId'>;
+
   export interface PaymentOrderUpstreamQueryResult {
-    order: PaymentOrder;
+    order: PaymentOrderExecutionSnapshot;
     upstream: {
       errorMessage?: string;
       raw: unknown;

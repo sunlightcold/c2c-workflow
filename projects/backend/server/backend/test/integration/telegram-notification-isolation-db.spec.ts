@@ -18,9 +18,14 @@ import { migrateC2cMerchantPlatformCredentials } from '@/apps/admin/database/mig
 import { migrateC2cMerchantOrders } from '@/apps/admin/database/migrations/c2c-merchant-orders.migration'
 import { migrateC2cPaymentBatches } from '@/apps/admin/database/migrations/c2c-payment-batches.migration'
 import { migrateC2cMerchantOrderAppeals } from '@/apps/admin/database/migrations/c2c-merchant-order-appeals.migration'
+import { migrateC2cMerchantAccountOperations } from '@/apps/admin/database/migrations/c2c-merchant-account-operations.migration'
 import { migrateTelegramAdministration } from '@/apps/admin/database/migrations/c2c-telegram-administration.migration'
 import { migrateTelegramBotRuntime } from '@/apps/admin/database/migrations/c2c-telegram-bot-runtime.migration'
 import { migrateC2cPaymentBatchPolicies } from '@/apps/admin/database/migrations/c2c-payment-batch-policies.migration'
+import { migrateC2cPlatformConfirmationControl } from '@/apps/admin/database/migrations/c2c-platform-confirmation-control.migration'
+import { migrateC2cFullProviderParity } from '@/apps/admin/database/migrations/c2c-full-provider-parity.migration'
+import { migrateC2cPaidNotificationCapability } from '@/apps/admin/database/migrations/c2c-paid-notification-capability.migration'
+import { migrateC2cPaymentPlatformStateSeparation } from '@/apps/admin/database/migrations/c2c-payment-platform-state-separation.migration'
 import type { TelegramApiClient } from '@/apps/admin/modules/telegram/telegram-api.client'
 import {
   TelegramNotificationEvent,
@@ -54,7 +59,12 @@ describe('Telegram notification database isolation', () => {
   const schema = `telegram_notification_test_${process.pid}_${Date.now()}`
   let adminDataSource: DataSource
   let dataSource: DataSource
-  const sendMessage = jest.fn<Promise<void>, Parameters<TelegramApiClient['sendMessage']>>()
+  const sendMessage = jest
+    .fn<
+      ReturnType<TelegramApiClient['sendMessage']>,
+      Parameters<TelegramApiClient['sendMessage']>
+    >()
+    .mockResolvedValue({ messageId: 1 })
 
   beforeAll(async () => {
     adminDataSource = new DataSource({ type: 'postgres', ...postgres, synchronize: false })
@@ -83,13 +93,18 @@ describe('Telegram notification database isolation', () => {
       await migrateC2cPaymentRouting(manager)
       await migrateC2cMerchantPlatformCredentials(manager)
       await migrateC2cMerchantOrders(manager)
+      await migrateC2cMerchantAccountOperations(manager)
       await migrateC2cPaymentBatches(manager)
       await migrateC2cMerchantOrderAppeals(manager)
       await migrateTelegramAdministration(manager)
       await migrateTelegramBotRuntime(manager)
       await migrateC2cPaymentBatchPolicies(manager)
+      await migrateC2cPlatformConfirmationControl({ query: manager.query.bind(manager) })
+      await migrateC2cFullProviderParity(manager)
+      await migrateC2cPaymentPlatformStateSeparation({ query: manager.query.bind(manager) })
     })
     await seedScopes(dataSource)
+    await dataSource.transaction((manager) => migrateC2cPaidNotificationCapability(manager))
   })
 
   afterAll(async () => {
@@ -152,7 +167,7 @@ async function notifyMerchant(
     tenantId,
     merchantId,
     paymentOrderId,
-    status: 'COMPLETED',
+    status: 'SUCCESS',
   })
 }
 
@@ -163,11 +178,11 @@ async function seedScopes(dataSource: DataSource): Promise<void> {
     [ids.tenantB],
   )
   await dataSource.query(
-    `INSERT INTO merchant (id, "tenantId", code, name, platform, status)
+    `INSERT INTO merchant (id, "tenantId", code, name, platform, status, "apiBaseUrl")
      VALUES
-       ($1, $4, 'TG_MERCHANT_A', 'Telegram merchant A', 'BINANCE', 'active'),
-       ($2, $4, 'TG_MERCHANT_B', 'Telegram merchant B', 'BINANCE', 'active'),
-       ($3, $5, 'TG_MERCHANT_C', 'Telegram merchant C', 'OKX', 'active')`,
+       ($1, $4, 'TG_MERCHANT_A', 'Telegram merchant A', 'BINANCE', 'active', 'https://api.binance.com'),
+       ($2, $4, 'TG_MERCHANT_B', 'Telegram merchant B', 'BINANCE', 'active', 'https://api.binance.com'),
+       ($3, $5, 'TG_MERCHANT_C', 'Telegram merchant C', 'OKX', 'active', 'https://www.okx.com')`,
     [ids.merchantA, ids.merchantB, ids.merchantC, ids.tenantA, ids.tenantB],
   )
   await dataSource.query(
@@ -227,9 +242,9 @@ async function seedScopes(dataSource: DataSource): Promise<void> {
        (id, "tenantId", "merchantId", "sourceType", "sourceBusinessNo", "paymentNo", amount,
         currency, "paymentMethod", "executionMode", "payeeIdentity", "payeeName", status)
      VALUES
-       ($1, $7, $4, 'C2C_BUY', 'ORDER-A', 'PAY-A', 10, 'CNY', 'ALIPAY', 'INSTANT', 'a@example.com', 'A', 'COMPLETED'),
-       ($2, $7, $5, 'C2C_BUY', 'ORDER-B', 'PAY-B', 20, 'CNY', 'ALIPAY', 'INSTANT', 'b@example.com', 'B', 'COMPLETED'),
-       ($3, $8, $6, 'C2C_BUY', 'ORDER-C', 'PAY-C', 30, 'CNY', 'ALIPAY', 'INSTANT', 'c@example.com', 'C', 'COMPLETED')`,
+       ($1, $7, $4, 'C2C_BUY', 'ORDER-A', 'PAY-A', 10, 'CNY', 'ALIPAY', 'INSTANT', 'a@example.com', 'A', 'SUCCESS'),
+       ($2, $7, $5, 'C2C_BUY', 'ORDER-B', 'PAY-B', 20, 'CNY', 'ALIPAY', 'INSTANT', 'b@example.com', 'B', 'SUCCESS'),
+       ($3, $8, $6, 'C2C_BUY', 'ORDER-C', 'PAY-C', 30, 'CNY', 'ALIPAY', 'INSTANT', 'c@example.com', 'C', 'SUCCESS')`,
     [
       ids.paymentA,
       ids.paymentB,

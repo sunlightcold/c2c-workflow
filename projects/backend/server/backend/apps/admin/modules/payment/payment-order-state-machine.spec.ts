@@ -7,19 +7,16 @@ import {
 describe('PaymentOrderStateMachine', () => {
   const machine = new PaymentOrderStateMachine()
 
-  it('moves a submitted order through payment success and platform confirmation', () => {
+  it('keeps platform confirmation outside the payment status machine', () => {
     expect(machine.transition(PaymentOrderState.READY, PaymentOrderState.SUBMITTING)).toBe(
       PaymentOrderState.SUBMITTING,
     )
     expect(machine.transition(PaymentOrderState.SUBMITTING, PaymentOrderState.SUCCESS)).toBe(
       PaymentOrderState.SUCCESS,
     )
-    expect(
+    expect(() =>
       machine.transition(PaymentOrderState.SUCCESS, PaymentOrderState.PLATFORM_CONFIRM_PENDING),
-    ).toBe(PaymentOrderState.PLATFORM_CONFIRM_PENDING)
-    expect(
-      machine.transition(PaymentOrderState.PLATFORM_CONFIRM_PENDING, PaymentOrderState.COMPLETED),
-    ).toBe(PaymentOrderState.COMPLETED)
+    ).toThrow('非法支付状态迁移')
   })
 
   it('allows UNKNOWN to be resolved by query but never resubmitted', () => {

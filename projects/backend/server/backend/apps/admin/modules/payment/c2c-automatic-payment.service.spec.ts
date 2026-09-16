@@ -3,6 +3,7 @@ import {
   PaymentExecutionMode,
   PaymentOrderStatus,
   PaymentSourceType,
+  PlatformConfirmationStatus,
 } from '@admin/database'
 import { EVENT_KEYS } from '../event-emitter'
 import { C2cAutomaticPaymentService } from './c2c-automatic-payment.service'
@@ -22,6 +23,7 @@ describe('C2cAutomaticPaymentService', () => {
     findBatchScopes: jest.fn().mockResolvedValue([]),
     findRecoverablePayments: jest.fn().mockResolvedValue([]),
     findRecoverableBatches: jest.fn().mockResolvedValue([]),
+    claimFailureNotification: jest.fn().mockResolvedValue(true),
     runLocked: jest.fn((_key, work) => work()),
   }
   const merchantPayments = { create: jest.fn() }
@@ -50,7 +52,10 @@ describe('C2cAutomaticPaymentService', () => {
     eventEmitter as never,
   )
 
-  beforeEach(() => jest.clearAllMocks())
+  beforeEach(() => {
+    jest.clearAllMocks()
+    store.claimFailureNotification.mockResolvedValue(true)
+  })
 
   it('creates and immediately submits an eligible instant order through the merchant payment flow', async () => {
     store.findCandidates.mockResolvedValue([candidate])
@@ -105,6 +110,25 @@ describe('C2cAutomaticPaymentService', () => {
         status: PaymentOrderStatus.READY,
       }),
     )
+  })
+
+  it('notifies only once when the same automatic payment keeps failing', async () => {
+    store.findCandidates.mockResolvedValue([candidate])
+    merchantPayments.create.mockRejectedValue(new Error('Request failed with status code 404'))
+    store.claimFailureNotification.mockResolvedValueOnce(true).mockResolvedValue(false)
+
+    await service.createAndSubmit(now)
+    await service.createAndSubmit(now)
+
+    expect(store.claimFailureNotification).toHaveBeenCalledTimes(2)
+    expect(eventEmitter.emitAsync).toHaveBeenCalledTimes(1)
+    expect(eventEmitter.emitAsync).toHaveBeenCalledWith(EVENT_KEYS.TELEGRAM_EXCEPTION, {
+      tenantId: 'tenant-1',
+      merchantId: 'merchant-1',
+      code: 'AUTOMATIC_PAYMENT_FAILED',
+      message: 'Request failed with status code 404',
+      referenceId: 'merchant-order-1',
+    })
   })
 
   it('rematches a pending configuration and submits it without creating a second payment order', async () => {
@@ -228,8 +252,9 @@ describe('C2cAutomaticPaymentService', () => {
       {
         id: 'payment-2',
         tenantId: 'tenant-1',
-        status: PaymentOrderStatus.PLATFORM_CONFIRM_PENDING,
+        status: PaymentOrderStatus.SUCCESS,
         upstreamId: 'alipay-2',
+        platformConfirmStatus: PlatformConfirmationStatus.PENDING,
       },
     ])
 
@@ -239,21 +264,21 @@ describe('C2cAutomaticPaymentService', () => {
     expect(payments.confirmPlatform).toHaveBeenCalledWith(
       expect.objectContaining({
         id: 'payment-2',
-        status: PaymentOrderStatus.PLATFORM_CONFIRM_PENDING,
+        status: PaymentOrderStatus.SUCCESS,
       }),
+      { recoverProcessing: false },
     )
     expect(payments.submit).not.toHaveBeenCalled()
   })
 
-  it('submits a ready batch left behind by a failed preflight and reconciles active batches', async () => {
+  it('never resubmits ready batches from recovery and only reconciles active batches', async () => {
     store.findRecoverableBatches.mockResolvedValue([
-      { id: 'batch-ready', tenantId: 'tenant-1', status: PaymentBatchStatus.READY },
       { id: 'batch-processing', tenantId: 'tenant-1', status: PaymentBatchStatus.PROCESSING },
     ])
 
     await service.recover()
 
-    expect(batchExecution.submit).toHaveBeenCalledWith('tenant-1', 'batch-ready')
+    expect(batchExecution.submit).not.toHaveBeenCalled()
     expect(batchExecution.reconcile).toHaveBeenCalledWith('tenant-1', 'batch-processing')
   })
 })

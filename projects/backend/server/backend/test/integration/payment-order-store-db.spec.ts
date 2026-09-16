@@ -4,9 +4,12 @@ import {
   MerchantEntity,
   MerchantOrderEntity,
   MerchantOrderStatusHistoryEntity,
+  PaymentAccountChannelEntity,
+  PaymentAccountEntity,
   PaymentBatchEntity,
   PaymentBatchItemEntity,
   PaymentBatchStatusHistoryEntity,
+  PaymentChannelEntity,
   PaymentExecutionMode,
   PaymentOrderEntity,
   PaymentOrderStatus,
@@ -27,10 +30,15 @@ import { migrateC2cMerchantOrderAppeals } from '@/apps/admin/database/migrations
 import { migrateC2cAutomaticPayments } from '@/apps/admin/database/migrations/c2c-automatic-payments.migration'
 import { migrateC2cPaymentBatchPolicies } from '@/apps/admin/database/migrations/c2c-payment-batch-policies.migration'
 import { migrateC2cPaymentReconciliationPolicy } from '@/apps/admin/database/migrations/c2c-payment-reconciliation-policy.migration'
+import { migrateC2cPlatformConfirmationControl } from '@/apps/admin/database/migrations/c2c-platform-confirmation-control.migration'
+import { migrateC2cFullProviderParity } from '@/apps/admin/database/migrations/c2c-full-provider-parity.migration'
+import { migrateC2cPaymentPlatformStateSeparation } from '@/apps/admin/database/migrations/c2c-payment-platform-state-separation.migration'
+import { migratePaymentAccountCredentials } from '@/apps/admin/database/migrations/payment-account-credentials.migration'
 import { PaymentOrderState } from '@/apps/admin/modules/payment/payment-order-state-machine'
 import { PaymentOrderService } from '@/apps/admin/modules/payment/payment-order.service'
 import { C2cPaymentCancellationService } from '@/apps/admin/modules/payment/c2c-payment-cancellation.service'
 import { TypeOrmPaymentOrderStore } from '@/apps/admin/modules/payment/typeorm-payment-order.store'
+import { TypeOrmPaymentPreflightStore } from '@/apps/admin/modules/payment/typeorm-payment-preflight.store'
 import developmentConfig from '@/config/development'
 import { ConflictException } from '@nestjs/common'
 import { DataSource } from 'typeorm'
@@ -47,6 +55,7 @@ describe('Payment order store database integration', () => {
   let adminDataSource: DataSource
   let dataSource: DataSource
   let store: TypeOrmPaymentOrderStore
+  let preflightStore: TypeOrmPaymentPreflightStore
   let paymentOrders: PaymentOrderService
   let cancellation: C2cPaymentCancellationService
 
@@ -77,6 +86,9 @@ describe('Payment order store database integration', () => {
         MerchantEntity,
         MerchantOrderEntity,
         MerchantOrderStatusHistoryEntity,
+        PaymentAccountEntity,
+        PaymentAccountChannelEntity,
+        PaymentChannelEntity,
         PaymentOrderEntity,
         PaymentOrderStatusHistoryEntity,
         PaymentBatchEntity,
@@ -90,6 +102,7 @@ describe('Payment order store database integration', () => {
       await migrateC2cBusinessFoundation(manager)
       await migrateC2cPaymentOrders(manager)
       await migrateC2cPaymentRouting(manager)
+      await migratePaymentAccountCredentials(manager)
       await migrateC2cMerchantPlatformCredentials(manager)
       await migrateC2cMerchantAccountOperations(manager)
       await migrateC2cMerchantOrders(manager)
@@ -98,6 +111,9 @@ describe('Payment order store database integration', () => {
       await migrateC2cAutomaticPayments(manager)
       await migrateC2cPaymentBatchPolicies(manager)
       await migrateC2cPaymentReconciliationPolicy(manager)
+      await migrateC2cPlatformConfirmationControl({ query: manager.query.bind(manager) })
+      await migrateC2cFullProviderParity(manager)
+      await migrateC2cPaymentPlatformStateSeparation({ query: manager.query.bind(manager) })
       await manager.query(
         `INSERT INTO merchant (id, "tenantId", code, name, platform, "apiBaseUrl")
          VALUES ($1, $2, 'merchant-1', 'Merchant 1', 'BINANCE', 'http://127.0.0.1:13002')`,
@@ -123,6 +139,7 @@ describe('Payment order store database integration', () => {
       )
     })
     store = new TypeOrmPaymentOrderStore(dataSource)
+    preflightStore = new TypeOrmPaymentPreflightStore(dataSource)
     paymentOrders = new PaymentOrderService(
       dataSource.getRepository(PaymentOrderEntity),
       dataSource.getRepository(MerchantEntity),
@@ -238,6 +255,49 @@ describe('Payment order store database integration', () => {
     expect(result.items).toEqual([
       expect.objectContaining({ batchNo: 'BATCH-LATEST', id: orderId }),
     ])
+  })
+
+  it('loads a manual batch query context without requiring a merchant order', async () => {
+    const batchId = '00000000-0000-4000-8000-000000000108'
+    const batchAccountChannelId = '00000000-0000-4000-8000-000000000109'
+    await dataSource.query('DELETE FROM merchant_order')
+    await dataSource.query(
+      `INSERT INTO payment_account_channel
+         (id, "paymentAccountId", "channelId", "concurrencyLimit")
+       VALUES ($1, $2, $3, 1)`,
+      [batchAccountChannelId, accountId, C2C_FOUNDATION_IDS.alipayBatchChannel],
+    )
+    await dataSource.query(
+      `UPDATE payment_order
+       SET "sourceType" = 'BOT_MANUAL', "executionMode" = 'BATCH',
+           "paymentAccountChannelId" = $2, status = 'COMPLETED'
+       WHERE id = $1`,
+      [orderId, batchAccountChannelId],
+    )
+    await dataSource.query(
+      `INSERT INTO payment_batch
+         (id, "tenantId", "merchantId", "batchNo", "paymentAccountId",
+          "paymentAccountChannelId", currency, "totalCount", "totalAmount", status)
+       VALUES ($1, $2, $3, 'BAT-QUERY', $4, $5, 'CNY', 1, 100.00, 'SUCCESS')`,
+      [batchId, tenantId, merchantId, accountId, batchAccountChannelId],
+    )
+    await dataSource.query(
+      `INSERT INTO payment_batch_item
+         ("tenantId", "merchantId", "batchId", "paymentOrderId", amount, status)
+       VALUES ($1, $2, $3, $4, 100.00, 'SUCCESS')`,
+      [tenantId, merchantId, batchId, orderId],
+    )
+
+    await expect(preflightStore.loadQueryContext(tenantId, orderId)).resolves.toMatchObject({
+      order: {
+        id: orderId,
+        sourceType: PaymentSourceType.BOT_MANUAL,
+        executionMode: PaymentExecutionMode.BATCH,
+      },
+      adapterCode: 'ALIPAY_BATCH',
+      executionMode: PaymentExecutionMode.BATCH,
+      batchNo: 'BAT-QUERY',
+    })
   })
 
   it('restores the merchant order when payment was definitely not submitted', async () => {

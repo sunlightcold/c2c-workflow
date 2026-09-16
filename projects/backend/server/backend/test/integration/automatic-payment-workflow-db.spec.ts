@@ -21,6 +21,7 @@ import {
   PaymentOrderStatus,
   PaymentOrderStatusHistoryEntity,
   PaymentSourceType,
+  PlatformConfirmationStatus,
   PaymentPlatformEntity,
   PaymentChannelEntity,
   TenantEntity,
@@ -41,6 +42,9 @@ import { migrateC2cAutomaticPayments } from '@/apps/admin/database/migrations/c2
 import { migrateC2cPaymentBatchPolicies } from '@/apps/admin/database/migrations/c2c-payment-batch-policies.migration'
 import { migrateC2cPaymentReconciliationPolicy } from '@/apps/admin/database/migrations/c2c-payment-reconciliation-policy.migration'
 import { migrateC2cPaymentPlanAutomation } from '@/apps/admin/database/migrations/c2c-payment-plan-automation.migration'
+import { migrateC2cPaymentPlatformStateSeparation } from '@/apps/admin/database/migrations/c2c-payment-platform-state-separation.migration'
+import { migrateC2cPlatformConfirmationControl } from '@/apps/admin/database/migrations/c2c-platform-confirmation-control.migration'
+import { migrateC2cFullProviderParity } from '@/apps/admin/database/migrations/c2c-full-provider-parity.migration'
 import { MerchantPlatformCredentialService } from '@/apps/admin/modules/business/merchant-platform-credential.service'
 import { C2cOrderService } from '@/apps/admin/modules/c2c-order/c2c-order.service'
 import { C2cOrderSyncService } from '@/apps/admin/modules/c2c-order/c2c-order-sync.service'
@@ -62,6 +66,7 @@ import { C2cAlipayPaymentExecutor } from '@/apps/admin/modules/payment/c2c-alipa
 import { C2cAutomaticPaymentService } from '@/apps/admin/modules/payment/c2c-automatic-payment.service'
 import { C2cMerchantPaymentService } from '@/apps/admin/modules/payment/c2c-merchant-payment.service'
 import { C2cPaymentProofService } from '@/apps/admin/modules/payment/c2c-payment-proof.service'
+import { C2cPaidConfirmationThrottleService } from '@/apps/admin/modules/payment/c2c-paid-confirmation-throttle.service'
 import { C2cPaymentCancellationService } from '@/apps/admin/modules/payment/c2c-payment-cancellation.service'
 import { C2cPaymentPreflightVerifier } from '@/apps/admin/modules/payment/c2c-payment-preflight-verifier'
 import { C2cPlatformPaymentConfirmer } from '@/apps/admin/modules/payment/c2c-platform-payment.confirmer'
@@ -104,6 +109,7 @@ const batchPolicyRuleId = '35000000-0000-4000-8000-000000000001'
 interface WorkflowHarness {
   dataSource: DataSource
   job: C2cAutomationJob
+  merchantPayments: C2cMerchantPaymentService
 }
 
 describe('Automatic C2C payment workflow database integration', () => {
@@ -161,6 +167,9 @@ describe('Automatic C2C payment workflow database integration', () => {
       await migrateC2cPaymentBatchPolicies(manager)
       await migrateC2cPaymentReconciliationPolicy(manager)
       await migrateC2cPaymentPlanAutomation({ query: manager.query.bind(manager) })
+      await migrateC2cPlatformConfirmationControl({ query: manager.query.bind(manager) })
+      await migrateC2cFullProviderParity(manager)
+      await migrateC2cPaymentPlatformStateSeparation({ query: manager.query.bind(manager) })
     })
     harness = createHarness(dataSource)
   })
@@ -226,7 +235,10 @@ describe('Automatic C2C payment workflow database integration', () => {
 
     await harness.job.recoverPayments()
     payment = await findPayment(harness.dataSource, 'BIN-E2E-1001')
-    expect(payment.status).toBe(PaymentOrderStatus.PLATFORM_CONFIRM_PENDING)
+    expect(payment).toMatchObject({
+      status: PaymentOrderStatus.SUCCESS,
+      platformConfirmStatus: PlatformConfirmationStatus.FAILED,
+    })
     expect((await findMerchantOrder(harness.dataSource, 'BIN-E2E-1001')).status).toBe(
       MerchantOrderStatus.PAID_PENDING_PLATFORM_CONFIRM,
     )
@@ -240,9 +252,16 @@ describe('Automatic C2C payment workflow database integration', () => {
     await harness.job.processAutomaticPayments()
     await harness.job.recoverPayments()
 
-    expect((await findPayment(harness.dataSource, 'BIN-E2E-1001')).status).toBe(
-      PaymentOrderStatus.COMPLETED,
-    )
+    expect(await findPayment(harness.dataSource, 'BIN-E2E-1001')).toMatchObject({
+      status: PaymentOrderStatus.SUCCESS,
+      platformConfirmStatus: PlatformConfirmationStatus.FAILED,
+    })
+    await harness.merchantPayments.confirmPaid(tenantId, merchantIds.binance, merchantOrder.id)
+
+    expect(await findPayment(harness.dataSource, 'BIN-E2E-1001')).toMatchObject({
+      status: PaymentOrderStatus.SUCCESS,
+      platformConfirmStatus: PlatformConfirmationStatus.SUCCESS,
+    })
     expect((await findMerchantOrder(harness.dataSource, 'BIN-E2E-1001')).status).toBe(
       MerchantOrderStatus.PENDING_RELEASE,
     )
@@ -254,7 +273,7 @@ describe('Automatic C2C payment workflow database integration', () => {
     expect(binance.find(({ orderNumber }) => orderNumber === 'BIN-E2E-1001')?.orderStatus).toBe(2)
   })
 
-  it('discovers an OKX order, completes payment, and marks the platform order paid', async () => {
+  it('marks an OKX order as paid after the funding request succeeds', async () => {
     await seedMerchant(harness.dataSource, merchantIds.okx, MerchantPlatform.OKX)
     await seedPaymentRoute(harness.dataSource, merchantIds.okx, PaymentExecutionMode.INSTANT)
 
@@ -266,8 +285,9 @@ describe('Automatic C2C payment workflow database integration', () => {
     await harness.job.recoverPayments()
 
     expect(await findPayment(harness.dataSource, '260905000000001')).toMatchObject({
-      status: PaymentOrderStatus.COMPLETED,
+      status: PaymentOrderStatus.SUCCESS,
       lastError: null,
+      platformConfirmStatus: PlatformConfirmationStatus.SUCCESS,
     })
     expect((await findMerchantOrder(harness.dataSource, '260905000000001')).status).toBe(
       MerchantOrderStatus.PENDING_RELEASE,
@@ -315,9 +335,10 @@ describe('Automatic C2C payment workflow database integration', () => {
 
     await harness.job.recoverPayments()
 
-    expect((await findPayment(harness.dataSource, 'BIN-E2E-STOPPED-1001')).status).toBe(
-      PaymentOrderStatus.COMPLETED,
-    )
+    expect(await findPayment(harness.dataSource, 'BIN-E2E-STOPPED-1001')).toMatchObject({
+      status: PaymentOrderStatus.SUCCESS,
+      platformConfirmStatus: PlatformConfirmationStatus.SUCCESS,
+    })
     expect((await findMerchantOrder(harness.dataSource, 'BIN-E2E-STOPPED-1001')).status).toBe(
       MerchantOrderStatus.PENDING_RELEASE,
     )
@@ -418,8 +439,8 @@ describe('Automatic C2C payment workflow database integration', () => {
     await harness.job.recoverPayments()
 
     expect(await paymentStatuses(harness.dataSource)).toEqual([
-      PaymentOrderStatus.COMPLETED,
-      PaymentOrderStatus.COMPLETED,
+      PaymentOrderStatus.SUCCESS,
+      PaymentOrderStatus.SUCCESS,
     ])
     expect((await batchOrders()).total).toBe(1)
     expect(
@@ -608,13 +629,14 @@ function createHarness(dataSource: DataSource): WorkflowHarness {
   )
   const paymentCoordinator = new PaymentExecutionCoordinator(
     new TypeOrmPaymentOrderStore(dataSource),
-    new C2cAlipayPaymentExecutor(preflight, paymentChannels),
+    new C2cAlipayPaymentExecutor(preflight, preflightStore, paymentChannels),
     new C2cPlatformPaymentConfirmer(
       preflightStore,
       secretResolver,
       credentialFactory,
       platformClient,
       paymentProofs,
+      new C2cPaidConfirmationThrottleService(dataSource),
     ),
   )
   const batchService = new PaymentBatchService(dataSource)
@@ -644,7 +666,17 @@ function createHarness(dataSource: DataSource): WorkflowHarness {
     ),
     batchCoordinator,
   )
-  return { dataSource, job: new C2cAutomationJob(syncStore, orderSync, automaticPayments) }
+  return {
+    dataSource,
+    job: new C2cAutomationJob(
+      syncStore,
+      orderSync,
+      automaticPayments,
+      { scanAll: jest.fn().mockResolvedValue([]) },
+      { scanAll: jest.fn().mockResolvedValue([]) },
+    ),
+    merchantPayments,
+  }
 }
 
 async function resetDatabase(dataSource: DataSource): Promise<void> {

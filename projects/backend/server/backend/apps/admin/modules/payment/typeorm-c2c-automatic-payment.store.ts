@@ -1,4 +1,9 @@
-import { PaymentBatchStatus, PaymentOrderStatus, PaymentSourceType } from '@admin/database'
+import {
+  PaymentBatchStatus,
+  PaymentOrderStatus,
+  PaymentSourceType,
+  PlatformConfirmationStatus,
+} from '@admin/database'
 import { Injectable } from '@nestjs/common'
 import { DataSource } from 'typeorm'
 import type {
@@ -113,28 +118,35 @@ export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore
       `
         SELECT payment_order.id,
                payment_order."tenantId" AS "tenantId",
+               payment_order."merchantId" AS "merchantId",
                payment_order.status,
-               payment_order."upstreamId" AS "upstreamId"
+               payment_order."upstreamId" AS "upstreamId",
+               payment_order."platformConfirmStatus" AS "platformConfirmStatus"
         FROM payment_order
-        WHERE payment_order.status = ANY($1::payment_order_status_enum[])
-          AND (
-            payment_order.status = 'PLATFORM_CONFIRM_PENDING'
-            OR NOT EXISTS (
+        WHERE (
+            payment_order.status = ANY($1::payment_order_status_enum[])
+            AND NOT EXISTS (
               SELECT 1
               FROM payment_batch_item
               WHERE payment_batch_item."paymentOrderId" = payment_order.id
             )
+          ) OR (
+            payment_order.status = 'SUCCESS'
+            AND (
+              payment_order."platformConfirmStatus" = $2
+              OR (
+                payment_order."platformConfirmStatus" = $3
+                AND payment_order."platformConfirmLastAttemptAt" <= NOW() - INTERVAL '60 seconds'
+              )
+            )
           )
         ORDER BY payment_order."updatedAt" ASC, payment_order.id ASC
-        LIMIT $2
+        LIMIT $4
       `,
       [
-        [
-          PaymentOrderStatus.SUBMITTING,
-          PaymentOrderStatus.PROCESSING,
-          PaymentOrderStatus.UNKNOWN,
-          PaymentOrderStatus.PLATFORM_CONFIRM_PENDING,
-        ],
+        [PaymentOrderStatus.SUBMITTING, PaymentOrderStatus.PROCESSING, PaymentOrderStatus.UNKNOWN],
+        PlatformConfirmationStatus.PENDING,
+        PlatformConfirmationStatus.PROCESSING,
         limit,
       ],
     )
@@ -143,27 +155,41 @@ export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore
   findRecoverableBatches(limit: number): Promise<RecoverableBatch[]> {
     return this.dataSource.query(
       `
-        SELECT id, "tenantId" AS "tenantId", status
+        SELECT id, "tenantId" AS "tenantId", "merchantId" AS "merchantId", status
         FROM payment_batch
         WHERE status = ANY($1::payment_batch_status_enum[])
           AND (
-            status = 'READY'
-            OR "nextReconcileAt" <= NOW()
+            "nextReconcileAt" <= NOW()
             OR (status = 'SUBMITTING' AND "nextReconcileAt" IS NULL)
           )
         ORDER BY "updatedAt" ASC, id ASC
         LIMIT $2
       `,
       [
-        [
-          PaymentBatchStatus.READY,
-          PaymentBatchStatus.SUBMITTING,
-          PaymentBatchStatus.PROCESSING,
-          PaymentBatchStatus.UNKNOWN,
-        ],
+        [PaymentBatchStatus.SUBMITTING, PaymentBatchStatus.PROCESSING, PaymentBatchStatus.UNKNOWN],
         limit,
       ],
     )
+  }
+
+  async claimFailureNotification(input: {
+    tenantId: string
+    merchantId: string
+    code: string
+    referenceId: string
+    message: string
+  }): Promise<boolean> {
+    const rows = await this.dataSource.query(
+      `
+        INSERT INTO automatic_payment_failure_notice
+          ("tenantId", "merchantId", code, "referenceId", message)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT ("tenantId", "merchantId", code, "referenceId") DO NOTHING
+        RETURNING id
+      `,
+      [input.tenantId, input.merchantId, input.code, input.referenceId, input.message],
+    )
+    return rows.length === 1
   }
 
   async runLocked<T>(key: string, work: () => Promise<T>): Promise<T | undefined> {

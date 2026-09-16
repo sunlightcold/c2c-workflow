@@ -37,6 +37,11 @@ describe('Deployment migrations database integration', () => {
     'C2cTelegramCapabilityCleanup1789019000000',
     'C2cPaymentReconciliationPolicy1789020000000',
     'C2cPaymentPlanAutomation1789021000000',
+    'C2cAutomaticPaymentFailureNotices1789022000000',
+    'C2cPlatformConfirmationControl1789023000000',
+    'C2cFullProviderParity1789024000000',
+    'C2cPaidNotificationCapability1789025000000',
+    'C2cPaymentPlatformStateSeparation1789026000000',
   ]
   const { postgres } = developmentConfig.admin
   const schema = `deployment_migrations_test_${process.pid}_${Date.now()}`
@@ -149,5 +154,30 @@ describe('Deployment migrations database integration', () => {
            AND constraint_type = 'FOREIGN KEY'`,
       ),
     ).resolves.toEqual([{ constraint_name: 'fk_sys_user_tenant' }])
+    await expect(
+      dataSource.query<{ column_name: string }[]>(
+        `SELECT column_name
+         FROM information_schema.columns
+         WHERE table_schema = current_schema()
+           AND table_name = 'merchant_order'
+           AND column_name = ANY($1)
+         ORDER BY column_name`,
+        [
+          [
+            'kycStatus',
+            'autoAppealStatus',
+            'autoAppealAttempts',
+            'completionReplyStatus',
+            'completionReplyAttempts',
+          ],
+        ],
+      ),
+    ).resolves.toEqual([
+      { column_name: 'autoAppealAttempts' },
+      { column_name: 'autoAppealStatus' },
+      { column_name: 'completionReplyAttempts' },
+      { column_name: 'completionReplyStatus' },
+      { column_name: 'kycStatus' },
+    ])
   })
 })

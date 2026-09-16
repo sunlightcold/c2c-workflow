@@ -1,4 +1,5 @@
 import { BusinessStatus, MerchantPlatform } from '@admin/database'
+import { C2cCredentialRejectedError } from '../c2c-platform'
 import { C2cOrderSyncService } from './c2c-order-sync.service'
 
 describe('C2cOrderSyncService', () => {
@@ -23,6 +24,7 @@ describe('C2cOrderSyncService', () => {
       xUserId: null,
       requestTimeoutMs: 5000,
     }),
+    disableRejectedCredential: jest.fn().mockResolvedValue(true),
   }
   const secretResolver = {
     resolve: jest.fn().mockResolvedValue({ apiKey: 'key', secretKey: 'secret' }),
@@ -184,5 +186,78 @@ describe('C2cOrderSyncService', () => {
       expect.any(Object),
       expect.objectContaining({ page: 2 }),
     )
+  })
+
+  it('disables one rejected OKX credential and emits only the dedicated notification', async () => {
+    merchantRepository.findOne.mockResolvedValueOnce({
+      id: merchantId,
+      tenantId,
+      code: 'mock-hq-okx',
+      platform: MerchantPlatform.OKX,
+      status: BusinessStatus.ACTIVE,
+      pageSize: 20,
+      overlapSeconds: 120,
+      orderStatusList: [1],
+    })
+    platformClient.listOrders.mockRejectedValueOnce(
+      new C2cCredentialRejectedError('欧易 Web 凭据失效 [805]', '805'),
+    )
+    const service = new C2cOrderSyncService(
+      merchantRepository as never,
+      credentials as never,
+      secretResolver,
+      credentialFactory as never,
+      platformClient as never,
+      store,
+      eventEmitter as never,
+    )
+
+    await expect(service.sync(tenantId, merchantId, now)).rejects.toBeInstanceOf(
+      C2cCredentialRejectedError,
+    )
+    expect(credentials.disableRejectedCredential).toHaveBeenCalledWith(tenantId, merchantId)
+    expect(eventEmitter.emit).toHaveBeenCalledTimes(1)
+    expect(eventEmitter.emit).toHaveBeenCalledWith(
+      'telegram.exception',
+      expect.objectContaining({
+        tenantId,
+        merchantId,
+        code: 'C2C_CREDENTIAL_REJECTED',
+        referenceId: 'mock-hq-okx',
+        platform: MerchantPlatform.OKX,
+        merchantNo: 'mock-hq-okx',
+      }),
+    )
+  })
+
+  it('does not repeat a credential notification after another worker already disabled it', async () => {
+    merchantRepository.findOne.mockResolvedValueOnce({
+      id: merchantId,
+      tenantId,
+      code: 'mock-hq-okx',
+      platform: MerchantPlatform.OKX,
+      status: BusinessStatus.ACTIVE,
+      pageSize: 20,
+      overlapSeconds: 120,
+      orderStatusList: [1],
+    })
+    platformClient.listOrders.mockRejectedValueOnce(
+      new C2cCredentialRejectedError('欧易 Web 凭据失效 [403]', '403'),
+    )
+    credentials.disableRejectedCredential.mockResolvedValueOnce(false)
+    const service = new C2cOrderSyncService(
+      merchantRepository as never,
+      credentials as never,
+      secretResolver,
+      credentialFactory as never,
+      platformClient as never,
+      store,
+      eventEmitter as never,
+    )
+
+    await expect(service.sync(tenantId, merchantId, now)).rejects.toBeInstanceOf(
+      C2cCredentialRejectedError,
+    )
+    expect(eventEmitter.emit).not.toHaveBeenCalled()
   })
 })

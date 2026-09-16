@@ -3,6 +3,7 @@ import {
   PaymentExecutionMode,
   PaymentOrderStatus,
   PaymentSourceType,
+  PlatformConfirmationStatus,
 } from '@admin/database'
 import { BadRequestException, ConflictException } from '@nestjs/common'
 import type { C2cOrderService } from '../c2c-order/c2c-order.service'
@@ -146,21 +147,31 @@ describe('C2cMerchantPaymentService', () => {
   it('retries only platform confirmation without submitting payment again', async () => {
     merchantOrders.detail.mockResolvedValue({
       ...order,
-      paymentOrder: { id: 'payment-1', status: PaymentOrderStatus.PLATFORM_CONFIRM_PENDING },
+      paymentOrder: {
+        id: 'payment-1',
+        status: PaymentOrderStatus.SUCCESS,
+        platformConfirmStatus: PlatformConfirmationStatus.FAILED,
+      },
     })
     execution.confirmPlatform.mockResolvedValue({
       id: 'payment-1',
-      status: PaymentOrderStatus.COMPLETED,
+      status: PaymentOrderStatus.SUCCESS,
     })
 
     await service.confirmPaid('tenant-1', 'merchant-1', 'order-1')
 
-    expect(execution.confirmPlatform).toHaveBeenCalledWith({
-      id: 'payment-1',
-      tenantId: 'tenant-1',
-      status: PaymentOrderStatus.PLATFORM_CONFIRM_PENDING,
-      upstreamId: undefined,
-    })
+    expect(execution.confirmPlatform).toHaveBeenCalledWith(
+      {
+        id: 'payment-1',
+        tenantId: 'tenant-1',
+        merchantId: 'merchant-1',
+        sourceBusinessNo: 'platform-order-1',
+        status: PaymentOrderStatus.SUCCESS,
+        upstreamId: undefined,
+        platformConfirmStatus: PlatformConfirmationStatus.FAILED,
+      },
+      { manualRetry: true },
+    )
     expect(execution.submit).not.toHaveBeenCalled()
   })
 
@@ -176,15 +187,36 @@ describe('C2cMerchantPaymentService', () => {
     expect(execution.confirmPlatform).not.toHaveBeenCalled()
   })
 
-  it('returns an already completed payment without confirming it again', async () => {
+  it('rejects a manual retry while another worker owns platform confirmation', async () => {
     merchantOrders.detail.mockResolvedValue({
       ...order,
-      paymentOrder: { id: 'payment-1', status: PaymentOrderStatus.COMPLETED },
+      paymentOrder: {
+        id: 'payment-1',
+        status: PaymentOrderStatus.SUCCESS,
+        platformConfirmStatus: PlatformConfirmationStatus.PROCESSING,
+      },
+    })
+
+    await expect(service.confirmPaid('tenant-1', 'merchant-1', 'order-1')).rejects.toBeInstanceOf(
+      ConflictException,
+    )
+    expect(execution.confirmPlatform).not.toHaveBeenCalled()
+  })
+
+  it('returns a payment whose platform confirmation already succeeded', async () => {
+    merchantOrders.detail.mockResolvedValue({
+      ...order,
+      paymentOrder: {
+        id: 'payment-1',
+        status: PaymentOrderStatus.SUCCESS,
+        platformConfirmStatus: PlatformConfirmationStatus.SUCCESS,
+      },
     })
 
     await expect(service.confirmPaid('tenant-1', 'merchant-1', 'order-1')).resolves.toEqual({
       id: 'payment-1',
-      status: PaymentOrderStatus.COMPLETED,
+      status: PaymentOrderStatus.SUCCESS,
+      platformConfirmStatus: PlatformConfirmationStatus.SUCCESS,
     })
     expect(execution.confirmPlatform).not.toHaveBeenCalled()
   })

@@ -111,6 +111,35 @@ describe('Alipay payment adapters', () => {
     )
   })
 
+  it('queries one batch child by payment number and returns its upstream result', async () => {
+    gateway.execute.mockResolvedValue({
+      code: '10000',
+      outBatchNo: 'B1',
+      batchTransId: 'BATCH-ALIPAY-1',
+      batchStatus: 'SUCCESS',
+      totalPageCount: 1,
+      accDetailList: [
+        {
+          outBizNo: 'PAY-1',
+          detailId: 'D1',
+          alipayOrderNo: 'ALIPAY-ORDER-1',
+          status: 'SUCCESS',
+          transAmount: '10.20',
+        },
+      ],
+    })
+
+    await expect(batch.queryOrder('B1', 'PAY-1')).resolves.toMatchObject({
+      status: PaymentExecutionStatus.SUCCESS,
+      upstreamId: 'ALIPAY-ORDER-1',
+      raw: expect.objectContaining({ outBatchNo: 'B1' }),
+    })
+    expect(gateway.execute).toHaveBeenCalledWith(
+      'alipay.fund.batch.detail.query',
+      expect.objectContaining({ out_batch_no: 'B1' }),
+    )
+  })
+
   it('keeps non-terminal batch query errors unknown', async () => {
     gateway.execute.mockResolvedValue({
       code: '40004',

@@ -41,8 +41,12 @@ export interface PaymentPreflightConfiguration {
   merchant: {
     id: string
     tenantId: string
+    code?: string
     platform: MerchantPlatform
     status: BusinessStatus
+    paidConfirmIntervalMinMs?: number
+    paidConfirmIntervalMaxMs?: number
+    requestTimeoutMs?: number
   }
   merchantOrder: {
     id: string
@@ -109,6 +113,18 @@ export interface PaymentPreflightStore {
   load: (tenantId: string, orderId: string) => Promise<PaymentPreflightConfiguration>
 }
 
+export interface PaymentQueryContext {
+  order: PaymentPreflightConfiguration['order']
+  paymentAccountCredentialRef: string
+  adapterCode: PaymentAdapterCode
+  executionMode: PaymentExecutionMode
+  batchNo: string | null
+}
+
+export interface PaymentQueryContextStore {
+  loadQueryContext: (tenantId: string, orderId: string) => Promise<PaymentQueryContext>
+}
+
 export interface VerifiedC2cPayment {
   order: PaymentPreflightConfiguration['order']
   platformOrder: C2cBuyOrderDetail
@@ -116,6 +132,7 @@ export interface VerifiedC2cPayment {
 }
 
 export const PAYMENT_PREFLIGHT_STORE = Symbol('PAYMENT_PREFLIGHT_STORE')
+export const PAYMENT_QUERY_CONTEXT_STORE = Symbol('PAYMENT_QUERY_CONTEXT_STORE')
 
 @Injectable()
 export class C2cPaymentPreflightVerifier {

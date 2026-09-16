@@ -65,6 +65,25 @@ export interface C2cListInput {
   orderStatusList: number[]
 }
 
+export interface C2cReportInput {
+  startTimestamp: number
+  endTimestamp: number
+  page: number
+  rows: number
+  tradeType: 'BUY'
+}
+
+export class C2cCredentialRejectedError extends Error {
+  constructor(
+    message: string,
+    readonly responseCode?: string,
+    readonly statusCode?: number,
+  ) {
+    super(message)
+    this.name = 'C2cCredentialRejectedError'
+  }
+}
+
 export interface C2cCapabilities {
   appeal: boolean
   cancelOrder: boolean
@@ -86,6 +105,23 @@ export enum C2cBuyOrderStatus {
   CANCELLED = 'CANCELLED',
   EXPIRED = 'EXPIRED',
   UNKNOWN = 'UNKNOWN',
+}
+
+export interface C2cReportOrder {
+  platformOrderId: string
+  status: C2cBuyOrderStatus
+  side: 'BUY'
+  asset: string
+  assetAmount: string
+  fiatCurrency: string
+  fiatAmount: string
+  createdAt: string
+}
+
+export interface C2cReportPage {
+  hasMore: boolean
+  items: C2cReportOrder[]
+  total: number
 }
 
 export interface C2cBuyOrderSummary {
@@ -124,6 +160,7 @@ export interface C2cPlatformAdapter<TCredentials> {
   getMarkPaidPolicy: (credentials: TCredentials) => C2cMarkPaidPolicy
   getOrderDetail: (credentials: TCredentials, orderId: string) => Promise<C2cBuyOrderDetail>
   listOrders: (credentials: TCredentials, input: C2cListInput) => Promise<C2cBuyOrderPage>
+  listReportOrders?: (credentials: TCredentials, input: C2cReportInput) => Promise<C2cReportPage>
   markOrderAsPaid: (
     credentials: TCredentials,
     orderId: string,

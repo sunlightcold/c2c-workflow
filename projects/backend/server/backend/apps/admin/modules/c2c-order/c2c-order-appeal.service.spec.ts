@@ -3,6 +3,7 @@ import {
   MerchantOrderAppealStatus,
   MerchantOrderStatus,
   MerchantPlatform,
+  PlatformConfirmationStatus,
   PaymentOrderStatus,
 } from '@admin/database'
 import { BadRequestException, ServiceUnavailableException } from '@nestjs/common'
@@ -28,7 +29,11 @@ describe('C2cOrderAppealService', () => {
     platformOrderId: 'BIN-1',
     status: MerchantOrderStatus.PENDING_RELEASE,
     appealStatus: null,
-    paymentOrder: { id: 'payment-1', status: PaymentOrderStatus.COMPLETED },
+    paymentOrder: {
+      id: 'payment-1',
+      status: PaymentOrderStatus.SUCCESS,
+      platformConfirmStatus: PlatformConfirmationStatus.SUCCESS,
+    },
   }
   const orders = { detail: jest.fn() }
   const merchants = { findOne: jest.fn() }
@@ -213,17 +218,37 @@ describe('C2cOrderAppealService', () => {
     expect(platformClient.submitComplaint).not.toHaveBeenCalled()
   })
 
-  it('rejects an order whose payment is not completed before calling Binance', async () => {
+  it('rejects an order whose payment is not successful before calling Binance', async () => {
     orders.detail.mockResolvedValue({
       ...order,
-      paymentOrder: { id: 'payment-1', status: PaymentOrderStatus.PROCESSING },
+      paymentOrder: {
+        id: 'payment-1',
+        status: PaymentOrderStatus.PROCESSING,
+        platformConfirmStatus: PlatformConfirmationStatus.PENDING,
+      },
     })
 
     await expect(service.getReasons('tenant-1', 'merchant-1', 'order-1')).rejects.toThrow(
-      '支付完成后才可以申诉',
+      '支付成功且平台确认付款后才可以申诉',
     )
     expect(credentials.getActiveReference).not.toHaveBeenCalled()
     expect(platformClient.getOrderDetail).not.toHaveBeenCalled()
+  })
+
+  it('rejects an order before the independent platform confirmation succeeds', async () => {
+    orders.detail.mockResolvedValue({
+      ...order,
+      paymentOrder: {
+        id: 'payment-1',
+        status: PaymentOrderStatus.SUCCESS,
+        platformConfirmStatus: PlatformConfirmationStatus.FAILED,
+      },
+    })
+
+    await expect(service.getReasons('tenant-1', 'merchant-1', 'order-1')).rejects.toThrow(
+      '支付成功且平台确认付款后才可以申诉',
+    )
+    expect(credentials.getActiveReference).not.toHaveBeenCalled()
   })
 
   it('reports OKX appeals as unsupported without resolving credentials', async () => {

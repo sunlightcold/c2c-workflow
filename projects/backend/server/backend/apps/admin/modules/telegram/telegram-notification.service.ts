@@ -17,25 +17,31 @@ import {
   EVENT_KEYS,
   type TelegramBatchStatusPayload,
   type TelegramBatchSubmittedPayload,
+  type TelegramBatchPlatformConfirmationResultPayload,
   type TelegramExceptionPayload,
   type TelegramOrderDiscoveredPayload,
   type TelegramPaymentCreatedPayload,
   type TelegramPaymentStatusPayload,
+  type TelegramPlatformConfirmationFailedPayload,
 } from '../event-emitter'
 import { TelegramApiClient } from './telegram-api.client'
 import {
   escapeTelegramHtml,
+  formatBatchPlatformConfirmationFailureMessage,
   formatBatchStatusMessage,
+  formatBatchPlatformConfirmationResultMessage,
   formatAutomaticBatchSubmissionMessage,
   formatC2cCreatedMessage,
   formatExceptionMessage,
   formatOrderDiscoveredMessage,
   formatPaymentStatusMessage,
+  formatPlatformConfirmationFailedMessage,
   shouldNotifyBatchStatus,
   shouldNotifyOrderDiscovered,
   shouldNotifyPaymentStatus,
   sumMoney,
 } from './telegram-notification.formatter'
+import { TelegramCapability } from './telegram-policy'
 
 export enum TelegramNotificationEvent {
   ORDER_DISCOVERED = 'ORDER_DISCOVERED',
@@ -101,6 +107,7 @@ export class TelegramNotificationService {
       paymentMethod: merchantOrder.paymentMethod ?? payload.paymentMethod,
       identityName: merchantOrder.identityName,
       identityMatched: merchantOrder.identityMatched,
+      kycStatus: merchantOrder.kycStatus,
       status: payload.status,
       upstreamId: payload.upstreamId,
       errorMessage: payload.errorMessage,
@@ -128,17 +135,136 @@ export class TelegramNotificationService {
 
   @OnEvent(EVENT_KEYS.TELEGRAM_BATCH_SUBMITTED)
   async onBatchSubmitted(payload: TelegramBatchSubmittedPayload): Promise<void> {
-    await this.sendToMerchantGroups(
-      payload.tenantId,
-      payload.merchantId,
-      TelegramNotificationEvent.BATCH_STATUS,
+    const groups = await this.activeMerchantGroups(payload.tenantId, payload.merchantId)
+    const deliveries = await this.sendGroups(
+      groups,
       formatAutomaticBatchSubmissionMessage(payload),
+      TelegramNotificationEvent.BATCH_STATUS,
     )
+    if (payload.batchIds?.length && deliveries.length) {
+      await this.paymentBatches.update(
+        {
+          id: In(payload.batchIds),
+          tenantId: payload.tenantId,
+          merchantId: payload.merchantId,
+        },
+        { telegramSubmissionMessages: deliveries },
+      )
+    }
   }
 
   @OnEvent(EVENT_KEYS.TELEGRAM_EXCEPTION)
   async onException(payload: TelegramExceptionPayload): Promise<void> {
     await this.notifyException(payload)
+  }
+
+  @OnEvent(EVENT_KEYS.TELEGRAM_PLATFORM_CONFIRMATION_FAILED)
+  async onPlatformConfirmationFailed(
+    payload: TelegramPlatformConfirmationFailedPayload,
+  ): Promise<void> {
+    const payment = await this.paymentOrders.findOne({
+      where: {
+        id: payload.paymentOrderId,
+        tenantId: payload.tenantId,
+        merchantId: payload.merchantId,
+      },
+    })
+    if (!payment) return
+    const merchantOrder = await this.merchantOrders.findOne({
+      where: {
+        tenantId: payload.tenantId,
+        merchantId: payload.merchantId,
+        platformOrderId: payment.sourceBusinessNo,
+      },
+    })
+    if (!merchantOrder) return
+    await this.sendToMerchantGroups(
+      payload.tenantId,
+      payload.merchantId,
+      TelegramNotificationEvent.EXCEPTION,
+      formatPlatformConfirmationFailedMessage({
+        platformOrderId: merchantOrder.platformOrderId,
+        paymentNo: payment.paymentNo,
+        amount: payment.amount,
+        currency: payment.currency,
+        identityName: merchantOrder.identityName,
+        payeeIdentity: merchantOrder.payeeIdentity,
+        paymentMethod: merchantOrder.paymentMethod,
+        reason: payload.errorMessage,
+      }),
+      {
+        inline_keyboard: [
+          [{ text: '重试', callback_data: `c2c:confirm-paid:${merchantOrder.id}` }],
+        ],
+      },
+      undefined,
+      true,
+    )
+  }
+
+  @OnEvent(EVENT_KEYS.TELEGRAM_BATCH_PLATFORM_CONFIRMATION_RESULT)
+  async onBatchPlatformConfirmationResult(
+    payload: TelegramBatchPlatformConfirmationResultPayload,
+  ): Promise<void> {
+    if (!payload.items.length) return
+    const failedOrderNumbers = payload.items
+      .filter((item) => !item.success)
+      .map((item) => item.sourceBusinessNo)
+    const merchantOrders = failedOrderNumbers.length
+      ? await this.merchantOrders.find({
+          where: {
+            tenantId: payload.tenantId,
+            merchantId: payload.merchantId,
+            platformOrderId: In(failedOrderNumbers),
+          },
+        })
+      : []
+    const merchantOrderByNumber = new Map(
+      merchantOrders.map((order) => [order.platformOrderId, order.id]),
+    )
+    const keyboard = payload.items
+      .filter((item) => !item.success)
+      .flatMap((item) => {
+        const merchantOrderId = merchantOrderByNumber.get(item.sourceBusinessNo)
+        return merchantOrderId
+          ? [
+              [
+                {
+                  text: `重试 ${item.sourceBusinessNo}`,
+                  callback_data: `c2c:confirm-paid:${merchantOrderId}`,
+                },
+              ],
+            ]
+          : []
+      })
+    const groups = await this.activeMerchantGroups(payload.tenantId, payload.merchantId)
+    const notificationGroups = groups.filter((group) =>
+      group.capabilities?.includes(TelegramCapability.C2C_PAID_NOTIFICATION),
+    )
+    const failureOnlyGroups = failedOrderNumbers.length
+      ? groups.filter(
+          (group) => !group.capabilities?.includes(TelegramCapability.C2C_PAID_NOTIFICATION),
+        )
+      : []
+    const replyMarkup = keyboard.length ? { inline_keyboard: keyboard } : undefined
+    await Promise.all([
+      this.sendGroups(
+        notificationGroups,
+        formatBatchPlatformConfirmationResultMessage(payload),
+        TelegramNotificationEvent.BATCH_STATUS,
+        replyMarkup,
+        undefined,
+        true,
+      ),
+      this.sendGroups(
+        failureOnlyGroups,
+        formatBatchPlatformConfirmationFailureMessage(payload),
+        TelegramNotificationEvent.EXCEPTION,
+        replyMarkup,
+        undefined,
+        true,
+      ),
+    ])
   }
 
   async notifyOrderDiscovered(payload: TelegramOrderDiscoveredPayload): Promise<void> {
@@ -163,7 +289,7 @@ export class TelegramNotificationService {
                 inline_keyboard: [
                   [
                     { text: '确认下单', callback_data: `c2c:confirm:${order.id}` },
-                    { text: '作废订单', callback_data: `c2c:cancel:${order.id}` },
+                    { text: '取消订单', callback_data: `c2c:cancel:${order.id}` },
                   ],
                 ],
               }
@@ -214,7 +340,7 @@ export class TelegramNotificationService {
         upstreamId: payload.upstreamId,
         errorMessage: payload.errorMessage,
       }),
-      payload.status === 'COMPLETED'
+      payload.status === 'SUCCESS'
         ? {
             inline_keyboard: [
               [{ text: '获取回单', callback_data: `receipt:${payload.paymentOrderId}` }],
@@ -234,11 +360,18 @@ export class TelegramNotificationService {
       payload.merchantId,
       TelegramNotificationEvent.BATCH_STATUS,
       await this.buildBatchStatusMessage(payload, batch),
+      undefined,
+      new Map(
+        (batch?.telegramSubmissionMessages ?? []).map((item) => [item.groupId, item.messageId]),
+      ),
     )
   }
 
   async notifyException(payload: TelegramExceptionPayload): Promise<void> {
-    const text = formatExceptionMessage(payload.code, payload.message, payload.referenceId)
+    const text = formatExceptionMessage(payload.code, payload.message, payload.referenceId, {
+      platform: payload.platform,
+      merchantNo: payload.merchantNo,
+    })
     if (payload.merchantId) {
       await this.sendToMerchantGroups(
         payload.tenantId,
@@ -352,8 +485,22 @@ export class TelegramNotificationService {
     event: TelegramNotificationEvent,
     text: string,
     replyMarkup?: Record<string, unknown>,
+    replyToByGroup?: Map<string, number>,
+    bypassEventFilter = false,
   ): Promise<void> {
-    const groups = await this.groups.find({
+    const groups = await this.activeMerchantGroups(tenantId, merchantId)
+    await this.sendGroups(
+      groups.filter((group) => group.tenantId === tenantId && group.merchantId === merchantId),
+      text,
+      event,
+      replyMarkup,
+      replyToByGroup,
+      bypassEventFilter,
+    )
+  }
+
+  private activeMerchantGroups(tenantId: string, merchantId: string) {
+    return this.groups.find({
       where: {
         tenantId,
         merchantId,
@@ -361,12 +508,6 @@ export class TelegramNotificationService {
         notificationsEnabled: true,
       },
     })
-    await this.sendGroups(
-      groups.filter((group) => group.tenantId === tenantId && group.merchantId === merchantId),
-      text,
-      event,
-      replyMarkup,
-    )
   }
 
   private async sendGroups(
@@ -374,35 +515,44 @@ export class TelegramNotificationService {
     text: string,
     event: TelegramNotificationEvent,
     replyMarkup?: Record<string, unknown>,
-  ): Promise<void> {
+    replyToByGroup?: Map<string, number>,
+    bypassEventFilter = false,
+  ): Promise<Array<{ groupId: string; messageId: number }>> {
     const deliveries = groups
       .filter(
         (group) =>
           group.bindingState === TelegramGroupBindingState.ACTIVE &&
           group.notificationsEnabled &&
           Boolean(group.chatId) &&
-          group.notificationEvents?.includes(event),
+          (bypassEventFilter || group.notificationEvents?.includes(event)),
       )
       .map(async (group) => {
         const bot = await this.bots.findOne({
           where: { id: group.botId, tenantId: group.tenantId, status: BusinessStatus.ACTIVE },
           select: { id: true, tenantId: true, tokenRef: true, status: true },
         })
-        if (!bot || !group.chatId) return
+        if (!bot || !group.chatId) return undefined
         try {
-          await this.telegram.sendMessage({
+          const sent = await this.telegram.sendMessage({
             tokenRef: bot.tokenRef,
             chatId: group.chatId,
             text,
             parseMode: 'HTML',
             ...(replyMarkup ? { replyMarkup } : {}),
+            ...(replyToByGroup?.get(group.id)
+              ? { replyToMessageId: replyToByGroup.get(group.id) }
+              : {}),
           })
+          return { groupId: group.id, messageId: sent.messageId }
         } catch (error) {
           this.logger.error(
             `Telegram 通知发送失败: group=${group.id}, event=${event}, error=${error instanceof Error ? error.message : String(error)}`,
           )
+          return undefined
         }
       })
-    await Promise.all(deliveries)
+    return (await Promise.all(deliveries)).filter(
+      (item): item is { groupId: string; messageId: number } => Boolean(item),
+    )
   }
 }

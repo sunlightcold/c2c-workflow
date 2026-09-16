@@ -45,6 +45,14 @@ export class C2cPlatformChatService {
     return this.send(tenantId, merchantId, merchantOrderId, 'COMPLETED')
   }
 
+  sendOrderCompletedStrict(
+    tenantId: string,
+    merchantId: string,
+    merchantOrderId: string,
+  ): Promise<void> {
+    return this.send(tenantId, merchantId, merchantOrderId, 'COMPLETED', true)
+  }
+
   async sendCompletedOrders(
     tenantId: string,
     merchantId: string,
@@ -62,6 +70,7 @@ export class C2cPlatformChatService {
     merchantId: string,
     merchantOrderId: string,
     stage: ChatStage,
+    strict = false,
   ): Promise<void> {
     try {
       const [merchant, order] = await Promise.all([
@@ -85,6 +94,7 @@ export class C2cPlatformChatService {
       this.logger.warn(
         `C2C 平台聊天消息发送失败: order=${merchantOrderId}, stage=${stage}, error=${this.errorMessage(error)}`,
       )
+      if (strict) throw error
     }
   }
 

@@ -69,7 +69,7 @@ const orderLabels: Record<PaymentOrderStatus, string> = {
   [PaymentOrderStatus.FAILED]: '失败',
   [PaymentOrderStatus.CANCELLED]: '已作废',
   [PaymentOrderStatus.PLATFORM_CONFIRM_PENDING]: '待平台确认',
-  [PaymentOrderStatus.COMPLETED]: '已完成',
+  [PaymentOrderStatus.COMPLETED]: '成功',
   [PaymentOrderStatus.FUND_EXCEPTION]: '资金异常',
 }
 
@@ -219,7 +219,7 @@ export function formatBatchQuery(
       `总金额：<code>${escapeTelegramHtml(money(batch.totalAmount))} ${escapeTelegramHtml(batch.currency)}</code>\n` +
       `总笔数：<code>${escapeTelegramHtml(batch.totalCount)}</code> 笔\n` +
       `成功：<code>${escapeTelegramHtml(batch.successCount)}</code>　失败：<code>${escapeTelegramHtml(batch.failedCount)}</code>　` +
-      `处理中：<code>${escapeTelegramHtml(batch.processingCount)}</code>　未知：<code>${escapeTelegramHtml(batch.unknownCount)}</code>\n\n` +
+      `处理中：<code>${escapeTelegramHtml(batch.processingCount)}</code>\n\n` +
       `<b>订单明细（${page + 1}/${totalPages}）</b>\n${details}` +
       (batch.lastError
         ? `\n\n批次异常：<code>${escapeTelegramHtml(compact(batch.lastError, 180))}</code>`

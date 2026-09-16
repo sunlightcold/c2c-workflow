@@ -16,6 +16,7 @@ import { DataSource, In, Repository } from 'typeorm'
 import { PaymentReceiptService } from '../payment/payment-receipt.service'
 import { C2cReceiptImageService } from '../c2c-order/c2c-receipt-image.service'
 import { ReceiptDocumentDownloader } from '../c2c-order/receipt-document-downloader'
+import { C2cReportService } from '../c2c-order/c2c-report.service'
 import {
   escapeTelegramHtml,
   formatBatchQuery,
@@ -42,6 +43,7 @@ export class TelegramQueryService {
     private readonly receipts: PaymentReceiptService,
     private readonly downloader: ReceiptDocumentDownloader,
     private readonly receiptImages: C2cReceiptImageService,
+    private readonly c2cReports: C2cReportService,
   ) {}
 
   async query(
@@ -55,9 +57,7 @@ export class TelegramQueryService {
     const order = await this.findOrder(tenantId, merchantId, identifier)
     if (order) {
       return formatOrderQuery(order, {
-        receipt:
-          capabilities.canReceipt &&
-          [PaymentOrderStatus.SUCCESS, PaymentOrderStatus.COMPLETED].includes(order.status),
+        receipt: capabilities.canReceipt && order.status === PaymentOrderStatus.SUCCESS,
         void:
           capabilities.canVoid &&
           [
@@ -79,9 +79,7 @@ export class TelegramQueryService {
     const order = await this.orders.findOne({ where: { id: orderId, tenantId, merchantId } })
     if (!order) return { text: '未查询到订单或批次' }
     return formatOrderQuery(order, {
-      receipt:
-        capabilities.canReceipt &&
-        [PaymentOrderStatus.SUCCESS, PaymentOrderStatus.COMPLETED].includes(order.status),
+      receipt: capabilities.canReceipt && order.status === PaymentOrderStatus.SUCCESS,
       void:
         capabilities.canVoid &&
         [
@@ -218,10 +216,10 @@ export class TelegramQueryService {
       `SELECT COUNT(*)::text AS "totalCount",
               COALESCE(SUM(amount), 0)::text AS "totalAmount",
               COUNT(*) FILTER (WHERE status IN ('PENDING_CONFIG', 'CREATED', 'READY'))::text AS "awaitSubmitCount",
-              COUNT(*) FILTER (WHERE status IN ('SUBMITTING', 'PROCESSING', 'UNKNOWN', 'PLATFORM_CONFIRM_PENDING'))::text AS "processingCount",
-              COUNT(*) FILTER (WHERE status IN ('SUCCESS', 'COMPLETED'))::text AS "successCount",
+              COUNT(*) FILTER (WHERE status IN ('SUBMITTING', 'PROCESSING', 'UNKNOWN'))::text AS "processingCount",
+              COUNT(*) FILTER (WHERE status = 'SUCCESS')::text AS "successCount",
               COUNT(*) FILTER (WHERE status IN ('FAILED', 'CANCELLED', 'FUND_EXCEPTION'))::text AS "failedCount",
-              COALESCE(SUM(amount) FILTER (WHERE status IN ('SUCCESS', 'COMPLETED')), 0)::text AS "successAmount"
+              COALESCE(SUM(amount) FILTER (WHERE status = 'SUCCESS'), 0)::text AS "successAmount"
        FROM payment_order
        WHERE "tenantId" = $1 AND "merchantId" = $2
          AND "createdAt" >= $3 AND "createdAt" < $4`,
@@ -268,18 +266,18 @@ export class TelegramQueryService {
     if (!/^\d{8}$/.test(date)) throw new BadRequestException('日报日期格式应为 YYYYMMDD')
     const formattedDate = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`
     const window = createBusinessDayWindow(formattedDate)
-    const rows = (await this.dataSource.query(
-      `SELECT status,
-              COUNT(*)::text AS "orderCount",
-              COALESCE(SUM("assetAmount"), 0)::text AS "assetAmount",
-              COALESCE(SUM("fiatAmount"), 0)::text AS "fiatAmount"
-       FROM merchant_order
-       WHERE "tenantId" = $1 AND "merchantId" = $2
-         AND "platformCreatedAt" >= $3 AND "platformCreatedAt" < $4
-       GROUP BY status
-       ORDER BY status`,
-      [tenantId, merchantId, window.start, window.endExclusive],
-    )) as Array<{ assetAmount: string; fiatAmount: string; orderCount: string; status: string }>
+    const providerReport = await this.c2cReports.getProviderDailyReport(
+      tenantId,
+      merchantId,
+      window.start,
+      window.endExclusive,
+    )
+    const rows = Object.entries(providerReport.statusSummary).map(([status, summary]) => ({
+      status,
+      orderCount: String(summary.orderCount),
+      assetAmount: summary.assetAmount,
+      fiatAmount: summary.fiatAmount,
+    }))
     const totals = rows.reduce(
       (sum, row) => ({
         count: sum.count + Number(row.orderCount),
@@ -351,6 +349,8 @@ function merchantOrderStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     NEW: '新订单',
     PENDING_PAYMENT: '待付款',
+    PAID: '已付款待放行',
+    UNKNOWN: '未知状态',
     PAYMENT_PROCESSING: '支付处理中',
     PAID_PENDING_PLATFORM_CONFIRM: '待标记付款',
     PENDING_RELEASE: '待放行',

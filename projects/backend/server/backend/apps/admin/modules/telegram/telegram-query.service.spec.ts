@@ -8,6 +8,7 @@ describe('TelegramQueryService', () => {
   const receipts = { getReceipt: jest.fn() }
   const downloader = { download: jest.fn() }
   const receiptImages = { convert: jest.fn() }
+  const c2cReports = { getProviderDailyReport: jest.fn() }
   const dataSource = {
     getRepository: jest.fn().mockReturnValue(batchItems),
     query: jest.fn(),
@@ -19,6 +20,7 @@ describe('TelegramQueryService', () => {
     receipts as never,
     downloader as never,
     receiptImages as never,
+    c2cReports as never,
   )
 
   beforeEach(() => jest.clearAllMocks())
@@ -119,20 +121,26 @@ describe('TelegramQueryService', () => {
   })
 
   it('builds a C2C daily report for an explicit business date', async () => {
-    dataSource.query.mockResolvedValue([
-      { status: 'COMPLETED', orderCount: '2', assetAmount: '20.5', fiatAmount: '143.50' },
-    ])
+    c2cReports.getProviderDailyReport.mockResolvedValue({
+      orderCount: 2,
+      assetAmount: '20.5',
+      fiatAmount: '143.50',
+      statusSummary: {
+        COMPLETED: { orderCount: 2, assetAmount: '20.5', fiatAmount: '143.50' },
+      },
+    })
 
     const reply = await service.dailyReport('tenant-1', 'merchant-1', '20260914')
 
     expect(reply.text).toContain('<b>C2C 对账日报</b>')
     expect(reply.text).toContain('USDT 总额：<code>20.5</code>')
-    expect(dataSource.query).toHaveBeenCalledWith(expect.stringContaining('merchant_order'), [
+    expect(c2cReports.getProviderDailyReport).toHaveBeenCalledWith(
       'tenant-1',
       'merchant-1',
       expect.any(Date),
       expect.any(Date),
-    ])
+    )
+    expect(dataSource.query).not.toHaveBeenCalled()
   })
 
   it('downloads and converts a ready PDF receipt into JPG photos', async () => {

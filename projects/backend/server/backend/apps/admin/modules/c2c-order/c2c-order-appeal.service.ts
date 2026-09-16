@@ -4,6 +4,7 @@ import {
   MerchantOrderAppealStatus,
   MerchantOrderStatus,
   MerchantPlatform,
+  PlatformConfirmationStatus,
   PaymentOrderStatus,
 } from '@admin/database'
 import {
@@ -30,6 +31,34 @@ import { C2cOrderService } from './c2c-order.service'
 import { ReceiptDocumentDownloader } from './receipt-document-downloader'
 
 const DEFAULT_APPEAL_DESCRIPTION = '我已付款给卖家，卖家未放行'
+const DEFAULT_AUTO_APPEAL_REASON_CODE = 1
+
+export class C2cAppealReasonRequiredError extends BadRequestException {
+  constructor(
+    readonly orderNo: string,
+    readonly reasons: C2cComplaintReason[],
+  ) {
+    super('请选择申诉原因')
+  }
+}
+
+export class C2cAppealUpstreamStatusError extends BadRequestException {
+  constructor(readonly orderStatus: C2cBuyOrderStatus) {
+    super(`平台订单当前不是已付款待放行状态：${orderStatus}`)
+  }
+}
+
+export class C2cAppealProcessingError extends ConflictException {
+  constructor() {
+    super('该商家订单的申诉正在处理中')
+  }
+}
+
+export class C2cAppealSubmissionUncertainError extends ServiceUnavailableException {
+  constructor(readonly originalError: unknown) {
+    super('申诉提交结果暂不确定，请勿重复提交')
+  }
+}
 
 export const C2C_ORDER_APPEAL_STORE = Symbol('C2C_ORDER_APPEAL_STORE')
 
@@ -106,12 +135,32 @@ export class C2cOrderAppealService {
     orderId: string,
     input: SubmitC2cOrderAppealInput,
   ) {
+    return this.submitInternal(tenantId, merchantId, orderId, input.reasonCode, 'MANUAL')
+  }
+
+  submitForAuto(tenantId: string, merchantId: string, orderId: string) {
+    return this.submitInternal(
+      tenantId,
+      merchantId,
+      orderId,
+      DEFAULT_AUTO_APPEAL_REASON_CODE,
+      'AUTO',
+    )
+  }
+
+  private async submitInternal(
+    tenantId: string,
+    merchantId: string,
+    orderId: string,
+    reasonCode: number,
+    source: 'AUTO' | 'MANUAL',
+  ) {
     const context = await this.requireEligibleOrder(tenantId, merchantId, orderId)
     const paymentOrderId = context.paymentOrder?.id
     if (!paymentOrderId) throw new BadRequestException('商家订单未关联已完成的支付订单')
     const claim = await this.store.claim(tenantId, merchantId, orderId)
     if (claim === 'SUBMITTED') throw new BadRequestException('该商家订单已提交申诉')
-    if (claim === 'PROCESSING') throw new ConflictException('该商家订单的申诉正在处理中')
+    if (claim === 'PROCESSING') throw new C2cAppealProcessingError()
 
     let credentials: C2cPlatformCredentials
     let reason: C2cComplaintReason
@@ -124,7 +173,7 @@ export class C2cOrderAppealService {
         credentials,
         context.platformOrderId,
       )
-      reason = this.requireReason(reasons, input.reasonCode)
+      reason = this.requireReason(reasons, reasonCode, context.platformOrderId, source)
       await this.store.setReason(
         tenantId,
         merchantId,
@@ -183,7 +232,7 @@ export class C2cOrderAppealService {
         orderId,
         this.errorMessage(error),
       )
-      throw new ServiceUnavailableException('申诉提交结果暂不确定，请勿重复提交')
+      throw new C2cAppealSubmissionUncertainError(error)
     }
   }
 
@@ -199,13 +248,17 @@ export class C2cOrderAppealService {
       throw new BadRequestException('该商家订单已提交申诉')
     }
     if (order.appealStatus === MerchantOrderAppealStatus.PROCESSING) {
-      throw new ConflictException('该商家订单的申诉正在处理中')
+      throw new C2cAppealProcessingError()
     }
     if (order.status !== MerchantOrderStatus.PENDING_RELEASE) {
       throw new BadRequestException('只有待放行的商家订单可以申诉')
     }
-    if (!order.paymentOrder || order.paymentOrder.status !== PaymentOrderStatus.COMPLETED) {
-      throw new BadRequestException('商家订单支付完成后才可以申诉')
+    if (
+      !order.paymentOrder ||
+      order.paymentOrder.status !== PaymentOrderStatus.SUCCESS ||
+      order.paymentOrder.platformConfirmStatus !== PlatformConfirmationStatus.SUCCESS
+    ) {
+      throw new BadRequestException('支付成功且平台确认付款后才可以申诉')
     }
     return order
   }
@@ -226,13 +279,18 @@ export class C2cOrderAppealService {
     platformOrderId: string,
   ) {
     const detail = await this.platformClient.getOrderDetail(platform, credentials, platformOrderId)
-    if (detail.status !== C2cBuyOrderStatus.PAID) {
-      throw new BadRequestException('平台订单当前不是已付款待放行状态')
-    }
+    if (detail.status !== C2cBuyOrderStatus.PAID)
+      throw new C2cAppealUpstreamStatusError(detail.status)
   }
 
-  private requireReason(reasons: C2cComplaintReason[], reasonCode: number) {
+  private requireReason(
+    reasons: C2cComplaintReason[],
+    reasonCode: number,
+    orderNo: string,
+    source: 'AUTO' | 'MANUAL',
+  ) {
     const reason = reasons.find((item) => item.reasonCode === reasonCode)
+    if (!reason && source === 'AUTO') throw new C2cAppealReasonRequiredError(orderNo, reasons)
     if (!reason) throw new BadRequestException('申诉原因已失效，请刷新后重新选择')
     return reason
   }

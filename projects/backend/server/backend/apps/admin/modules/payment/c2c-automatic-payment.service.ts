@@ -1,4 +1,8 @@
-import { PaymentBatchStatus, PaymentExecutionMode, PaymentOrderStatus } from '@admin/database'
+import {
+  PaymentExecutionMode,
+  PaymentOrderStatus,
+  PlatformConfirmationStatus,
+} from '@admin/database'
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { C2cMerchantPaymentService } from './c2c-merchant-payment.service'
 import type {
@@ -72,6 +76,7 @@ export class C2cAutomaticPaymentService {
         submitted: number
         failed: number
         errors: string[]
+        batchIds: string[]
       }
     >()
     const result = await this.runItems(eligible, async (group) => {
@@ -85,6 +90,7 @@ export class C2cAutomaticPaymentService {
         submitted: 0,
         failed: 0,
         errors: [],
+        batchIds: [],
       }
       summary.totalCount += group.paymentOrderIds.length
       summary.amounts.push(group.totalAmount)
@@ -104,8 +110,10 @@ export class C2cAutomaticPaymentService {
           summary.groups -= 1
         } else if (submitted.status === 'PROCESSING') {
           summary.submitted += 1
+          summary.batchIds.push(submitted.id)
         } else {
           summary.failed += 1
+          summary.batchIds.push(submitted.id)
         }
         return submitted
       } catch (error) {
@@ -125,6 +133,7 @@ export class C2cAutomaticPaymentService {
         submitted: summary.submitted,
         failed: summary.failed,
         ...(summary.errors.length ? { errors: summary.errors } : {}),
+        batchIds: summary.batchIds,
       })
     }
     return result
@@ -151,16 +160,20 @@ export class C2cAutomaticPaymentService {
     ])
     const paymentResult = await this.runItems(payments, (payment) =>
       this.store.runLocked(`payment-recovery:${payment.id}`, () =>
-        payment.status === PaymentOrderStatus.PLATFORM_CONFIRM_PENDING
-          ? this.payments.confirmPlatform(payment)
+        payment.status === PaymentOrderStatus.SUCCESS &&
+        [PlatformConfirmationStatus.PENDING, PlatformConfirmationStatus.PROCESSING].includes(
+          payment.platformConfirmStatus,
+        )
+          ? this.payments.confirmPlatform(payment, {
+              recoverProcessing:
+                payment.platformConfirmStatus === PlatformConfirmationStatus.PROCESSING,
+            })
           : this.payments.reconcile(payment.tenantId, payment.id),
       ),
     )
     const batchResult = await this.runItems(batches, (batch) =>
       this.store.runLocked(`batch-recovery:${batch.id}`, () =>
-        batch.status === PaymentBatchStatus.READY
-          ? this.batchExecution.submit(batch.tenantId, batch.id)
-          : this.batchExecution.reconcile(batch.tenantId, batch.id),
+        this.batchExecution.reconcile(batch.tenantId, batch.id),
       ),
     )
     return { payments: paymentResult, batches: batchResult }
@@ -219,22 +232,35 @@ export class C2cAutomaticPaymentService {
         succeeded += 1
       } catch (error) {
         failed += 1
-        this.logger.error(`自动支付任务处理失败: ${this.errorMessage(error)}`)
+        const message = this.errorMessage(error)
+        this.logger.error(`自动支付任务处理失败: ${message}`)
         const scoped = item as Partial<{
           tenantId: string
           merchantId: string
           id: string
           merchantOrderId: string
           batchNo: string
+          paymentOrderIds: string[]
         }>
-        if (scoped.tenantId) {
-          this.eventEmitter?.emit(EVENT_KEYS.TELEGRAM_EXCEPTION, {
+        const referenceId =
+          scoped.merchantOrderId ?? scoped.batchNo ?? scoped.id ?? scoped.paymentOrderIds?.[0]
+        if (this.eventEmitter && scoped.tenantId && scoped.merchantId && referenceId) {
+          const claimed = await this.store.claimFailureNotification({
             tenantId: scoped.tenantId,
-            merchantId: scoped.merchantId,
             code: 'AUTOMATIC_PAYMENT_FAILED',
-            message: this.errorMessage(error),
-            referenceId: scoped.merchantOrderId ?? scoped.batchNo ?? scoped.id,
+            merchantId: scoped.merchantId,
+            message,
+            referenceId,
           })
+          if (claimed) {
+            await this.eventEmitter.emitAsync(EVENT_KEYS.TELEGRAM_EXCEPTION, {
+              tenantId: scoped.tenantId,
+              merchantId: scoped.merchantId,
+              code: 'AUTOMATIC_PAYMENT_FAILED',
+              message,
+              referenceId,
+            })
+          }
         }
       }
     }

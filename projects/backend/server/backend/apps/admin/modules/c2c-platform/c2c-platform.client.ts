@@ -12,6 +12,8 @@ import type {
   C2cListInput,
   C2cMarkPaidPolicy,
   C2cMarkPaidOptions,
+  C2cReportInput,
+  C2cReportPage,
 } from './c2c-platform.types'
 import { OkxWebPrivateClient, type OkxWebPrivateCredentials } from './okx-web-private.client'
 
@@ -62,6 +64,17 @@ export class C2cPlatformClient {
     return platform === MerchantPlatform.BINANCE
       ? this.binance.listOrders(credentials as BinanceCredentials, input)
       : this.okx.listOrders(credentials as OkxWebPrivateCredentials, input)
+  }
+
+  listReportOrders(
+    platform: MerchantPlatform,
+    credentials: C2cPlatformCredentials,
+    input: C2cReportInput,
+  ): Promise<C2cReportPage> {
+    this.requireCapability(platform, 'listReportOrders')
+    return platform === MerchantPlatform.BINANCE
+      ? this.binance.listReportOrders(credentials as BinanceCredentials, input)
+      : this.okx.listReportOrders(credentials as OkxWebPrivateCredentials, input)
   }
 
   getOrderDetail(

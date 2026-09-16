@@ -5,6 +5,8 @@ import {
   MerchantOrderStatusHistoryEntity,
   MerchantPaymentPlanEntity,
   MerchantPlatformCredentialEntity,
+  PaymentBatchEntity,
+  PaymentBatchItemEntity,
   PaymentAccountChannelEntity,
   PaymentAccountEntity,
   PaymentChannelEntity,
@@ -17,11 +19,15 @@ import { C2cBuyOrderStatus } from '../c2c-platform'
 import type {
   PaymentPreflightConfiguration,
   PaymentPreflightStore,
+  PaymentQueryContext,
+  PaymentQueryContextStore,
 } from './c2c-payment-preflight-verifier'
 import { PaymentNotSubmittedError } from './payment-execution-coordinator'
 
 @Injectable()
-export class TypeOrmPaymentPreflightStore implements PaymentPreflightStore {
+export class TypeOrmPaymentPreflightStore
+  implements PaymentPreflightStore, PaymentQueryContextStore
+{
   constructor(private readonly dataSource: DataSource) {}
 
   async load(tenantId: string, orderId: string): Promise<PaymentPreflightConfiguration> {
@@ -93,6 +99,72 @@ export class TypeOrmPaymentPreflightStore implements PaymentPreflightStore {
       accountChannel,
       channel,
       paymentPlatform,
+    }
+  }
+
+  async loadQueryContext(tenantId: string, orderId: string): Promise<PaymentQueryContext> {
+    const order = await this.dataSource
+      .getRepository(PaymentOrderEntity)
+      .findOne({ where: { id: orderId, tenantId } })
+    if (!order) throw new PaymentNotSubmittedError('支付订单不存在或不属于当前所属单位')
+    if (!order.paymentAccountId || !order.paymentAccountChannelId)
+      throw new PaymentNotSubmittedError('支付订单锁定的支付方案不完整')
+
+    const [account, accountChannel, batchItem] = await Promise.all([
+      this.dataSource
+        .getRepository(PaymentAccountEntity)
+        .createQueryBuilder('account')
+        .addSelect('account.credentialRef')
+        .where('account.id = :accountId', { accountId: order.paymentAccountId })
+        .andWhere('account."tenantId" = :tenantId', { tenantId })
+        .getOne(),
+      this.dataSource.getRepository(PaymentAccountChannelEntity).findOne({
+        where: {
+          id: order.paymentAccountChannelId,
+          paymentAccountId: order.paymentAccountId,
+        },
+      }),
+      order.executionMode === 'BATCH'
+        ? this.dataSource.getRepository(PaymentBatchItemEntity).findOne({
+            where: {
+              tenantId,
+              merchantId: order.merchantId,
+              paymentOrderId: order.id,
+            },
+            order: { createdAt: 'DESC' },
+          })
+        : null,
+    ])
+    if (!account || !accountChannel)
+      throw new PaymentNotSubmittedError('支付订单锁定的支付账号或通道不存在')
+
+    const [channel, batch] = await Promise.all([
+      this.dataSource
+        .getRepository(PaymentChannelEntity)
+        .findOne({ where: { id: accountChannel.channelId } }),
+      batchItem
+        ? this.dataSource.getRepository(PaymentBatchEntity).findOne({
+            where: {
+              id: batchItem.batchId,
+              tenantId,
+              merchantId: order.merchantId,
+              paymentAccountId: order.paymentAccountId,
+              paymentAccountChannelId: order.paymentAccountChannelId,
+            },
+          })
+        : null,
+    ])
+    if (!channel || channel.executionMode !== order.executionMode)
+      throw new PaymentNotSubmittedError('支付订单锁定的支付通道不完整')
+    if (order.executionMode === 'BATCH' && !batch)
+      throw new PaymentNotSubmittedError('批次支付订单关联的支付批次不存在')
+
+    return {
+      order,
+      paymentAccountCredentialRef: account.credentialRef,
+      adapterCode: channel.adapterCode,
+      executionMode: channel.executionMode,
+      batchNo: batch?.batchNo ?? null,
     }
   }
 

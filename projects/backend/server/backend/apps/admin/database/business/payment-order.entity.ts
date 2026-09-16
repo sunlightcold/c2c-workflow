@@ -23,6 +23,14 @@ export enum PaymentOrderStatus {
   FUND_EXCEPTION = 'FUND_EXCEPTION',
 }
 
+export enum PlatformConfirmationStatus {
+  NOT_REQUIRED = 'NOT_REQUIRED',
+  PENDING = 'PENDING',
+  PROCESSING = 'PROCESSING',
+  FAILED = 'FAILED',
+  SUCCESS = 'SUCCESS',
+}
+
 @Entity('payment_order')
 @Index('uq_payment_order_source', ['tenantId', 'merchantId', 'sourceType', 'sourceBusinessNo'], {
   unique: true,
@@ -60,6 +68,12 @@ export class PaymentOrderEntity extends CommonUuidEntity {
   status: PaymentOrderStatus
   @Column({ type: 'varchar', length: 128, nullable: true }) upstreamId: string | null
   @Column({ type: 'varchar', length: 512, nullable: true }) lastError: string | null
+  @Column({ type: 'varchar', length: 16, default: PlatformConfirmationStatus.NOT_REQUIRED })
+  platformConfirmStatus: PlatformConfirmationStatus
+  @Column({ type: 'integer', default: 0 }) platformConfirmAttempts: number
+  @Column({ type: 'timestamptz', nullable: true }) platformConfirmLastAttemptAt: Date | null
+  @Column({ type: 'timestamptz', nullable: true }) platformConfirmedAt: Date | null
+  @Column({ type: 'varchar', length: 512, nullable: true }) platformConfirmLastError: string | null
   @VersionColumn() version: number
 }
 

@@ -402,6 +402,11 @@ export class TelegramRuntimeService {
       )
       return
     }
+    const confirmPaidMatch = /^c2c:confirm-paid:([0-9a-f-]{36})$/i.exec(message.data)
+    if (confirmPaidMatch) {
+      await this.handleC2cConfirmPaidCallback(bot, message, confirmPaidMatch[1])
+      return
+    }
     const queryReceiptMatch = /^query:receipt:([0-9a-f-]{36})$/i.exec(message.data)
     if (queryReceiptMatch) {
       const authorization = await this.authorization.authorize(bot, message.chatId, message.userId)
@@ -603,6 +608,46 @@ export class TelegramRuntimeService {
       const text = error instanceof Error ? error.message : '商家订单操作失败'
       await this.finishCallback(bot.tokenRef, message, text.slice(0, 180), true)
       await this.reply(bot.tokenRef, message, `操作失败：${text}`)
+    }
+  }
+
+  private async handleC2cConfirmPaidCallback(
+    bot: TelegramBotEntity,
+    message: TelegramCallbackMessage,
+    orderId: string,
+  ): Promise<void> {
+    const authorization = await this.authorization.authorize(bot, message.chatId, message.userId)
+    if (
+      !authorization.allowed ||
+      !authorization.capabilities.includes(TelegramCapability.C2C_ORDER_PAYMENT)
+    ) {
+      await this.finishCallback(bot.tokenRef, message, '您没有权限重试标记付款', true)
+      return
+    }
+    if (!this.c2cOrderActions) {
+      await this.finishCallback(bot.tokenRef, message, '商家订单操作服务不可用', true)
+      return
+    }
+    try {
+      const result = await this.c2cOrderActions.retryConfirmPaid({
+        tenantId: bot.tenantId,
+        merchantId: authorization.group.merchantId,
+        orderId,
+        operator: `TG:${message.userId}`,
+      })
+      const success = result.text.includes('标记付款成功')
+      await this.finishCallback(
+        bot.tokenRef,
+        message,
+        success ? '标记付款成功' : '标记付款仍失败',
+        !success,
+        success,
+      )
+      await this.reply(bot.tokenRef, message, result)
+    } catch (error) {
+      const text = error instanceof Error ? error.message : '重试标记付款失败'
+      await this.finishCallback(bot.tokenRef, message, text.slice(0, 180), true)
+      await this.reply(bot.tokenRef, message, `重试失败：${text}`)
     }
   }
 

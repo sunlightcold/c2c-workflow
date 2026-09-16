@@ -13,6 +13,8 @@ describe('C2cAutomationJob order discovery', () => {
     submitReadyBatches: jest.fn().mockResolvedValue({ found: 1, succeeded: 1, failed: 0 }),
     recover: jest.fn().mockResolvedValue({ payments: {}, batches: {} }),
   }
+  const autoAppeals = { scanAll: jest.fn().mockResolvedValue([]) }
+  const completionReplies = { scanAll: jest.fn().mockResolvedValue([]) }
 
   beforeEach(() => jest.clearAllMocks())
 
@@ -20,7 +22,13 @@ describe('C2cAutomationJob order discovery', () => {
     sync.sync
       .mockResolvedValueOnce({ scanned: 1 })
       .mockRejectedValueOnce(new Error('upstream down'))
-    const job = new C2cAutomationJob(store as never, sync as never, automaticPayments as never)
+    const job = new C2cAutomationJob(
+      store as never,
+      sync as never,
+      automaticPayments as never,
+      autoAppeals as never,
+      completionReplies as never,
+    )
 
     await expect(job.syncDueOrders(now)).resolves.toEqual({ claimed: 2, succeeded: 1, failed: 1 })
     expect(store.claimDue).toHaveBeenCalledWith(expect.any(String), now, 20, 120_000)
@@ -33,7 +41,13 @@ describe('C2cAutomationJob order discovery', () => {
       .mockResolvedValueOnce({ scanned: 1, created: 1, updated: 0 })
       .mockRejectedValueOnce(new Error('upstream down'))
 
-    const job = new C2cAutomationJob(store as never, sync as never, automaticPayments as never)
+    const job = new C2cAutomationJob(
+      store as never,
+      sync as never,
+      automaticPayments as never,
+      autoAppeals as never,
+      completionReplies as never,
+    )
 
     await expect(job.syncDueOrders(now)).resolves.toEqual({
       claimed: 2,
@@ -52,7 +66,13 @@ describe('C2cAutomationJob order discovery', () => {
   })
 
   it('creates payments before submitting ready batches', async () => {
-    const job = new C2cAutomationJob(store as never, sync as never, automaticPayments as never)
+    const job = new C2cAutomationJob(
+      store as never,
+      sync as never,
+      automaticPayments as never,
+      autoAppeals as never,
+      completionReplies as never,
+    )
 
     await expect(job.processAutomaticPayments(now)).resolves.toEqual({
       orders: { found: 1, succeeded: 1, failed: 0 },

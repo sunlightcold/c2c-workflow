@@ -15,6 +15,7 @@ import { C2cPlatformModule } from '../c2c-platform'
 import {
   C2cPaymentPreflightVerifier,
   PAYMENT_PREFLIGHT_STORE,
+  PAYMENT_QUERY_CONTEXT_STORE,
 } from './c2c-payment-preflight-verifier'
 import {
   PAYMENT_EXECUTOR,
@@ -52,6 +53,7 @@ import {
 import { TypeOrmC2cAutomaticPaymentStore } from './typeorm-c2c-automatic-payment.store'
 import { PaymentChannelModule } from './payment-channel.module'
 import { C2cPaymentProofService } from './c2c-payment-proof.service'
+import { C2cPaidConfirmationThrottleService } from './c2c-paid-confirmation-throttle.service'
 
 @Module({
   imports: [
@@ -85,6 +87,7 @@ import { C2cPaymentProofService } from './c2c-payment-proof.service'
     C2cMerchantPaymentService,
     C2cPaymentCancellationService,
     C2cPaymentProofService,
+    C2cPaidConfirmationThrottleService,
     C2cAutomaticPaymentService,
     TypeOrmC2cAutomaticPaymentStore,
     { provide: C2C_AUTOMATIC_PAYMENT_STORE, useExisting: TypeOrmC2cAutomaticPaymentStore },
@@ -94,6 +97,7 @@ import { C2cPaymentProofService } from './c2c-payment-proof.service'
     { provide: PAYMENT_ORDER_STORE, useExisting: TypeOrmPaymentOrderStore },
     TypeOrmPaymentPreflightStore,
     { provide: PAYMENT_PREFLIGHT_STORE, useExisting: TypeOrmPaymentPreflightStore },
+    { provide: PAYMENT_QUERY_CONTEXT_STORE, useExisting: TypeOrmPaymentPreflightStore },
     C2cPaymentPreflightVerifier,
     { provide: PAYMENT_BATCH_PREFLIGHT, useExisting: C2cPaymentPreflightVerifier },
     C2cAlipayPaymentExecutor,

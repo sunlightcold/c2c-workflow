@@ -9,6 +9,8 @@ export const EVENT_KEYS = {
   TELEGRAM_BATCH_STATUS: 'telegram.batch.status',
   TELEGRAM_BATCH_SUBMITTED: 'telegram.batch.submitted',
   TELEGRAM_EXCEPTION: 'telegram.exception',
+  TELEGRAM_PLATFORM_CONFIRMATION_FAILED: 'telegram.platform-confirmation.failed',
+  TELEGRAM_BATCH_PLATFORM_CONFIRMATION_RESULT: 'telegram.batch-platform-confirmation.result',
 } as const
 
 export interface AdminSessionRevokedPayload {
@@ -77,6 +79,7 @@ export interface TelegramBatchSubmittedPayload {
   submitted: number
   failed: number
   errors?: string[]
+  batchIds?: string[]
 }
 
 export interface TelegramExceptionPayload {
@@ -85,6 +88,31 @@ export interface TelegramExceptionPayload {
   code: string
   message: string
   referenceId?: string
+  platform?: string
+  merchantNo?: string
+}
+
+export interface TelegramPlatformConfirmationFailedPayload {
+  tenantId: string
+  merchantId: string
+  paymentOrderId: string
+  sourceBusinessNo?: string
+  errorMessage: string
+}
+
+export interface TelegramBatchPlatformConfirmationResultPayload {
+  tenantId: string
+  merchantId: string
+  batchId: string
+  batchNo: string
+  items: Array<{
+    paymentOrderId: string
+    sourceBusinessNo: string
+    amount: string
+    currency: string
+    success: boolean
+    errorMessage: string | null
+  }>
 }
 
 export interface GlobalEventMap {
@@ -95,6 +123,8 @@ export interface GlobalEventMap {
   [EVENT_KEYS.TELEGRAM_BATCH_STATUS]: TelegramBatchStatusPayload
   [EVENT_KEYS.TELEGRAM_BATCH_SUBMITTED]: TelegramBatchSubmittedPayload
   [EVENT_KEYS.TELEGRAM_EXCEPTION]: TelegramExceptionPayload
+  [EVENT_KEYS.TELEGRAM_PLATFORM_CONFIRMATION_FAILED]: TelegramPlatformConfirmationFailedPayload
+  [EVENT_KEYS.TELEGRAM_BATCH_PLATFORM_CONFIRMATION_RESULT]: TelegramBatchPlatformConfirmationResultPayload
 }
 
 export type EventNames = keyof GlobalEventMap

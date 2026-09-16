@@ -6,10 +6,25 @@ import {
 import { PlatformFundsExceptionError } from './payment-execution.errors'
 import { PaymentOrderState } from './payment-order-state-machine'
 import { ConflictException } from '@nestjs/common'
+import { PaymentSourceType, PlatformConfirmationStatus } from '@admin/database'
 
 describe('PaymentExecutionCoordinator', () => {
-  const order = { id: 'o1', tenantId: 't1', status: PaymentOrderState.READY }
-  const store = { get: jest.fn(), claim: jest.fn(), transition: jest.fn() }
+  const order = {
+    id: 'o1',
+    tenantId: 't1',
+    merchantId: 'm1',
+    sourceType: PaymentSourceType.C2C_BUY,
+    sourceBusinessNo: 'platform-order-1',
+    status: PaymentOrderState.READY,
+  }
+  const store = {
+    get: jest.fn(),
+    claim: jest.fn(),
+    transition: jest.fn(),
+    claimPlatformConfirmation: jest.fn(),
+    completePlatformConfirmation: jest.fn(),
+    failPlatformConfirmation: jest.fn(),
+  }
   const executor = { submit: jest.fn(), query: jest.fn() }
   const confirmer = { confirmPaid: jest.fn() }
   const eventEmitter = { emit: jest.fn() }
@@ -20,6 +35,23 @@ describe('PaymentExecutionCoordinator', () => {
     store.claim.mockResolvedValue({ ...order, status: PaymentOrderState.SUBMITTING })
     store.get.mockResolvedValue({ ...order, status: PaymentOrderState.UNKNOWN })
     store.transition.mockImplementation(async (_order, status) => ({ ...order, status }))
+    store.claimPlatformConfirmation.mockImplementation(async (current) => ({
+      ...current,
+      platformConfirmStatus: PlatformConfirmationStatus.PROCESSING,
+    }))
+    store.completePlatformConfirmation.mockImplementation(async (current) => ({
+      ...current,
+      status: PaymentOrderState.SUCCESS,
+      platformConfirmStatus: PlatformConfirmationStatus.SUCCESS,
+    }))
+    store.failPlatformConfirmation.mockImplementation(
+      async (current, errorMessage, fundsException) => ({
+        ...current,
+        status: fundsException ? PaymentOrderState.FUND_EXCEPTION : PaymentOrderState.SUCCESS,
+        platformConfirmStatus: PlatformConfirmationStatus.FAILED,
+        lastError: errorMessage,
+      }),
+    )
     coordinator = new PaymentExecutionCoordinator(store, executor, confirmer, eventEmitter as never)
   })
 
@@ -27,7 +59,8 @@ describe('PaymentExecutionCoordinator', () => {
     executor.submit.mockResolvedValue({ status: PaymentExecutionStatus.SUCCESS, upstreamId: 'a1' })
     confirmer.confirmPaid.mockResolvedValue(undefined)
     await expect(coordinator.submit('t1', 'o1')).resolves.toMatchObject({
-      status: PaymentOrderState.COMPLETED,
+      status: PaymentOrderState.SUCCESS,
+      platformConfirmStatus: PlatformConfirmationStatus.SUCCESS,
     })
     expect(store.claim).toHaveBeenCalledWith('t1', 'o1')
     expect(executor.submit).toHaveBeenCalledTimes(1)
@@ -38,9 +71,54 @@ describe('PaymentExecutionCoordinator', () => {
     executor.submit.mockResolvedValue({ status: PaymentExecutionStatus.SUCCESS, upstreamId: 'a1' })
     confirmer.confirmPaid.mockRejectedValue(new Error('platform unavailable'))
     await expect(coordinator.submit('t1', 'o1')).resolves.toMatchObject({
-      status: PaymentOrderState.PLATFORM_CONFIRM_PENDING,
+      status: PaymentOrderState.SUCCESS,
+      platformConfirmStatus: PlatformConfirmationStatus.FAILED,
     })
     expect(executor.submit).toHaveBeenCalledTimes(1)
+    expect(eventEmitter.emit).toHaveBeenCalledWith(
+      'telegram.platform-confirmation.failed',
+      expect.objectContaining({ paymentOrderId: 'o1', errorMessage: 'platform unavailable' }),
+    )
+  })
+
+  it('allows only one concurrent worker to call mark-paid', async () => {
+    const pending = {
+      ...order,
+      status: PaymentOrderState.SUCCESS,
+      platformConfirmStatus: PlatformConfirmationStatus.PENDING,
+    }
+    store.claimPlatformConfirmation
+      .mockResolvedValueOnce({
+        ...pending,
+        platformConfirmStatus: PlatformConfirmationStatus.PROCESSING,
+      })
+      .mockResolvedValueOnce(null)
+    store.get.mockResolvedValue({
+      ...pending,
+      platformConfirmStatus: PlatformConfirmationStatus.PROCESSING,
+    })
+    confirmer.confirmPaid.mockResolvedValue(undefined)
+
+    await Promise.all([coordinator.confirmPlatform(pending), coordinator.confirmPlatform(pending)])
+
+    expect(confirmer.confirmPaid).toHaveBeenCalledTimes(1)
+    expect(store.completePlatformConfirmation).toHaveBeenCalledTimes(1)
+  })
+
+  it('recovers an expired processing claim by querying only and never sends mark-paid blindly', async () => {
+    const pending = {
+      ...order,
+      status: PaymentOrderState.SUCCESS,
+      platformConfirmStatus: PlatformConfirmationStatus.PROCESSING,
+    }
+    confirmer.confirmPaid.mockResolvedValue(undefined)
+
+    await coordinator.confirmPlatform(pending, { recoverProcessing: true })
+
+    expect(confirmer.confirmPaid).toHaveBeenCalledWith(
+      expect.objectContaining({ platformConfirmStatus: PlatformConfirmationStatus.PROCESSING }),
+      { queryOnly: true },
+    )
   })
 
   it('moves both sides to funds exception when platform confirmation finds a terminal conflict', async () => {
@@ -102,7 +180,7 @@ describe('PaymentExecutionCoordinator', () => {
     confirmer.confirmPaid.mockResolvedValue(undefined)
 
     await expect(coordinator.reconcile('t1', 'o1')).resolves.toMatchObject({
-      status: PaymentOrderState.COMPLETED,
+      status: PaymentOrderState.SUCCESS,
     })
     expect(executor.submit).not.toHaveBeenCalled()
     expect(executor.query).toHaveBeenCalledWith(

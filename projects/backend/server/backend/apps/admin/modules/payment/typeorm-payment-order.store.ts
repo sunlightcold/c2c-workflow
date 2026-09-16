@@ -5,6 +5,7 @@ import {
   PaymentOrderEntity,
   PaymentOrderStatusHistoryEntity,
   PaymentSourceType,
+  PlatformConfirmationStatus,
 } from '@admin/database'
 import { ConflictException, Injectable } from '@nestjs/common'
 import { DataSource, type EntityManager } from 'typeorm'
@@ -52,6 +53,7 @@ export class TypeOrmPaymentOrderStore implements PaymentOrderStore {
         input.status,
         next,
         detail,
+        input.sourceType,
       )
       await this.history(manager, order, input.status, next, detail?.errorMessage)
       if (next === PaymentOrderState.FAILED) {
@@ -61,6 +63,51 @@ export class TypeOrmPaymentOrderStore implements PaymentOrderStore {
     })
   }
 
+  async claimPlatformConfirmation(
+    input: ExecutablePaymentOrder,
+    allowed: readonly PlatformConfirmationStatus[],
+  ): Promise<ExecutablePaymentOrder | null> {
+    const result = await this.dataSource
+      .createQueryBuilder()
+      .update(PaymentOrderEntity)
+      .set({
+        platformConfirmStatus: PlatformConfirmationStatus.PROCESSING,
+        platformConfirmAttempts: () => '"platformConfirmAttempts" + 1',
+        platformConfirmLastAttemptAt: () => 'CURRENT_TIMESTAMP',
+        platformConfirmLastError: null,
+      })
+      .where('id = :id AND "tenantId" = :tenantId', {
+        id: input.id,
+        tenantId: input.tenantId,
+      })
+      .andWhere('status = :status', { status: PaymentOrderState.SUCCESS })
+      .andWhere('"platformConfirmStatus" IN (:...allowed)', { allowed })
+      .returning('*')
+      .execute()
+    return result.affected === 1 ? this.toExecutable(result.raw[0] as PaymentOrderEntity) : null
+  }
+
+  completePlatformConfirmation(input: ExecutablePaymentOrder): Promise<ExecutablePaymentOrder> {
+    return this.finishPlatformConfirmation(
+      input,
+      PaymentOrderState.SUCCESS,
+      PlatformConfirmationStatus.SUCCESS,
+    )
+  }
+
+  failPlatformConfirmation(
+    input: ExecutablePaymentOrder,
+    errorMessage: string,
+    fundsException: boolean,
+  ): Promise<ExecutablePaymentOrder> {
+    return this.finishPlatformConfirmation(
+      input,
+      fundsException ? PaymentOrderState.FUND_EXCEPTION : PaymentOrderState.SUCCESS,
+      PlatformConfirmationStatus.FAILED,
+      errorMessage,
+    )
+  }
+
   private async updateStatus(
     manager: EntityManager,
     tenantId: string,
@@ -68,12 +115,16 @@ export class TypeOrmPaymentOrderStore implements PaymentOrderStore {
     current: PaymentOrderState,
     next: PaymentOrderState,
     detail?: { upstreamId?: string; errorMessage?: string },
+    sourceType?: PaymentSourceType,
   ) {
     const result = await manager
       .createQueryBuilder()
       .update(PaymentOrderEntity)
       .set({
         status: next,
+        ...(next === PaymentOrderState.SUCCESS && sourceType === PaymentSourceType.C2C_BUY
+          ? { platformConfirmStatus: PlatformConfirmationStatus.PENDING }
+          : {}),
         ...(detail?.upstreamId ? { upstreamId: detail.upstreamId } : {}),
         lastError: detail?.errorMessage ?? null,
       })
@@ -86,6 +137,44 @@ export class TypeOrmPaymentOrderStore implements PaymentOrderStore {
       .execute()
     if (result.affected !== 1) throw new ConflictException('支付订单状态已变化，请刷新后重试')
     return result.raw[0] as PaymentOrderEntity
+  }
+
+  private finishPlatformConfirmation(
+    input: ExecutablePaymentOrder,
+    next: PaymentOrderState,
+    platformStatus: PlatformConfirmationStatus,
+    errorMessage?: string,
+  ): Promise<ExecutablePaymentOrder> {
+    return this.dataSource.transaction(async (manager) => {
+      const result = await manager
+        .createQueryBuilder()
+        .update(PaymentOrderEntity)
+        .set({
+          status: next,
+          platformConfirmStatus: platformStatus,
+          platformConfirmedAt:
+            platformStatus === PlatformConfirmationStatus.SUCCESS
+              ? () => 'CURRENT_TIMESTAMP'
+              : null,
+          platformConfirmLastError: errorMessage ?? null,
+          ...(next === PaymentOrderState.FUND_EXCEPTION ? { lastError: errorMessage ?? null } : {}),
+        })
+        .where('id = :id AND "tenantId" = :tenantId', {
+          id: input.id,
+          tenantId: input.tenantId,
+        })
+        .andWhere('status = :current', { current: PaymentOrderState.SUCCESS })
+        .andWhere('"platformConfirmStatus" = :processing', {
+          processing: PlatformConfirmationStatus.PROCESSING,
+        })
+        .returning('*')
+        .execute()
+      if (result.affected !== 1) throw new ConflictException('平台确认状态已变化，请刷新后重试')
+      const order = result.raw[0] as PaymentOrderEntity
+      if (next !== PaymentOrderState.SUCCESS)
+        await this.history(manager, order, PaymentOrderState.SUCCESS, next, errorMessage)
+      return this.toExecutable(order)
+    })
   }
 
   private history(
@@ -192,6 +281,13 @@ export class TypeOrmPaymentOrderStore implements PaymentOrderStore {
       merchantId: order.merchantId,
       paymentNo: order.paymentNo,
       sourceBusinessNo: order.sourceBusinessNo,
+      platformConfirmStatus: order.platformConfirmStatus,
+      platformConfirmLastAttemptAt: order.platformConfirmLastAttemptAt,
+      platformConfirmLastError: order.platformConfirmLastError,
+      lastError: order.lastError,
+      amount: order.amount,
+      currency: order.currency,
+      sourceType: order.sourceType,
     }
   }
 }

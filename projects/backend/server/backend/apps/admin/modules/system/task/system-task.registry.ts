@@ -5,6 +5,8 @@ export const TASK_LOG_CLEANUP_CRON = '0 0 4 * * *'
 export const C2C_ORDER_DISCOVERY_INTERVAL_MS = 5_000
 export const C2C_AUTOMATIC_PAYMENT_INTERVAL_MS = 5_000
 export const C2C_PAYMENT_RECOVERY_INTERVAL_MS = 15_000
+export const C2C_AUTO_APPEAL_INTERVAL_MS = 30_000
+export const C2C_COMPLETION_REPLY_INTERVAL_MS = 30_000
 
 export interface SystemTaskDefinition {
   id: string
@@ -63,6 +65,24 @@ export const SYSTEM_TASKS: SystemTaskDefinition[] = [
     status: SysTaskStatus.Activated,
     every: C2C_PAYMENT_RECOVERY_INTERVAL_MS,
     description: '回查处理中支付并补偿币安或欧易付款标记',
+  },
+  {
+    id: '00000000-0000-4000-8000-000000000108',
+    name: 'C2C付款超时自动申诉',
+    service: 'C2cAutomationJob.processAutomaticAppeals',
+    type: SysTaskTypeEnum.Interval,
+    status: SysTaskStatus.Activated,
+    every: C2C_AUTO_APPEAL_INTERVAL_MS,
+    description: '每30秒检查超过商家配置等待时间且币安仍为已付款待放行状态的买单并自动申诉',
+  },
+  {
+    id: '00000000-0000-4000-8000-000000000109',
+    name: 'C2C订单完成自动回复',
+    service: 'C2cAutomationJob.processCompletionReplies',
+    type: SysTaskTypeEnum.Interval,
+    status: SysTaskStatus.Activated,
+    every: C2C_COMPLETION_REPLY_INTERVAL_MS,
+    description: '每30秒查询启用后的币安买单，完成后发送一次平台聊天回复并重试发送失败项',
   },
 ]
 

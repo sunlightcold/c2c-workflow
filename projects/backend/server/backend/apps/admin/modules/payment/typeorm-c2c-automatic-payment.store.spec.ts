@@ -1,4 +1,4 @@
-import { PaymentBatchStatus, PaymentOrderStatus } from '@admin/database'
+import { PaymentBatchStatus, PaymentOrderStatus, PlatformConfirmationStatus } from '@admin/database'
 import { TypeOrmC2cAutomaticPaymentStore } from './typeorm-c2c-automatic-payment.store'
 
 describe('TypeOrmC2cAutomaticPaymentStore', () => {
@@ -30,23 +30,20 @@ describe('TypeOrmC2cAutomaticPaymentStore', () => {
     expect(paymentSql).toContain('NOT EXISTS')
     expect(paymentSql).not.toContain('payment_order."sourceType"')
     expect(paymentSql).toContain('payment_order.status = ANY($1::payment_order_status_enum[])')
-    expect(paymentSql).toContain('LIMIT $2')
+    expect(paymentSql).toContain("payment_order.status = 'SUCCESS'")
+    expect(paymentSql).toContain('LIMIT $4')
     expect(paymentParameters).toEqual([
-      [
-        PaymentOrderStatus.SUBMITTING,
-        PaymentOrderStatus.PROCESSING,
-        PaymentOrderStatus.UNKNOWN,
-        PaymentOrderStatus.PLATFORM_CONFIRM_PENDING,
-      ],
+      [PaymentOrderStatus.SUBMITTING, PaymentOrderStatus.PROCESSING, PaymentOrderStatus.UNKNOWN],
+      PlatformConfirmationStatus.PENDING,
+      PlatformConfirmationStatus.PROCESSING,
       100,
     ])
     expect(dataSource.query.mock.calls[1][1][0]).toEqual([
-      PaymentBatchStatus.READY,
       PaymentBatchStatus.SUBMITTING,
       PaymentBatchStatus.PROCESSING,
       PaymentBatchStatus.UNKNOWN,
     ])
-    expect(dataSource.query.mock.calls[1][0]).toContain("status = 'READY'")
+    expect(dataSource.query.mock.calls[1][0]).not.toContain("status = 'READY'")
     expect(dataSource.query.mock.calls[1][0]).toContain('"nextReconcileAt" <= NOW()')
   })
 
@@ -64,5 +61,29 @@ describe('TypeOrmC2cAutomaticPaymentStore', () => {
     expect(sql).toContain('LIMIT $1')
     expect(sql).not.toContain('LIMIT $2')
     expect(parameters).toEqual([100])
+  })
+
+  it('claims each automatic payment failure notification only once', async () => {
+    const dataSource = { query: jest.fn().mockResolvedValue([{ id: 'notice-1' }]) }
+    const store = new TypeOrmC2cAutomaticPaymentStore(dataSource as never)
+    const input = {
+      tenantId: 'tenant-1',
+      merchantId: 'merchant-1',
+      code: 'AUTOMATIC_PAYMENT_FAILED',
+      referenceId: 'order-1',
+      message: '404',
+    }
+
+    await expect(store.claimFailureNotification(input)).resolves.toBe(true)
+
+    const [sql, parameters] = dataSource.query.mock.calls[0]
+    expect(sql).toContain('ON CONFLICT ("tenantId", "merchantId", code, "referenceId") DO NOTHING')
+    expect(parameters).toEqual([
+      'tenant-1',
+      'merchant-1',
+      'AUTOMATIC_PAYMENT_FAILED',
+      'order-1',
+      '404',
+    ])
   })
 })

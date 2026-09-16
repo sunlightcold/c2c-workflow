@@ -26,6 +26,7 @@ describe('C2cPlatformClient', () => {
   }
   const binance = {
     listOrders: jest.fn(),
+    listReportOrders: jest.fn(),
     getOrderDetail: jest.fn(),
     markOrderAsPaid: jest.fn(),
     sendChatText: jest.fn(),
@@ -40,7 +41,7 @@ describe('C2cPlatformClient', () => {
       chat: true,
       checkAntiFraud: false,
       listOrders: true,
-      listReportOrders: false,
+      listReportOrders: true,
       getOrderDetail: true,
       markOrderAsPaid: true,
       releaseCrypto: false,
@@ -49,6 +50,7 @@ describe('C2cPlatformClient', () => {
   }
   const okx = {
     listOrders: jest.fn(),
+    listReportOrders: jest.fn(),
     getOrderDetail: jest.fn(),
     markOrderAsPaid: jest.fn(),
     sendChatText: jest.fn(),
@@ -59,7 +61,7 @@ describe('C2cPlatformClient', () => {
       chat: false,
       checkAntiFraud: true,
       listOrders: true,
-      listReportOrders: false,
+      listReportOrders: true,
       getOrderDetail: true,
       markOrderAsPaid: true,
       releaseCrypto: false,
@@ -123,6 +125,30 @@ describe('C2cPlatformClient', () => {
       skipPaymentProofUpload: false,
     })
   })
+
+  it.each([
+    [MerchantPlatform.BINANCE, binance, binanceCredentials],
+    [MerchantPlatform.OKX, okx, okxCredentials],
+  ])(
+    'routes merchant reports for %s through its provider adapter',
+    async (platform, adapter, credentials) => {
+      const input = {
+        startTimestamp: 1,
+        endTimestamp: 2,
+        page: 1,
+        rows: 50,
+        tradeType: 'BUY' as const,
+      }
+      adapter.listReportOrders.mockResolvedValue({ items: [], total: 0, hasMore: false })
+
+      await expect(client.listReportOrders(platform, credentials, input)).resolves.toEqual({
+        items: [],
+        total: 0,
+        hasMore: false,
+      })
+      expect(adapter.listReportOrders).toHaveBeenCalledWith(credentials, input)
+    },
+  )
 
   it('rejects unsupported OKX appeals without guessing an upstream endpoint', async () => {
     await expect(

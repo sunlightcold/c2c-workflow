@@ -3,6 +3,7 @@ import {
   PaymentExecutionMode,
   PaymentOrderStatus,
   PaymentSourceType,
+  PlatformConfirmationStatus,
 } from '@admin/database'
 import { BadRequestException, ConflictException, Injectable, Optional } from '@nestjs/common'
 import { C2cOrderService } from '../c2c-order/c2c-order.service'
@@ -43,16 +44,26 @@ export class C2cMerchantPaymentService {
     const merchantOrder = await this.merchantOrders.detail(tenantId, merchantId, merchantOrderId)
     const paymentOrder = merchantOrder.paymentOrder
     if (!paymentOrder) throw new BadRequestException('商家订单没有关联支付订单')
-    if (paymentOrder.status === PaymentOrderStatus.COMPLETED) return paymentOrder
-    if (paymentOrder.status !== PaymentOrderStatus.PLATFORM_CONFIRM_PENDING) {
+    if (paymentOrder.status !== PaymentOrderStatus.SUCCESS) {
       throw new BadRequestException('支付订单当前不需要补偿确认')
     }
-    return this.execution.confirmPlatform({
-      id: paymentOrder.id,
-      tenantId,
-      status: paymentOrder.status,
-      upstreamId: paymentOrder.upstreamId ?? undefined,
-    })
+    if (paymentOrder.platformConfirmStatus === PlatformConfirmationStatus.SUCCESS)
+      return paymentOrder
+    if (paymentOrder.platformConfirmStatus !== PlatformConfirmationStatus.FAILED) {
+      throw new ConflictException('平台确认正在处理或尚未进入人工补偿状态')
+    }
+    return this.execution.confirmPlatform(
+      {
+        id: paymentOrder.id,
+        tenantId,
+        merchantId,
+        sourceBusinessNo: merchantOrder.platformOrderId,
+        status: paymentOrder.status,
+        upstreamId: paymentOrder.upstreamId ?? undefined,
+        platformConfirmStatus: paymentOrder.platformConfirmStatus,
+      },
+      { manualRetry: true },
+    )
   }
 
   async cancel(

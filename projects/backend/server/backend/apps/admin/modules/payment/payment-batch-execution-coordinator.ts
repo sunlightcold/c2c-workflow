@@ -1,4 +1,4 @@
-import { PaymentBatchStatus, PaymentSourceType } from '@admin/database'
+import { PaymentBatchStatus, PaymentSourceType, PlatformConfirmationStatus } from '@admin/database'
 import { ConflictException, Inject, Injectable, Optional } from '@nestjs/common'
 import type { AlipayBatchResponse } from './alipay-batch.adapter'
 import { PaymentExecutionStatus, type PaymentExecutionResult } from './payment-adapter.types'
@@ -245,7 +245,28 @@ export class PaymentBatchExecutionCoordinator {
       this.emitStatus(unknown, this.errorMessage(error))
       return unknown
     }
-    for (const payment of outcome.paymentsToConfirm) await this.payments.confirmPlatform(payment)
+    const confirmationResults: ExecutablePaymentOrder[] = []
+    for (const payment of outcome.paymentsToConfirm) {
+      confirmationResults.push(
+        await this.payments.confirmPlatform(payment, { suppressFailureNotification: true }),
+      )
+    }
+    if (confirmationResults.length && batch.merchantId) {
+      this.eventEmitter?.emit(EVENT_KEYS.TELEGRAM_BATCH_PLATFORM_CONFIRMATION_RESULT, {
+        tenantId: batch.tenantId,
+        merchantId: batch.merchantId,
+        batchId: batch.id,
+        batchNo: batch.batchNo,
+        items: confirmationResults.map((payment) => ({
+          paymentOrderId: payment.id,
+          sourceBusinessNo: payment.sourceBusinessNo ?? payment.id,
+          amount: payment.amount ?? '0.00',
+          currency: payment.currency ?? 'CNY',
+          success: payment.platformConfirmStatus === PlatformConfirmationStatus.SUCCESS,
+          errorMessage: payment.platformConfirmLastError ?? null,
+        })),
+      })
+    }
     this.emitStatus(outcome.batch)
     return outcome.batch
   }

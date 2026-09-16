@@ -50,10 +50,10 @@ export interface TelegramUpdatePage {
 export class TelegramApiClient {
   constructor(@Optional() private readonly cipher?: CredentialCipherService) {}
 
-  async sendMessage(input: TelegramSendMessageInput): Promise<void> {
+  async sendMessage(input: TelegramSendMessageInput): Promise<{ messageId: number }> {
     const token = this.resolveToken(input.tokenRef)
     try {
-      await axios.post(
+      const response = await axios.post<{ ok: boolean; result: { message_id: number } }>(
         `https://api.telegram.org/bot${token}/sendMessage`,
         {
           chat_id: input.chatId,
@@ -71,6 +71,10 @@ export class TelegramApiClient {
         },
         { timeout: 10_000 },
       )
+      if (!response.data.ok || !Number.isInteger(response.data.result?.message_id)) {
+        throw new Error('Telegram API rejected message')
+      }
+      return { messageId: response.data.result.message_id }
     } catch {
       throw new ServiceUnavailableException('Telegram 消息发送失败')
     }

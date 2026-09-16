@@ -90,5 +90,8 @@ describe('DashboardService', () => {
       expect(sql).toContain('"tenantId" = $1')
       expect(parameters[0]).toBe('tenant-1')
     }
+    const allSql = dataSource.query.mock.calls.map(([sql]) => sql).join('\n')
+    expect(allSql).not.toContain("status IN ('SUCCESS', 'PLATFORM_CONFIRM_PENDING', 'COMPLETED')")
+    expect(allSql).toContain("status IN ('SUCCESS')")
   })
 })

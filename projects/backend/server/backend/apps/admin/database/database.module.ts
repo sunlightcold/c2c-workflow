@@ -18,6 +18,7 @@ import {
   TutorialEntity,
 } from './system'
 import {
+  AutomaticPaymentFailureNoticeEntity,
   MerchantEntity,
   MerchantPaymentPlanEntity,
   PaymentAccountChannelEntity,
@@ -62,6 +63,7 @@ const sysEntities = [
 
 const entities = [
   ...sysEntities,
+  AutomaticPaymentFailureNoticeEntity,
   TenantEntity,
   MerchantEntity,
   PaymentPlatformEntity,

@@ -8,6 +8,8 @@ import {
 import { migrateC2cMerchantPlatformCredentials } from '@/apps/admin/database/migrations/c2c-merchant-platform-credentials.migration'
 import { migrateC2cMerchantOrders } from '@/apps/admin/database/migrations/c2c-merchant-orders.migration'
 import { migrateC2cMerchantOrderAppeals } from '@/apps/admin/database/migrations/c2c-merchant-order-appeals.migration'
+import { migrateC2cMerchantAccountOperations } from '@/apps/admin/database/migrations/c2c-merchant-account-operations.migration'
+import { migrateC2cFullProviderParity } from '@/apps/admin/database/migrations/c2c-full-provider-parity.migration'
 import { DataSource, type QueryRunner } from 'typeorm'
 import { TypeOrmC2cOrderSyncStore } from '@/apps/admin/modules/c2c-order/typeorm-c2c-order-sync.store'
 import { TypeOrmC2cOrderAppealStore } from '@/apps/admin/modules/c2c-order/typeorm-c2c-order-appeal.store'
@@ -51,11 +53,16 @@ describe('Merchant orders database integration', () => {
     await migrateC2cMerchantPlatformCredentials(queryRunner.manager)
     await migrateC2cMerchantOrders(queryRunner.manager)
     await migrateC2cMerchantOrders(queryRunner.manager)
+    await migrateC2cMerchantAccountOperations(queryRunner.manager)
     await migrateC2cMerchantOrderAppeals(queryRunner.manager)
     await migrateC2cMerchantOrderAppeals(queryRunner.manager)
+    await migrateC2cFullProviderParity(queryRunner.manager)
     await queryRunner.query(`
-      INSERT INTO merchant (id, "tenantId", code, name, platform)
-      VALUES ('${merchantId}', '${C2C_FOUNDATION_IDS.headquartersTenant}', 'm1', 'M1', 'BINANCE')
+      INSERT INTO merchant (id, "tenantId", code, name, platform, "apiBaseUrl")
+      VALUES (
+        '${merchantId}', '${C2C_FOUNDATION_IDS.headquartersTenant}', 'm1', 'M1', 'BINANCE',
+        'https://api.binance.com'
+      )
     `)
   })
 

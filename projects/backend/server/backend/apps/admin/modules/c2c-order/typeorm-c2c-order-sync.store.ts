@@ -190,6 +190,7 @@ export class TypeOrmC2cOrderSyncStore implements C2cOrderSyncStore {
         payeeIdentity: incoming.payeeIdentity || null,
         payeeName: incoming.payeeName || null,
         identityName: incoming.identityName || null,
+        kycStatus: incoming.kycStatus || null,
         identityMatched: this.sameName(incoming.payeeName, incoming.identityName),
         payable: incoming.payable,
         paymentDeadline: incoming.paymentDeadline ? new Date(incoming.paymentDeadline) : null,
