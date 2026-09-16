@@ -54,8 +54,8 @@ curl --fail --silent --show-error http://127.0.0.1:3000/v1/auth/captcha >/dev/nu
 
 ## 首次部署（服务器本地构建镜像）
 
-部署包同时包含完整的后端 Docker 构建上下文（`Dockerfile`、`package.json`、`pnpm-lock.yaml`、
-`libs/` 和 `server/`），不需要登录 GHCR。解压部署包后执行：
+部署包同时包含预编译的 `admin`、`migrate`、生产配置和完整的后端 Docker 构建上下文，不需要
+登录 GHCR。服务器构建只安装生产依赖并组装镜像，不再重复执行 Nest/Webpack 编译。解压部署包后执行：
 
 ```bash
 cp .env.example .env
@@ -68,7 +68,7 @@ sudo chown -R 1000:1000 volumes/logs volumes/static
 # C2C_PULL_POLICY=never
 
 docker compose --env-file .env config --quiet
-docker compose --env-file .env build --pull app migrate
+docker compose --env-file .env build --pull app
 docker compose --env-file .env up -d postgres redis
 docker compose --env-file .env up -d migrate
 docker compose --env-file .env up -d app

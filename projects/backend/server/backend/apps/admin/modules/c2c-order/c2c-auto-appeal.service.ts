@@ -3,6 +3,7 @@ import {
   MerchantEntity,
   MerchantOrderAutoAppealStatus,
   MerchantOrderEntity,
+  MerchantOrderSide,
   MerchantOrderStatus,
   MerchantPlatform,
   PaymentOrderEntity,
@@ -51,7 +52,21 @@ export class C2cAutoAppealService {
       },
     })
     const results: Array<Record<string, unknown>> = []
-    for (const merchant of merchants) results.push(await this.scanMerchant(merchant, now))
+    for (const merchant of merchants) {
+      try {
+        const result = await this.scanMerchant(merchant, now)
+        await this.merchants.update(
+          { id: merchant.id, tenantId: merchant.tenantId },
+          { autoAppealLastScanAt: now, autoAppealLastError: null },
+        )
+        results.push(result)
+      } catch (error) {
+        const message = this.errorMessage(error)
+        await this.recordScanFailure(merchant, message)
+        this.logger.error(`C2C 自动申诉扫描失败: merchant=${merchant.id}, error=${message}`)
+        results.push({ merchantId: merchant.id, error: message })
+      }
+    }
     return results
   }
 
@@ -71,12 +86,13 @@ export class C2cAutoAppealService {
           'payment_order."sourceBusinessNo" = merchant_order."platformOrderId"',
         { sourceType: PaymentSourceType.C2C_BUY },
       )
-      .addSelect('payment_order.updatedAt')
+      .addSelect('payment_order.platformConfirmedAt')
       .where('merchant_order."tenantId" = :tenantId', { tenantId: merchant.tenantId })
       .andWhere('merchant_order."merchantId" = :merchantId', { merchantId: merchant.id })
+      .andWhere('merchant_order.side = :side', { side: MerchantOrderSide.BUY })
       .andWhere('merchant_order.status = :status', { status: MerchantOrderStatus.PENDING_RELEASE })
       .andWhere('merchant_order."appealStatus" IS NULL')
-      .andWhere('merchant_order."platformCreatedAt" >= :enabledAt', {
+      .andWhere('payment_order."platformConfirmedAt" >= :enabledAt', {
         enabledAt: merchant.autoAppealEnabledAt,
       })
       .andWhere(
@@ -93,8 +109,8 @@ export class C2cAutoAppealService {
       .andWhere('payment_order."platformConfirmStatus" = :platformConfirmStatus', {
         platformConfirmStatus: PlatformConfirmationStatus.SUCCESS,
       })
-      .andWhere('payment_order."updatedAt" <= :paidBefore', { paidBefore })
-      .orderBy('payment_order.updatedAt', 'ASC')
+      .andWhere('payment_order."platformConfirmedAt" <= :paidBefore', { paidBefore })
+      .orderBy('payment_order.platformConfirmedAt', 'ASC')
       .take(20)
       .getMany()
 
@@ -195,8 +211,24 @@ export class C2cAutoAppealService {
         autoAppealProcessedAt: now,
         autoAppealNextAttemptAt: null,
         autoAppealLastError: error,
+        ...(status === MerchantOrderAutoAppealStatus.SUBMITTED
+          ? {}
+          : { appealReasonCode: null, appealReason: null, appealClaimedAt: null }),
       },
     )
+  }
+
+  private async recordScanFailure(merchant: MerchantEntity, error: string): Promise<void> {
+    try {
+      await this.merchants.update(
+        { id: merchant.id, tenantId: merchant.tenantId },
+        { autoAppealLastError: error },
+      )
+    } catch (persistenceError) {
+      this.logger.error(
+        `C2C 自动申诉扫描错误保存失败: merchant=${merchant.id}, error=${this.errorMessage(persistenceError)}`,
+      )
+    }
   }
 
   private errorMessage(error: unknown): string {

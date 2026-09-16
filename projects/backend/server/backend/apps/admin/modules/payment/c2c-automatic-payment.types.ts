@@ -26,6 +26,8 @@ export interface RecoverablePayment {
   status: PaymentOrderStatus
   upstreamId: string | null
   platformConfirmStatus: PlatformConfirmationStatus
+  platformConfirmAttempts: number
+  platformConfirmLastAttemptAt: Date | null
 }
 
 export interface RecoverableBatch {

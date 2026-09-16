@@ -44,6 +44,7 @@ describe('migration data source', () => {
         'C2cFullProviderParity1789024000000',
         'C2cPaidNotificationCapability1789025000000',
         'C2cPaymentPlatformStateSeparation1789026000000',
+        'C2cAutomationScanCorrectness1789027000000',
       ])
     } finally {
       if (originalNodeEnv === undefined) delete process.env.NODE_ENV

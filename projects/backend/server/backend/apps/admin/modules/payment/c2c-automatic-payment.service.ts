@@ -19,6 +19,7 @@ import { EVENT_KEYS, EventEmitterService } from '../event-emitter'
 
 export const C2C_AUTOMATIC_PAYMENT_STORE = Symbol('C2C_AUTOMATIC_PAYMENT_STORE')
 const AUTOMATION_LIMIT = 100
+const AUTOMATION_CONCURRENCY = 8
 
 @Injectable()
 export class C2cAutomaticPaymentService {
@@ -226,49 +227,74 @@ export class C2cAutomaticPaymentService {
   private async runItems<T>(items: T[], work: (item: T) => Promise<unknown>) {
     let succeeded = 0
     let failed = 0
-    for (const item of items) {
-      try {
-        await work(item)
-        succeeded += 1
-      } catch (error) {
-        failed += 1
-        const message = this.errorMessage(error)
-        this.logger.error(`自动支付任务处理失败: ${message}`)
-        const scoped = item as Partial<{
-          tenantId: string
-          merchantId: string
-          id: string
-          merchantOrderId: string
-          batchNo: string
-          paymentOrderIds: string[]
-        }>
-        const referenceId =
-          scoped.merchantOrderId ?? scoped.batchNo ?? scoped.id ?? scoped.paymentOrderIds?.[0]
-        if (this.eventEmitter && scoped.tenantId && scoped.merchantId && referenceId) {
-          const claimed = await this.store.claimFailureNotification({
-            tenantId: scoped.tenantId,
-            code: 'AUTOMATIC_PAYMENT_FAILED',
-            merchantId: scoped.merchantId,
-            message,
-            referenceId,
-          })
-          if (claimed) {
-            await this.eventEmitter.emitAsync(EVENT_KEYS.TELEGRAM_EXCEPTION, {
+    let cursor = 0
+    const worker = async () => {
+      while (true) {
+        const index = cursor++
+        if (index >= items.length) return
+        const item = items[index]
+        try {
+          await work(item)
+          succeeded += 1
+        } catch (error) {
+          failed += 1
+          const message = this.errorMessage(error)
+          const scoped = item as Partial<{
+            tenantId: string
+            merchantId: string
+            id: string
+            merchantOrderId: string
+            paymentOrderId: string
+            batchNo: string
+            paymentOrderIds: string[]
+          }>
+          this.logger.error(
+            [
+              '自动支付任务处理失败:',
+              `tenantId=${this.logValue(scoped.tenantId, 'unknown')}`,
+              `merchantId=${this.logValue(scoped.merchantId, 'unknown')}`,
+              `merchantOrderId=${this.logValue(scoped.merchantOrderId, 'none')}`,
+              `paymentOrderId=${this.logValue(scoped.paymentOrderId, this.logValue(scoped.id, 'none'))}`,
+              `batchNo=${this.logValue(scoped.batchNo, 'none')}`,
+              `paymentOrderIds=${this.logValue(scoped.paymentOrderIds?.join('|'), 'none')}`,
+              `error=${message}`,
+            ].join(' '),
+          )
+          const referenceId =
+            scoped.merchantOrderId ?? scoped.batchNo ?? scoped.id ?? scoped.paymentOrderIds?.[0]
+          if (this.eventEmitter && scoped.tenantId && scoped.merchantId && referenceId) {
+            const claimed = await this.store.claimFailureNotification({
               tenantId: scoped.tenantId,
-              merchantId: scoped.merchantId,
               code: 'AUTOMATIC_PAYMENT_FAILED',
+              merchantId: scoped.merchantId,
               message,
               referenceId,
             })
+            if (claimed) {
+              await this.eventEmitter.emitAsync(EVENT_KEYS.TELEGRAM_EXCEPTION, {
+                tenantId: scoped.tenantId,
+                merchantId: scoped.merchantId,
+                code: 'AUTOMATIC_PAYMENT_FAILED',
+                message,
+                referenceId,
+              })
+            }
           }
         }
       }
     }
+    await Promise.all(
+      Array.from({ length: Math.min(AUTOMATION_CONCURRENCY, items.length) }, () => worker()),
+    )
     return { found: items.length, succeeded, failed }
   }
 
   private errorMessage(error: unknown): string {
     return (error instanceof Error ? error.message : String(error)).slice(0, 512)
+  }
+
+  private logValue(value: unknown, fallback: string): string {
+    return value === undefined || value === null || value === '' ? fallback : String(value)
   }
 
   private batchLockKey(group: {

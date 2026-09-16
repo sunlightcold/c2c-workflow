@@ -1,6 +1,7 @@
 import {
   BusinessStatus,
   MerchantOrderCompletionReplyStatus,
+  MerchantOrderSide,
   MerchantOrderStatus,
   MerchantPlatform,
 } from '@admin/database'
@@ -31,7 +32,6 @@ describe('C2cCompletionReplyService', () => {
     where: jest.fn(),
     andWhere: jest.fn(),
     orderBy: jest.fn(),
-    take: jest.fn(),
     getMany: jest.fn(),
   }
   const updateQuery = {
@@ -41,18 +41,9 @@ describe('C2cCompletionReplyService', () => {
     andWhere: jest.fn(),
     execute: jest.fn(),
   }
-  const merchants = { find: jest.fn(), findOne: jest.fn() }
+  const merchants = { find: jest.fn(), findOne: jest.fn(), update: jest.fn() }
   const orders = { createQueryBuilder: jest.fn(), update: jest.fn() }
-  const orderTxRepository = { findOne: jest.fn(), save: jest.fn() }
-  const historyTxRepository = { save: jest.fn() }
-  const dataSource = {
-    transaction: jest.fn((work) =>
-      work({
-        getRepository: (entity: { name?: string }) =>
-          entity.name === 'MerchantOrderEntity' ? orderTxRepository : historyTxRepository,
-      }),
-    ),
-  }
+  const syncStore = { updateObservedStatus: jest.fn() }
   const credentials = { getActiveReference: jest.fn() }
   const secrets = { resolve: jest.fn() }
   const credentialFactory = { create: jest.fn() }
@@ -60,12 +51,16 @@ describe('C2cCompletionReplyService', () => {
   const platformChat = { sendOrderCompletedStrict: jest.fn() }
 
   beforeEach(() => {
-    jest.clearAllMocks()
+    jest.resetAllMocks()
     Object.values(selectQuery).forEach((mock) => mock.mockReturnValue(selectQuery))
     Object.values(updateQuery).forEach((mock) => mock.mockReturnValue(updateQuery))
     merchants.find.mockResolvedValue([merchant])
     merchants.findOne.mockResolvedValue(merchant)
-    selectQuery.getMany.mockResolvedValue([completedOrder])
+    merchants.update.mockResolvedValue({ affected: 1 })
+    selectQuery.getMany
+      .mockReset()
+      .mockResolvedValueOnce([completedOrder])
+      .mockResolvedValueOnce([])
     updateQuery.execute.mockResolvedValue({ affected: 1 })
     orders.createQueryBuilder.mockImplementation((alias?: string) =>
       alias ? selectQuery : updateQuery,
@@ -75,16 +70,14 @@ describe('C2cCompletionReplyService', () => {
     secrets.resolve.mockResolvedValue({ apiKey: 'key', secretKey: 'secret' })
     credentialFactory.create.mockReturnValue({ apiKey: 'key', secretKey: 'secret' })
     platformChat.sendOrderCompletedStrict.mockResolvedValue(undefined)
-    orderTxRepository.findOne.mockResolvedValue({ ...completedOrder })
-    orderTxRepository.save.mockImplementation((value) => Promise.resolve(value))
-    historyTxRepository.save.mockImplementation((value) => Promise.resolve(value))
+    syncStore.updateObservedStatus.mockResolvedValue(MerchantOrderStatus.COMPLETED)
   })
 
   function createService() {
     return new C2cCompletionReplyService(
       merchants as never,
       orders as never,
-      dataSource as never,
+      syncStore as never,
       credentials as never,
       secrets as never,
       credentialFactory as never,
@@ -136,9 +129,10 @@ describe('C2cCompletionReplyService', () => {
   })
 
   it('queries old pending-release orders and skips an upstream cancellation permanently', async () => {
-    selectQuery.getMany.mockResolvedValue([
-      { ...completedOrder, status: MerchantOrderStatus.PENDING_RELEASE },
-    ])
+    selectQuery.getMany
+      .mockReset()
+      .mockResolvedValueOnce([{ ...completedOrder, status: MerchantOrderStatus.PENDING_RELEASE }])
+      .mockResolvedValueOnce([])
     platformClient.getOrderDetail.mockResolvedValue({
       platformOrderId: 'BIN-1',
       status: C2cBuyOrderStatus.CANCELLED,
@@ -158,30 +152,68 @@ describe('C2cCompletionReplyService', () => {
   })
 
   it('persists an upstream completion and then sends the configured reply', async () => {
-    selectQuery.getMany.mockResolvedValue([
-      { ...completedOrder, status: MerchantOrderStatus.PENDING_RELEASE },
-    ])
+    selectQuery.getMany
+      .mockReset()
+      .mockResolvedValueOnce([{ ...completedOrder, status: MerchantOrderStatus.PENDING_RELEASE }])
+      .mockResolvedValueOnce([])
     platformClient.getOrderDetail.mockResolvedValue({
       platformOrderId: 'BIN-1',
       status: C2cBuyOrderStatus.COMPLETED,
     })
-    orderTxRepository.findOne.mockResolvedValue({
-      ...completedOrder,
-      status: MerchantOrderStatus.PENDING_RELEASE,
-    })
-
     const [result] = await createService().scanAll(now)
 
     expect(result).toEqual(expect.objectContaining({ checked: 1, sent: 1, failed: 0 }))
-    expect(orderTxRepository.save).toHaveBeenCalledWith(
-      expect.objectContaining({
-        status: MerchantOrderStatus.COMPLETED,
-        platformStatus: C2cBuyOrderStatus.COMPLETED,
-      }),
+    expect(selectQuery.andWhere).toHaveBeenCalledWith('merchant_order.side = :side', {
+      side: MerchantOrderSide.BUY,
+    })
+    expect(syncStore.updateObservedStatus).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      merchantId: 'merchant-1',
+      merchantOrderId: 'order-1',
+      platformStatus: C2cBuyOrderStatus.COMPLETED,
+      observedAt: now,
+    })
+    expect(merchants.update).toHaveBeenCalledWith(
+      { id: 'merchant-1', tenantId: 'tenant-1' },
+      {
+        c2cChatOrderCompletedLastScanAt: now,
+        c2cChatOrderCompletedLastError: null,
+      },
     )
-    expect(historyTxRepository.save).toHaveBeenCalledWith(
-      expect.objectContaining({ source: 'COMPLETION_REPLY_SCAN' }),
-    )
+  })
+
+  it('isolates an upstream lookup failure and continues with later orders', async () => {
+    const secondOrder = { ...completedOrder, id: 'order-2', platformOrderId: 'BIN-2' }
+    selectQuery.getMany
+      .mockReset()
+      .mockResolvedValueOnce([
+        { ...completedOrder, status: MerchantOrderStatus.PENDING_RELEASE },
+        { ...secondOrder, status: MerchantOrderStatus.PENDING_RELEASE },
+      ])
+      .mockResolvedValueOnce([])
+    platformClient.getOrderDetail
+      .mockRejectedValueOnce(new Error('upstream timeout'))
+      .mockResolvedValueOnce({
+        platformOrderId: 'BIN-2',
+        status: C2cBuyOrderStatus.CANCELLED,
+      })
+
+    const [result] = await createService().scanAll(now)
+
+    expect(result).toEqual(expect.objectContaining({ checked: 1, checkFailed: 1, skipped: 1 }))
+    expect(platformClient.getOrderDetail).toHaveBeenCalledTimes(2)
+  })
+
+  it('loads pending status checks and failed delivery retries independently', async () => {
+    selectQuery.getMany
+      .mockReset()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([completedOrder])
+
+    const [result] = await createService().scanAll(now)
+
+    expect(selectQuery.getMany).toHaveBeenCalledTimes(2)
+    expect(result).toEqual(expect.objectContaining({ retryable: 1, sent: 1 }))
   })
 
   it('does not scan OKX or disabled merchants', async () => {

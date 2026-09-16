@@ -35,6 +35,7 @@ import { C2cPlatformConfirmationControl1789023000000 } from './c2c-platform-conf
 import { C2cFullProviderParity1789024000000 } from './c2c-full-provider-parity.migration'
 import { C2cPaidNotificationCapability1789025000000 } from './c2c-paid-notification-capability.migration'
 import { C2cPaymentPlatformStateSeparation1789026000000 } from './c2c-payment-platform-state-separation.migration'
+import { C2cAutomationScanCorrectness1789027000000 } from './c2c-automation-scan-correctness.migration'
 
 export type AdminMigrationConstructor = new () => MigrationInterface
 
@@ -75,4 +76,5 @@ export const adminMigrations: AdminMigrationConstructor[] = [
   C2cFullProviderParity1789024000000,
   C2cPaidNotificationCapability1789025000000,
   C2cPaymentPlatformStateSeparation1789026000000,
+  C2cAutomationScanCorrectness1789027000000,
 ]

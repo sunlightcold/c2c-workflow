@@ -15,7 +15,7 @@ import { TaskQueue } from './constant'
 import { TaskService } from './task.service'
 import { TaskJobData } from './type'
 
-@Processor(TaskQueue.Task)
+@Processor(TaskQueue.Task, { concurrency: 8 })
 export class TaskConsumer extends WorkerHost {
   private readonly logger = new Logger(TaskConsumer.name)
 
@@ -34,10 +34,11 @@ export class TaskConsumer extends WorkerHost {
       if (!task) {
         throw new NotFoundException(`任务${id}不存在`)
       }
-      this.logger.log(`开始执行任务: ${task.name}, 路径：${task.service}`)
+      this.logger.debug(`任务开始: name=${task.name}, service=${task.service}`)
       const result = await this.taskService.callTask(service, data)
       const endedAt = Date.now()
       const time = endedAt - startedAt
+      const detail = safeStringify(result)
       // 执行成功
       await this.taskLogService.create({
         taskId: id,
@@ -45,14 +46,23 @@ export class TaskConsumer extends WorkerHost {
         taskSource: task.source ?? SysTaskSource.Custom,
         consumeTime: time,
         status: ExecuteEnum.Success,
-        detail: safeStringify(result),
+        detail,
         startedAt: new Date(startedAt),
         endedAt: new Date(endedAt),
       })
+      const summary = taskResultSummary(result)
+      if (task.source !== SysTaskSource.System || hasMeaningfulActivity(summary)) {
+        this.logger.log(
+          `任务执行完成: name=${task.name}, service=${task.service}, durationMs=${time}${summary ? `, result=${safeStringify(summary)}` : ''}`,
+        )
+      }
       return Promise.resolve(true)
     } catch (error) {
       const endedAt = Date.now()
       const time = endedAt - startedAt
+      this.logger.error(
+        `任务执行失败: name=${task?.name ?? id}, service=${service}, durationMs=${time}, error=${errorMessage(error)}`,
+      )
       // 执行失败
       await this.taskLogService.create({
         taskId: id,
@@ -67,11 +77,30 @@ export class TaskConsumer extends WorkerHost {
       return Promise.resolve(false)
     }
   }
+}
 
-  @OnQueueEvent('completed')
-  onActive(job: Job) {
-    this.logger.log(`Processing job ${job.id} of type ${job.name} with data ${job.data}...`)
-  }
+function hasMeaningfulActivity(value: unknown): boolean {
+  if (typeof value === 'number') return value !== 0
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'string') return value.length > 0
+  if (Array.isArray(value)) return value.length > 0
+  if (!value || typeof value !== 'object') return false
+  return Object.values(value).some((item) => hasMeaningfulActivity(item))
+}
+
+function taskResultSummary(value: unknown): unknown {
+  if (typeof value === 'number' || typeof value === 'boolean') return value
+  if (Array.isArray(value)) return { count: value.length }
+  if (!value || typeof value !== 'object') return undefined
+  const entries = Object.entries(value).flatMap(([key, item]) => {
+    const summary = taskResultSummary(item)
+    return summary === undefined ? [] : [[key, summary] as const]
+  })
+  return entries.length ? Object.fromEntries(entries) : undefined
+}
+
+function errorMessage(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error)).slice(0, 512)
 }
 
 @QueueEventsListener(TaskQueue.Task)

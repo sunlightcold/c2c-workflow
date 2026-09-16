@@ -1,7 +1,12 @@
 [CmdletBinding(SupportsShouldProcess)]
 param(
   [ValidateRange(10, 600)]
-  [int]$TimeoutSeconds = 120
+  [int]$TimeoutSeconds = 120,
+
+  [switch]$NoFollowLogs,
+
+  [ValidateRange(0, 500)]
+  [int]$LogTailLines = 40
 )
 
 $ErrorActionPreference = "Stop"
@@ -158,6 +163,79 @@ function Wait-LocalService {
   throw "$($Service.Name) did not become ready within $TimeoutSeconds seconds. Logs: $($StartedProcess.stdout), $($StartedProcess.stderr)"
 }
 
+function Follow-LocalServiceLogs {
+  param(
+    [string]$Name,
+    [string]$StdoutPath,
+    [string]$StderrPath,
+    [int]$TailLines
+  )
+
+  $logFiles = @(
+    [pscustomobject]@{
+      Label = $Name
+      Path = $StdoutPath
+      Color = [ConsoleColor]::Gray
+    },
+    [pscustomobject]@{
+      Label = "$Name`:stderr"
+      Path = $StderrPath
+      Color = [ConsoleColor]::Red
+    }
+  )
+
+  foreach ($logFile in $logFiles) {
+    if (-not (Test-Path -LiteralPath $logFile.Path -PathType Leaf)) {
+      New-Item -ItemType File -Path $logFile.Path -Force | Out-Null
+    }
+  }
+
+  Write-Host "Following $Name logs. Press Ctrl+C to stop following; services will keep running." -ForegroundColor Cyan
+  Write-Host "  stdout: $StdoutPath"
+  Write-Host "  stderr: $StderrPath"
+
+  if ($TailLines -gt 0) {
+    foreach ($logFile in $logFiles) {
+      Get-Content -LiteralPath $logFile.Path -Tail $TailLines -ErrorAction SilentlyContinue |
+        ForEach-Object { Write-Host "[$($logFile.Label)] $_" -ForegroundColor $logFile.Color }
+    }
+  }
+
+  $followers = @()
+  try {
+    foreach ($logFile in $logFiles) {
+      $stream = [IO.FileStream]::new(
+        $logFile.Path,
+        [IO.FileMode]::Open,
+        [IO.FileAccess]::Read,
+        ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)
+      )
+      [void]$stream.Seek(0, [IO.SeekOrigin]::End)
+      $followers += [pscustomobject]@{
+        Label = $logFile.Label
+        Color = $logFile.Color
+        Stream = $stream
+        Reader = [IO.StreamReader]::new($stream, [Text.Encoding]::UTF8, $true, 4096, $true)
+      }
+    }
+
+    while ($true) {
+      foreach ($follower in $followers) {
+        while ($null -ne ($line = $follower.Reader.ReadLine())) {
+          Write-Host "[$($follower.Label)] $line" -ForegroundColor $follower.Color
+        }
+      }
+      Start-Sleep -Milliseconds 200
+    }
+  }
+  finally {
+    foreach ($follower in $followers) {
+      $follower.Reader.Dispose()
+      $follower.Stream.Dispose()
+    }
+  }
+}
+
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
   throw "projects.json is missing: $manifestPath"
 }
@@ -256,4 +334,12 @@ if (-not $WhatIfPreference) {
   Write-Host "All C2C local projects are ready." -ForegroundColor Cyan
   Write-Host "Process file: $processFile"
   Write-Host "Logs: $logDirectory"
+
+  if (-not $NoFollowLogs) {
+    Follow-LocalServiceLogs `
+      -Name "backend" `
+      -StdoutPath (Join-Path $logDirectory "backend.stdout.log") `
+      -StderrPath (Join-Path $logDirectory "backend.stderr.log") `
+      -TailLines $LogTailLines
+  }
 }

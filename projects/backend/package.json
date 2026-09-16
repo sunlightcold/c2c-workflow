@@ -8,7 +8,7 @@
     "dev": "pnpm run dev:server",
     "dev:server": "pnpm --filter ./server/backend run start:dev",
     "dev:mock": "pnpm --filter ./server/mock run dev",
-    "build": "pnpm run build:libs && pnpm run build:server",
+    "build": "pnpm run build:libs",
     "build:docker": "pnpm --filter ./libs/build run build",
     "build:server": "pnpm --filter ./server/backend run build",
     "build:libs": "pnpm --filter ./libs/build run build",

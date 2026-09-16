@@ -1,4 +1,5 @@
-import type { MerchantPlatform } from '@admin/database'
+import type { MerchantOrderStatus, MerchantPlatform } from '@admin/database'
+import type { C2cBuyOrderStatus } from '../c2c-platform'
 import type { C2cBuyOrderDetail } from '../c2c-platform'
 
 export interface C2cOrderSyncStore {
@@ -9,6 +10,13 @@ export interface C2cOrderSyncStore {
     leaseMs: number,
   ) => Promise<Array<{ tenantId: string; merchantId: string }>>
   getLastSuccessAt: (tenantId: string, merchantId: string) => Promise<Date | null>
+  updateObservedStatus: (input: {
+    tenantId: string
+    merchantId: string
+    merchantOrderId: string
+    platformStatus: C2cBuyOrderStatus
+    observedAt: Date
+  }) => Promise<MerchantOrderStatus | null>
   persistWindow: (
     scope: { tenantId: string; merchantId: string; platform: MerchantPlatform },
     orders: C2cBuyOrderDetail[],

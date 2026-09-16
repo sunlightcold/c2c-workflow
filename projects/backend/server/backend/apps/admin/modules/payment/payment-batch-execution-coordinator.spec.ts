@@ -6,6 +6,7 @@ import {
 } from './payment-batch-execution-coordinator'
 import { PaymentBatchStatus } from '@admin/database'
 import { PaymentNotSubmittedError } from './payment-execution.errors'
+import { Logger } from '@nestjs/common'
 
 describe('PaymentBatchExecutionCoordinator', () => {
   const batch: ExecutablePaymentBatch = {
@@ -22,6 +23,7 @@ describe('PaymentBatchExecutionCoordinator', () => {
         id: 'item-1',
         paymentOrderId: 'order-1',
         paymentNo: 'PAY-1',
+        sourceBusinessNo: 'platform-order-1',
         sourceType: PaymentSourceType.C2C_BUY,
         amount: '10.00',
         payeeIdentity: 'payee@example.com',
@@ -96,10 +98,32 @@ describe('PaymentBatchExecutionCoordinator', () => {
     expect(payments.confirmPlatform).not.toHaveBeenCalled()
   })
 
+  it('logs the batch and all item relationship identifiers', async () => {
+    const log = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined)
+    executor.submit.mockResolvedValue({
+      status: PaymentExecutionStatus.PROCESSING,
+      upstreamId: 'alipay-batch-1',
+      raw: {},
+    })
+
+    await coordinator.submit('tenant-1', 'batch-1')
+
+    const messages = log.mock.calls.map(([message]) => String(message)).join('\n')
+    expect(messages).toContain('tenantId=tenant-1')
+    expect(messages).toContain('merchantId=merchant-1')
+    expect(messages).toContain('batchId=batch-1')
+    expect(messages).toContain('batchNo=BAT-1')
+    expect(messages).toContain('batchUpstreamId=alipay-batch-1')
+    expect(messages).toContain('order-1/PAY-1/platform-order-1/none')
+  })
+
   it('starts the initial delay after the upstream submission response', async () => {
-    const now = jest.spyOn(Date, 'now').mockReturnValueOnce(1_000).mockReturnValueOnce(20_000)
+    let responseCompleted = false
+    const now = jest
+      .spyOn(Date, 'now')
+      .mockImplementation(() => (responseCompleted ? 20_000 : 1_000))
     executor.submit.mockImplementation(async () => {
-      Date.now()
+      responseCompleted = true
       return { status: PaymentExecutionStatus.PROCESSING, raw: {} }
     })
 
@@ -240,6 +264,79 @@ describe('PaymentBatchExecutionCoordinator', () => {
         batchNo: 'BAT-1',
         items: [expect.objectContaining({ sourceBusinessNo: 'C2C-1', success: false })],
       }),
+    )
+  })
+
+  it('emits the terminal batch result before starting platform confirmation', async () => {
+    store.prepare.mockResolvedValue({ ...batch, status: PaymentBatchStatus.PROCESSING })
+    executor.query.mockResolvedValue({ status: PaymentExecutionStatus.SUCCESS, raw: {} })
+    store.applyQuery.mockResolvedValue({
+      batch: { ...batch, status: PaymentBatchStatus.SUCCESS },
+      paymentsToConfirm: [
+        {
+          id: 'order-1',
+          tenantId: 'tenant-1',
+          merchantId: 'merchant-1',
+          sourceBusinessNo: 'C2C-1',
+          amount: '10.00',
+          currency: 'CNY',
+          status: 'SUCCESS',
+        },
+      ],
+    })
+    payments.confirmPlatform.mockResolvedValue({
+      id: 'order-1',
+      platformConfirmStatus: 'SUCCESS',
+    })
+
+    await coordinator.reconcile('tenant-1', 'batch-1')
+
+    const terminalBatchEvent = eventEmitter.emit.mock.calls.findIndex(
+      ([event, payload]) =>
+        event === 'telegram.batch.status' && payload.status === PaymentBatchStatus.SUCCESS,
+    )
+    expect(terminalBatchEvent).toBeGreaterThanOrEqual(0)
+    expect(eventEmitter.emit.mock.invocationCallOrder[terminalBatchEvent]).toBeLessThan(
+      payments.confirmPlatform.mock.invocationCallOrder[0],
+    )
+  })
+
+  it('queues every successful batch item for its platform time slot without waiting for the first', async () => {
+    store.prepare.mockResolvedValue({ ...batch, status: PaymentBatchStatus.PROCESSING })
+    executor.query.mockResolvedValue({ status: PaymentExecutionStatus.SUCCESS, raw: {} })
+    store.applyQuery.mockResolvedValue({
+      batch: { ...batch, status: PaymentBatchStatus.SUCCESS },
+      paymentsToConfirm: [
+        { id: 'order-1', tenantId: 'tenant-1', status: 'SUCCESS' },
+        { id: 'order-2', tenantId: 'tenant-1', status: 'SUCCESS' },
+      ],
+    })
+    let finishFirst!: () => void
+    const firstPending = new Promise<void>((resolve) => {
+      finishFirst = resolve
+    })
+    payments.confirmPlatform
+      .mockImplementationOnce(async (payment) => {
+        await firstPending
+        return payment
+      })
+      .mockImplementationOnce(async (payment) => payment)
+
+    const reconciliation = coordinator.reconcile('tenant-1', 'batch-1')
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve)
+    })
+    const startedBeforeFirstCompleted = payments.confirmPlatform.mock.calls.length
+    finishFirst()
+    await reconciliation
+
+    expect(startedBeforeFirstCompleted).toBe(2)
+    expect(payments.confirmPlatform).toHaveBeenCalledWith(
+      expect.objectContaining({
+        batchId: 'batch-1',
+        batchNo: 'BAT-1',
+      }),
+      { suppressFailureNotification: true },
     )
   })
 })

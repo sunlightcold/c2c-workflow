@@ -728,6 +728,8 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
       id: item.id,
       paymentOrderId: order.id,
       paymentNo: order.paymentNo,
+      sourceBusinessNo: order.sourceBusinessNo,
+      upstreamId: item.upstreamId ?? order.upstreamId,
       sourceType: order.sourceType,
       amount: item.amount,
       payeeIdentity: order.payeeIdentity,

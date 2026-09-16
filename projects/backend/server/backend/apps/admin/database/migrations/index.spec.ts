@@ -39,6 +39,7 @@ describe('admin migration registry', () => {
       'C2cFullProviderParity1789024000000',
       'C2cPaidNotificationCapability1789025000000',
       'C2cPaymentPlatformStateSeparation1789026000000',
+      'C2cAutomationScanCorrectness1789027000000',
     ])
   })
 })

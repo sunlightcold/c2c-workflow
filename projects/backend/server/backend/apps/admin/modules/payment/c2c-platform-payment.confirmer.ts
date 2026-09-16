@@ -5,7 +5,7 @@ import {
   PaymentOrderStatus,
   PaymentSourceType,
 } from '@admin/database'
-import { Inject, Injectable, Optional } from '@nestjs/common'
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import {
   C2cPlatformClient,
   type C2cPlatformCredentials,
@@ -40,6 +40,8 @@ export interface PlatformConfirmationStore extends PaymentPreflightStore {
 
 @Injectable()
 export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
+  private readonly logger = new Logger(C2cPlatformPaymentConfirmer.name)
+
   constructor(
     @Inject(PAYMENT_PREFLIGHT_STORE) private readonly store: PlatformConfirmationStore,
     @Inject(C2C_SECRET_RESOLVER) private readonly secretResolver: C2cSecretResolver,
@@ -54,13 +56,23 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
     order: ExecutablePaymentOrder,
     options: { queryOnly?: boolean } = {},
   ): Promise<void> {
-    const context = await this.store.load(order.tenantId, order.id)
+    const loadedContext = await this.store.load(order.tenantId, order.id)
+    const context: PaymentPreflightConfiguration = {
+      ...loadedContext,
+      merchantOrder: { ...loadedContext.merchantOrder },
+    }
     this.verifyContext(context)
+    this.logger.log(
+      `C2C 标记付款上下文加载完成: ${this.confirmationLogContext(context, order, options.queryOnly ? 'QUERY_ONLY' : 'MARK_PAID')}`,
+    )
     if (
       [MerchantOrderStatus.PENDING_RELEASE, MerchantOrderStatus.COMPLETED].includes(
         context.merchantOrder.status,
       )
     ) {
+      this.logger.log(
+        `C2C 标记付款跳过已完成订单: ${this.confirmationLogContext(context, order, 'SKIP_COMPLETED')}`,
+      )
       return
     }
     if (this.isFundsConflict(context.merchantOrder.status)) {
@@ -69,11 +81,16 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
     const recovering =
       options.queryOnly ||
       context.merchantOrder.status === MerchantOrderStatus.PAID_PENDING_PLATFORM_CONFIRM
+    const previousMerchantOrderStatus = context.merchantOrder.status
     await this.store.transitionMerchantOrder(
       context.order.tenantId,
       context.merchantOrder.id,
       MerchantOrderStatus.PAID_PENDING_PLATFORM_CONFIRM,
       C2cBuyOrderStatus.PENDING_PAYMENT,
+    )
+    context.merchantOrder.status = MerchantOrderStatus.PAID_PENDING_PLATFORM_CONFIRM
+    this.logger.log(
+      `C2C 商家订单进入待平台确认: ${this.confirmationLogContext(context, order, options.queryOnly ? 'QUERY_ONLY' : 'MARK_PAID')}, fromMerchantOrderStatus=${previousMerchantOrderStatus}, toMerchantOrderStatus=${MerchantOrderStatus.PAID_PENDING_PLATFORM_CONFIRM}`,
     )
     const secret = await this.secretResolver.resolve(context.credential.credentialRef)
     const credentials = this.credentialFactory.create(
@@ -83,7 +100,13 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
     )
     let paymentMethodId = context.merchantOrder.platformPaymentMethodId!
     if (recovering) {
+      this.logger.log(
+        `C2C 标记付款上游查单: ${this.confirmationLogContext(context, order, options.queryOnly ? 'QUERY_ONLY' : 'PRE_MARK_QUERY')}`,
+      )
       const current = await this.getOrder(context, credentials)
+      this.logger.log(
+        `C2C 标记付款上游查单响应: ${this.confirmationLogContext(context, order, options.queryOnly ? 'QUERY_ONLY' : 'PRE_MARK_QUERY')}, upstreamOrderStatus=${current.status}, payable=${current.payable}`,
+      )
       this.verifyPlatformOrder(context, current)
       if (await this.finalizeKnownStatus(context, current.status)) {
         await this.notifyPaid(context, current.status)
@@ -95,8 +118,25 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
       if (options.queryOnly) throw new Error('平台订单仍待付款，请人工重试标记付款')
       paymentMethodId = current.platformPaymentMethodId
     }
-    await this.throttle.execute(context.merchant, () =>
-      this.markPaid(context, credentials, paymentMethodId),
+    this.logger.log(
+      `C2C 标记付款提交上游: ${this.confirmationLogContext(context, order, 'MARK_PAID')}`,
+    )
+    await this.throttle.execute(
+      context.merchant,
+      () => this.markPaid(context, credentials, paymentMethodId),
+      {
+        merchantOrderId: context.merchantOrder.id,
+        platformOrderId: context.merchantOrder.platformOrderId,
+        paymentOrderId: context.order.id,
+        paymentNo: context.order.paymentNo,
+        paymentUpstreamId: order.upstreamId,
+        batchId: order.batchId,
+        batchNo: order.batchNo,
+        batchUpstreamId: order.batchUpstreamId,
+      },
+    )
+    this.logger.log(
+      `C2C 标记付款上游请求完成: ${this.confirmationLogContext(context, order, 'MARK_PAID')}`,
     )
     if (context.merchant.platform === MerchantPlatform.BINANCE) {
       await this.store.transitionMerchantOrder(
@@ -105,13 +145,26 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
         MerchantOrderStatus.PENDING_RELEASE,
         C2cBuyOrderStatus.PAID,
       )
+      context.merchantOrder.status = MerchantOrderStatus.PENDING_RELEASE
       await this.notifyPaid(context, C2cBuyOrderStatus.PAID)
+      this.logger.log(
+        `C2C 标记付款平台确认成功: ${this.confirmationLogContext(context, order, 'MARK_PAID')}, upstreamOrderStatus=${C2cBuyOrderStatus.PAID}, toMerchantOrderStatus=${MerchantOrderStatus.PENDING_RELEASE}`,
+      )
       return
     }
+    this.logger.log(
+      `C2C 标记付款结果查单: ${this.confirmationLogContext(context, order, 'POST_MARK_QUERY')}`,
+    )
     const confirmed = await this.getOrder(context, credentials)
+    this.logger.log(
+      `C2C 标记付款结果查单响应: ${this.confirmationLogContext(context, order, 'POST_MARK_QUERY')}, upstreamOrderStatus=${confirmed.status}, payable=${confirmed.payable}`,
+    )
     this.verifyPlatformOrder(context, confirmed)
     if (await this.finalizeKnownStatus(context, confirmed.status)) {
       await this.notifyPaid(context, confirmed.status)
+      this.logger.log(
+        `C2C 标记付款平台确认成功: ${this.confirmationLogContext(context, order, 'POST_MARK_QUERY')}, upstreamOrderStatus=${confirmed.status}`,
+      )
       return
     }
     throw new Error('平台尚未确认已付款')
@@ -187,14 +240,17 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
     status: C2cBuyOrderStatus,
   ): Promise<boolean> {
     if (status === C2cBuyOrderStatus.PAID || status === C2cBuyOrderStatus.COMPLETED) {
+      const merchantOrderStatus =
+        status === C2cBuyOrderStatus.COMPLETED
+          ? MerchantOrderStatus.COMPLETED
+          : MerchantOrderStatus.PENDING_RELEASE
       await this.store.transitionMerchantOrder(
         context.order.tenantId,
         context.merchantOrder.id,
-        status === C2cBuyOrderStatus.COMPLETED
-          ? MerchantOrderStatus.COMPLETED
-          : MerchantOrderStatus.PENDING_RELEASE,
+        merchantOrderStatus,
         status,
       )
+      context.merchantOrder.status = merchantOrderStatus
       return true
     }
     if (this.isPlatformFundsConflict(status)) await this.toFundsException(context, status)
@@ -246,6 +302,30 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
     } catch {
       return false
     }
+  }
+
+  private confirmationLogContext(
+    context: PaymentPreflightConfiguration,
+    order: ExecutablePaymentOrder,
+    operation: string,
+  ): string {
+    return [
+      `tenantId=${context.order.tenantId}`,
+      `merchantId=${context.merchant.id}`,
+      `merchantCode=${context.merchant.code ?? 'unknown'}`,
+      `merchantOrderId=${context.merchantOrder.id}`,
+      `platform=${context.merchant.platform}`,
+      `platformOrderId=${context.merchantOrder.platformOrderId}`,
+      `paymentOrderId=${context.order.id}`,
+      `paymentNo=${context.order.paymentNo}`,
+      `paymentUpstreamId=${order.upstreamId ?? 'none'}`,
+      `batchId=${order.batchId ?? 'none'}`,
+      `batchNo=${order.batchNo ?? 'none'}`,
+      `batchUpstreamId=${order.batchUpstreamId ?? 'none'}`,
+      `operation=${operation}`,
+      `paymentStatus=${context.order.status}`,
+      `merchantOrderStatus=${context.merchantOrder.status}`,
+    ].join(', ')
   }
 
   private async notifyPaid(

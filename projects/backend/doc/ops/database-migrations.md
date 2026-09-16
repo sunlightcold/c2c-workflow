@@ -17,6 +17,10 @@
 - `output/volumes/apps/admin/main.js`
 - `output/volumes/apps/migrate/main.js`
 
+本地发布包已经包含编译完成的应用、迁移 runner 和生产配置。服务器构建镜像时只安装生产依赖并
+复制这些产物，不再重复执行 Nest/Webpack 编译。`app` 与 `migrate` 使用同一个镜像；本地镜像部署
+只需执行 `docker compose --env-file .env build app`，随后 `up` 会让 `migrate` 复用该镜像。
+
 正式服务器部署使用 Actions 发布的同一个后端镜像，Compose 通过镜像中的两个入口执行：
 
 - `node dist/apps/migrate/main.js`
@@ -82,3 +86,4 @@ Compose 会等待 PostgreSQL 健康检查通过，启动一次性 `migrate` 服�
 11. `C2cFullProviderParity1789024000000`：补齐 KYC、自动申诉、完成回复状态机、币安启用窗口与自动批次 Telegram 消息关联。
 12. `C2cPaidNotificationCapability1789025000000`：为现有支付机器人和群组恢复默认启用的 C2C 标记付款通知能力。
 13. `C2cPaymentPlatformStateSeparation1789026000000`：将历史 `PLATFORM_CONFIRM_PENDING / COMPLETED` 支付状态迁移为资金结果 `SUCCESS`，平台标记进度和错误改由独立字段承载，并重建 15 秒恢复索引。
+14. `C2cAutomationScanCorrectness1789027000000`：记录自动申诉与完成回复的商家级扫描时间和错误，修正自动申诉索引，使其以资金支付后的平台确认时间为准。

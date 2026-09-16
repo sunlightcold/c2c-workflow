@@ -1,6 +1,5 @@
 import { MerchantPlatform } from '@admin/database'
 import { Injectable, Logger } from '@nestjs/common'
-import { randomUUID } from 'crypto'
 import { DataSource } from 'typeorm'
 
 export interface PaidConfirmationMerchant {
@@ -13,9 +12,15 @@ export interface PaidConfirmationMerchant {
   requestTimeoutMs?: number
 }
 
-interface Reservation {
-  intervalMs: number
-  lockId: string
+export interface PaidConfirmationCorrelation {
+  merchantOrderId: string
+  platformOrderId: string
+  paymentOrderId: string
+  paymentNo: string
+  paymentUpstreamId?: string | null
+  batchId?: string
+  batchNo?: string
+  batchUpstreamId?: string | null
 }
 
 @Injectable()
@@ -24,81 +29,61 @@ export class C2cPaidConfirmationThrottleService {
 
   constructor(private readonly dataSource: DataSource) {}
 
-  async execute<T>(merchant: PaidConfirmationMerchant, task: () => Promise<T>): Promise<T> {
+  async execute<T>(
+    merchant: PaidConfirmationMerchant,
+    task: () => Promise<T>,
+    correlation?: PaidConfirmationCorrelation,
+  ): Promise<T> {
     if (merchant.platform !== MerchantPlatform.OKX) return task()
     const [minMs, maxMs] = this.interval(merchant)
     if (maxMs === 0) return task()
-    const reservation = await this.reserve(merchant, minMs, maxMs)
-    try {
-      return await task()
-    } finally {
-      try {
-        await this.release(merchant, reservation)
-      } catch (error) {
-        this.logger.error(
-          `C2C 标记付款节流锁释放失败: merchant=${merchant.code}, error=${this.errorMessage(error)}`,
-        )
-      }
-    }
+    await this.reserveSlot(merchant, minMs, maxMs, correlation)
+    return task()
   }
 
-  private async reserve(
+  private async reserveSlot(
     merchant: PaidConfirmationMerchant,
     minMs: number,
     maxMs: number,
-  ): Promise<Reservation> {
+    correlation?: PaidConfirmationCorrelation,
+  ): Promise<void> {
     while (true) {
-      const lockId = randomUUID()
       const intervalMs = this.randomInterval(minMs, maxMs)
-      const leaseMs = (merchant.requestTimeoutMs ?? 15_000) * 4 + 5_000
-      const rows = (await this.dataSource.query(
+      const [rows] = (await this.dataSource.query(
         `
           UPDATE merchant
-          SET "paidConfirmLockId" = $3,
-              "paidConfirmLockUntil" = NOW() + ($4 * INTERVAL '1 millisecond')
+          SET "paidConfirmNextAt" = NOW() + ($3 * INTERVAL '1 millisecond'),
+              "paidConfirmLockId" = NULL,
+              "paidConfirmLockUntil" = NULL
           WHERE id = $1
             AND "tenantId" = $2
             AND platform = 'OKX'
-            AND ("paidConfirmLockUntil" IS NULL OR "paidConfirmLockUntil" <= NOW())
             AND ("paidConfirmNextAt" IS NULL OR "paidConfirmNextAt" <= NOW())
           RETURNING id
         `,
-        [merchant.id, merchant.tenantId, lockId, leaseMs],
-      )) as Array<{ id: string }>
-      if (rows.length === 1) return { intervalMs, lockId }
+        [merchant.id, merchant.tenantId, intervalMs],
+      )) as [Array<{ id: string }>, number]
+      if (rows.length === 1) return
 
       const [current] = (await this.dataSource.query(
         `
-          SELECT "paidConfirmNextAt", "paidConfirmLockUntil"
+          SELECT "paidConfirmNextAt"
           FROM merchant
           WHERE id = $1 AND "tenantId" = $2
         `,
         [merchant.id, merchant.tenantId],
       )) as Array<{
-        paidConfirmLockUntil: Date | string | null
         paidConfirmNextAt: Date | string | null
       }>
       if (!current) throw new Error(`C2C 商家不存在: ${merchant.code}`)
       const now = Date.now()
-      const availableAt = Math.max(
-        this.dateValue(current.paidConfirmNextAt) ?? now,
-        this.dateValue(current.paidConfirmLockUntil) ?? now,
+      const availableAt = this.dateValue(current.paidConfirmNextAt) ?? now
+      const waitMs = Math.max(25, availableAt - now)
+      this.logger.log(
+        `C2C 标记付款等待节流窗口: ${this.correlationLogContext(merchant, correlation)}, waitMs=${waitMs}`,
       )
-      await this.sleep(Math.max(25, Math.min(250, availableAt - now)))
+      await this.sleep(waitMs)
     }
-  }
-
-  private release(merchant: PaidConfirmationMerchant, reservation: Reservation): Promise<unknown> {
-    return this.dataSource.query(
-      `
-        UPDATE merchant
-        SET "paidConfirmNextAt" = NOW() + ($4 * INTERVAL '1 millisecond'),
-            "paidConfirmLockId" = NULL,
-            "paidConfirmLockUntil" = NULL
-        WHERE id = $1 AND "tenantId" = $2 AND "paidConfirmLockId" = $3
-      `,
-      [merchant.id, merchant.tenantId, reservation.lockId, reservation.intervalMs],
-    )
   }
 
   private interval(merchant: PaidConfirmationMerchant): [number, number] {
@@ -116,6 +101,25 @@ export class C2cPaidConfirmationThrottleService {
     return [minMs, maxMs]
   }
 
+  private correlationLogContext(
+    merchant: PaidConfirmationMerchant,
+    correlation?: PaidConfirmationCorrelation,
+  ): string {
+    return [
+      `tenantId=${merchant.tenantId}`,
+      `merchantId=${merchant.id}`,
+      `merchantCode=${merchant.code ?? 'unknown'}`,
+      `merchantOrderId=${correlation?.merchantOrderId ?? 'unknown'}`,
+      `platformOrderId=${correlation?.platformOrderId ?? 'unknown'}`,
+      `paymentOrderId=${correlation?.paymentOrderId ?? 'unknown'}`,
+      `paymentNo=${correlation?.paymentNo ?? 'unknown'}`,
+      `paymentUpstreamId=${correlation?.paymentUpstreamId ?? 'none'}`,
+      `batchId=${correlation?.batchId ?? 'none'}`,
+      `batchNo=${correlation?.batchNo ?? 'none'}`,
+      `batchUpstreamId=${correlation?.batchUpstreamId ?? 'none'}`,
+    ].join(', ')
+  }
+
   private randomInterval(minMs: number, maxMs: number): number {
     return minMs === maxMs ? minMs : minMs + Math.floor(Math.random() * (maxMs - minMs + 1))
   }
@@ -130,9 +134,5 @@ export class C2cPaidConfirmationThrottleService {
     return new Promise((resolve) => {
       setTimeout(resolve, ms)
     })
-  }
-
-  private errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error)
   }
 }

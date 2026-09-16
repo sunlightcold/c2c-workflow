@@ -17,11 +17,11 @@ import {
   C2cCredentialRejectedError,
 } from '../c2c-platform'
 import { C2C_SECRET_RESOLVER, type C2cSecretResolver } from './c2c-secret-resolver'
+import { C2C_ORDER_SYNC_STORE } from './c2c-order.tokens'
 import type { C2cOrderSyncStore } from './c2c-order-sync.types'
 import { EVENT_KEYS, EventEmitterService } from '../event-emitter'
 import { C2cCompletionReplyService } from './c2c-completion-reply.service'
 
-export const C2C_ORDER_SYNC_STORE = Symbol('C2C_ORDER_SYNC_STORE')
 const INITIAL_LOOKBACK_MS = 24 * 60 * 60 * 1000
 
 @Injectable()

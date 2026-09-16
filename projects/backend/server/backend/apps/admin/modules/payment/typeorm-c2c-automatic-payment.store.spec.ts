@@ -31,6 +31,11 @@ describe('TypeOrmC2cAutomaticPaymentStore', () => {
     expect(paymentSql).not.toContain('payment_order."sourceType"')
     expect(paymentSql).toContain('payment_order.status = ANY($1::payment_order_status_enum[])')
     expect(paymentSql).toContain("payment_order.status = 'SUCCESS'")
+    expect(paymentSql).toContain('INNER JOIN merchant')
+    expect(paymentSql).toContain('merchant."paidConfirmNextAt" <= NOW()')
+    expect(paymentSql).toContain('merchant."requestTimeoutMs" * 4 + 5000')
+    expect(paymentSql).toContain('payment_order."platformConfirmAttempts"')
+    expect(paymentSql).toContain('payment_order."platformConfirmLastAttemptAt"')
     expect(paymentSql).toContain('LIMIT $4')
     expect(paymentParameters).toEqual([
       [PaymentOrderStatus.SUBMITTING, PaymentOrderStatus.PROCESSING, PaymentOrderStatus.UNKNOWN],
@@ -64,7 +69,7 @@ describe('TypeOrmC2cAutomaticPaymentStore', () => {
   })
 
   it('claims each automatic payment failure notification only once', async () => {
-    const dataSource = { query: jest.fn().mockResolvedValue([{ id: 'notice-1' }]) }
+    const dataSource = { query: jest.fn().mockResolvedValue([[{ id: 'notice-1' }], 1]) }
     const store = new TypeOrmC2cAutomaticPaymentStore(dataSource as never)
     const input = {
       tenantId: 'tenant-1',

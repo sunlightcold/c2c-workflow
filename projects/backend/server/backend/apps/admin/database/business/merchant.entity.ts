@@ -91,6 +91,12 @@ export class MerchantEntity extends CommonUuidEntity {
   @Column({ type: 'timestamptz', nullable: true })
   c2cChatOrderCompletedEnabledAt: Date | null
 
+  @Column({ type: 'timestamptz', nullable: true, select: false })
+  c2cChatOrderCompletedLastScanAt: Date | null
+
+  @Column({ type: 'varchar', length: 512, nullable: true, select: false })
+  c2cChatOrderCompletedLastError: string | null
+
   @Column({ type: 'varchar', length: 500, nullable: true })
   c2cChatOrderCompletedMessage: string | null
 
@@ -99,6 +105,12 @@ export class MerchantEntity extends CommonUuidEntity {
 
   @Column({ type: 'timestamptz', nullable: true })
   autoAppealEnabledAt: Date | null
+
+  @Column({ type: 'timestamptz', nullable: true, select: false })
+  autoAppealLastScanAt: Date | null
+
+  @Column({ type: 'varchar', length: 512, nullable: true, select: false })
+  autoAppealLastError: string | null
 
   @Column({ type: 'integer', default: 18 })
   autoAppealDelayMinutes: number

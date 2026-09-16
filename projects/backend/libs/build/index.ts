@@ -85,6 +85,7 @@ async function handler() {
   copyBuildContextDirectory(join(workspaceRootPath, 'libs'), join(outPath, 'libs'))
   copyBuildContextDirectory(join(workspaceRootPath, 'server'), join(outPath, 'server'))
   Shell.cp('-R', join(dockerPath, 'backup.sh'), outPath)
+  Shell.cp('-R', join(dockerPath, 'diagnose-platform-confirmation.sh'), outPath)
   Shell.cp('-R', join(dockerPath, 'readme.md'), join(outPath, 'README.md'))
   // 复制服务器部署变量模板
   Shell.cp('-R', join(workspaceRootPath, '.env.docker.example'), join(outPath, '.env.example'))

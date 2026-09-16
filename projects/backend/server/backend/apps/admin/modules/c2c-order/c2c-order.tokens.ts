@@ -1,0 +1,1 @@
+export const C2C_ORDER_SYNC_STORE = Symbol('C2C_ORDER_SYNC_STORE')

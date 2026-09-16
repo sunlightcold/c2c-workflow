@@ -1,4 +1,4 @@
-import { ConflictException, Inject, Injectable, Optional } from '@nestjs/common'
+import { ConflictException, Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import { PaymentExecutionStatus, type PaymentExecutionResult } from './payment-adapter.types'
 import { PaymentOrderState } from './payment-order-state-machine'
 import { PaymentNotSubmittedError, PlatformFundsExceptionError } from './payment-execution.errors'
@@ -12,10 +12,14 @@ export interface ExecutablePaymentOrder {
   tenantId: string
   status: PaymentOrderState
   upstreamId?: string | null
+  batchId?: string
+  batchNo?: string
+  batchUpstreamId?: string | null
   merchantId?: string
   paymentNo?: string
   sourceBusinessNo?: string
   platformConfirmStatus?: PlatformConfirmationStatus
+  platformConfirmAttempts?: number
   platformConfirmLastAttemptAt?: Date | null
   platformConfirmLastError?: string | null
   lastError?: string | null
@@ -69,6 +73,12 @@ export const PLATFORM_PAYMENT_CONFIRMER = Symbol('PLATFORM_PAYMENT_CONFIRMER')
 
 @Injectable()
 export class PaymentExecutionCoordinator {
+  private readonly logger = new Logger(PaymentExecutionCoordinator.name)
+  private readonly platformConfirmationsInFlight = new Map<
+    string,
+    Promise<ExecutablePaymentOrder>
+  >()
+
   constructor(
     @Inject(PAYMENT_ORDER_STORE)
     private readonly store: PaymentOrderStore,
@@ -81,20 +91,28 @@ export class PaymentExecutionCoordinator {
 
   async submit(tenantId: string, orderId: string): Promise<ExecutablePaymentOrder> {
     const claimed = await this.store.claim(tenantId, orderId)
+    this.logger.log(`支付订单提交开始: ${this.paymentLogContext(claimed, 'SUBMIT')}`)
     let result: PaymentExecutionResult
     try {
       result = await this.executor.submit(claimed)
     } catch (error) {
+      const message = this.errorMessage(error)
       const status =
         error instanceof PaymentNotSubmittedError
           ? PaymentOrderState.FAILED
           : PaymentOrderState.UNKNOWN
       const failed = await this.store.transition(claimed, status, {
-        errorMessage: this.errorMessage(error),
+        errorMessage: message,
       })
-      this.emitStatus(failed, this.errorMessage(error))
+      this.logger.error(
+        `支付订单提交异常: ${this.paymentLogContext(failed, 'SUBMIT')}, error=${message}`,
+      )
+      this.emitStatus(failed, message)
       return failed
     }
+    this.logger.log(
+      `支付订单上游提交响应: ${this.paymentLogContext(claimed, 'SUBMIT', result)}, upstreamStatus=${result.status}`,
+    )
     const paid = await this.applyPaymentResult(claimed, result)
     if (paid.status !== PaymentOrderState.SUCCESS || paid.sourceType !== PaymentSourceType.C2C_BUY)
       return paid
@@ -112,16 +130,24 @@ export class PaymentExecutionCoordinator {
     ) {
       throw new ConflictException('只有提交中、处理中或结果未知的支付订单可以回查')
     }
+    this.logger.log(`支付订单自动回查开始: ${this.paymentLogContext(order, 'RECONCILE')}`)
     let result: PaymentExecutionResult
     try {
       result = await this.executor.query(order)
     } catch (error) {
+      const message = this.errorMessage(error)
       const unknown = await this.store.transition(order, PaymentOrderState.UNKNOWN, {
-        errorMessage: this.errorMessage(error),
+        errorMessage: message,
       })
-      this.emitStatus(unknown, this.errorMessage(error))
+      this.logger.error(
+        `支付订单自动回查异常: ${this.paymentLogContext(unknown, 'RECONCILE')}, error=${message}`,
+      )
+      this.emitStatus(unknown, message)
       return unknown
     }
+    this.logger.log(
+      `支付订单自动回查响应: ${this.paymentLogContext(order, 'RECONCILE', result)}, upstreamStatus=${result.status}`,
+    )
     const paid = await this.applyPaymentResult(order, result)
     if (paid.status !== PaymentOrderState.SUCCESS || paid.sourceType !== PaymentSourceType.C2C_BUY)
       return paid
@@ -131,8 +157,12 @@ export class PaymentExecutionCoordinator {
   /** Query the channel and expose its normalized result and raw response for the admin UI. */
   async queryUpstream(tenantId: string, orderId: string): Promise<PaymentUpstreamQueryResult> {
     const order = await this.store.get(tenantId, orderId)
+    this.logger.log(`支付订单人工查单开始: ${this.paymentLogContext(order, 'QUERY_UPSTREAM')}`)
     try {
       const result = await this.executor.query(order)
+      this.logger.log(
+        `支付订单人工查单响应: ${this.paymentLogContext(order, 'QUERY_UPSTREAM', result)}, upstreamStatus=${result.status}`,
+      )
       let current = order
       if (
         [
@@ -158,6 +188,7 @@ export class PaymentExecutionCoordinator {
         },
       }
     } catch (error) {
+      const message = this.errorMessage(error)
       let current = order
       if (
         [
@@ -167,15 +198,18 @@ export class PaymentExecutionCoordinator {
         ].includes(order.status)
       ) {
         current = await this.store.transition(order, PaymentOrderState.UNKNOWN, {
-          errorMessage: this.errorMessage(error),
+          errorMessage: message,
         })
-        this.emitStatus(current, this.errorMessage(error))
+        this.emitStatus(current, message)
       }
+      this.logger.error(
+        `支付订单人工查单异常: ${this.paymentLogContext(current, 'QUERY_UPSTREAM')}, error=${message}`,
+      )
       return {
         order: current,
         upstream: {
           status: PaymentExecutionStatus.UNKNOWN,
-          errorMessage: this.errorMessage(error),
+          errorMessage: message,
           raw: null,
         },
       }
@@ -183,6 +217,28 @@ export class PaymentExecutionCoordinator {
   }
 
   async confirmPlatform(
+    order: ExecutablePaymentOrder,
+    options: {
+      manualRetry?: boolean
+      recoverProcessing?: boolean
+      suppressFailureNotification?: boolean
+    } = {},
+  ): Promise<ExecutablePaymentOrder> {
+    const key = `${order.tenantId}:${order.id}`
+    const existing = this.platformConfirmationsInFlight.get(key)
+    if (existing) return existing
+    const execution = (async () => {
+      try {
+        return await this.runPlatformConfirmation(order, options)
+      } finally {
+        this.platformConfirmationsInFlight.delete(key)
+      }
+    })()
+    this.platformConfirmationsInFlight.set(key, execution)
+    return execution
+  }
+
+  private async runPlatformConfirmation(
     order: ExecutablePaymentOrder,
     options: {
       manualRetry?: boolean
@@ -198,12 +254,26 @@ export class PaymentExecutionCoordinator {
         ? [PlatformConfirmationStatus.PROCESSING]
         : [PlatformConfirmationStatus.PENDING]
     const claimed = await this.store.claimPlatformConfirmation(order, allowed)
-    if (!claimed) return this.store.get(order.tenantId, order.id)
+    if (!claimed) {
+      this.logger.debug(
+        `C2C 标记付款跳过重复认领: ${this.paymentLogContext(order, 'PLATFORM_CONFIRM')}, allowedStatus=${allowed.join('|')}`,
+      )
+      return this.store.get(order.tenantId, order.id)
+    }
+    const mode = options.recoverProcessing
+      ? 'QUERY_ONLY'
+      : options.manualRetry
+        ? 'MANUAL_RETRY'
+        : 'MARK_PAID'
+    this.logger.log(`C2C 标记付款开始: ${this.paymentLogContext(claimed, mode)}`)
     try {
       await this.confirmer.confirmPaid(claimed, { queryOnly: options.recoverProcessing })
     } catch (error) {
       const message = this.errorMessage(error)
       const fundsException = error instanceof PlatformFundsExceptionError
+      this.logger.error(
+        `C2C 标记付款失败: ${this.paymentLogContext(claimed, mode)}, error=${message}`,
+      )
       const failed = await this.store.failPlatformConfirmation(claimed, message, fundsException)
       if (fundsException) this.emitStatus(failed, message)
       if (
@@ -223,7 +293,9 @@ export class PaymentExecutionCoordinator {
       }
       return failed
     }
-    return this.store.completePlatformConfirmation(claimed)
+    const completed = await this.store.completePlatformConfirmation(claimed)
+    this.logger.log(`C2C 标记付款成功: ${this.paymentLogContext(completed, mode)}`)
+    return completed
   }
 
   private async applyPaymentResult(order: ExecutablePaymentOrder, result: PaymentExecutionResult) {
@@ -237,6 +309,9 @@ export class PaymentExecutionCoordinator {
       upstreamId: result.upstreamId,
       errorMessage: result.errorMessage,
     })
+    this.logger.log(
+      `支付订单状态更新: ${this.paymentLogContext(transitioned, 'APPLY_RESULT', result)}, fromStatus=${order.status}, toStatus=${transitioned.status}, upstreamStatus=${result.status}`,
+    )
     this.emitStatus(transitioned, result.errorMessage)
     return transitioned
   }
@@ -257,5 +332,27 @@ export class PaymentExecutionCoordinator {
 
   private errorMessage(error: unknown) {
     return (error instanceof Error ? error.message : String(error)).slice(0, 512)
+  }
+
+  private paymentLogContext(
+    order: ExecutablePaymentOrder,
+    operation: string,
+    result?: PaymentExecutionResult,
+  ): string {
+    return [
+      `tenantId=${order.tenantId}`,
+      `merchantId=${order.merchantId ?? 'unknown'}`,
+      `paymentOrderId=${order.id}`,
+      `paymentNo=${order.paymentNo ?? 'unknown'}`,
+      `platformOrderId=${order.sourceBusinessNo ?? 'unknown'}`,
+      `paymentUpstreamId=${result?.upstreamId ?? order.upstreamId ?? 'none'}`,
+      `batchId=${order.batchId ?? 'none'}`,
+      `batchNo=${order.batchNo ?? 'none'}`,
+      `batchUpstreamId=${order.batchUpstreamId ?? 'none'}`,
+      `operation=${operation}`,
+      `paymentStatus=${order.status}`,
+      `platformConfirmStatus=${order.platformConfirmStatus ?? 'unknown'}`,
+      `platformConfirmAttempts=${order.platformConfirmAttempts ?? 0}`,
+    ].join(', ')
   }
 }

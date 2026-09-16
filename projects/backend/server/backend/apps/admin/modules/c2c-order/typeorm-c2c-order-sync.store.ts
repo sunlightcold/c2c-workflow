@@ -84,6 +84,54 @@ export class TypeOrmC2cOrderSyncStore implements C2cOrderSyncStore {
     return checkpoint?.lastSuccessAt ?? null
   }
 
+  updateObservedStatus(input: {
+    tenantId: string
+    merchantId: string
+    merchantOrderId: string
+    platformStatus: C2cBuyOrderStatus
+    observedAt: Date
+  }): Promise<MerchantOrderStatus | null> {
+    return this.dataSource.transaction(async (manager) => {
+      const repository = manager.getRepository(MerchantOrderEntity)
+      const order = await repository.findOne({
+        where: {
+          id: input.merchantOrderId,
+          tenantId: input.tenantId,
+          merchantId: input.merchantId,
+        },
+        lock: { mode: 'pessimistic_write' },
+      })
+      if (!order) return null
+
+      const previous = order.status
+      const next = this.nextStatus(previous, input.platformStatus)
+      order.status = next
+      order.platformStatus = input.platformStatus
+      order.platformUpdatedAt = input.observedAt
+      order.lastSyncedAt = input.observedAt
+      order.lastError =
+        input.platformStatus === C2cBuyOrderStatus.UNKNOWN ? '平台返回未知订单状态' : null
+      await repository.save(order)
+
+      if (previous !== next) {
+        const historyRepository = manager.getRepository(MerchantOrderStatusHistoryEntity)
+        await historyRepository.save(
+          historyRepository.create({
+            tenantId: order.tenantId,
+            merchantId: order.merchantId,
+            merchantOrderId: order.id,
+            fromStatus: previous,
+            toStatus: next,
+            source: 'COMPLETION_REPLY_SCAN',
+            platformStatus: input.platformStatus,
+            reason: null,
+          }),
+        )
+      }
+      return next
+    })
+  }
+
   persistWindow(
     scope: { tenantId: string; merchantId: string; platform: MerchantPlatform },
     orders: C2cBuyOrderDetail[],

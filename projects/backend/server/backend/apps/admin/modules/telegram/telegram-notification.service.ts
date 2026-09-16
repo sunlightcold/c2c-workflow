@@ -355,15 +355,34 @@ export class TelegramNotificationService {
     const batch = await this.paymentBatches.findOne({
       where: { id: payload.batchId, tenantId: payload.tenantId, merchantId: payload.merchantId },
     })
-    await this.sendToMerchantGroups(
-      payload.tenantId,
-      payload.merchantId,
-      TelegramNotificationEvent.BATCH_STATUS,
+    const batchNo = batch?.batchNo ?? payload.batchNo ?? payload.batchId
+    const groups = await this.activeMerchantGroups(payload.tenantId, payload.merchantId)
+    const eligibleGroups = groups.filter((group) =>
+      this.isGroupEligible(group, TelegramNotificationEvent.BATCH_STATUS),
+    )
+    if (!eligibleGroups.length) {
+      this.logger.warn(
+        `Telegram 批次结果通知跳过: batch=${batchNo}, status=${payload.status}, tenant=${payload.tenantId}, merchant=${payload.merchantId}, reason=没有可投递群组, activeGroups=${groups.length}`,
+      )
+      return
+    }
+    const deliveries = await this.sendGroups(
+      eligibleGroups,
       await this.buildBatchStatusMessage(payload, batch),
+      TelegramNotificationEvent.BATCH_STATUS,
       undefined,
       new Map(
         (batch?.telegramSubmissionMessages ?? []).map((item) => [item.groupId, item.messageId]),
       ),
+    )
+    if (deliveries.length) {
+      this.logger.log(
+        `Telegram 批次结果通知完成: batch=${batchNo}, status=${payload.status}, groups=${deliveries.length}/${eligibleGroups.length}`,
+      )
+      return
+    }
+    this.logger.warn(
+      `Telegram 批次结果通知未送达: batch=${batchNo}, status=${payload.status}, eligibleGroups=${eligibleGroups.length}`,
     )
   }
 
@@ -519,19 +538,18 @@ export class TelegramNotificationService {
     bypassEventFilter = false,
   ): Promise<Array<{ groupId: string; messageId: number }>> {
     const deliveries = groups
-      .filter(
-        (group) =>
-          group.bindingState === TelegramGroupBindingState.ACTIVE &&
-          group.notificationsEnabled &&
-          Boolean(group.chatId) &&
-          (bypassEventFilter || group.notificationEvents?.includes(event)),
-      )
+      .filter((group) => this.isGroupEligible(group, event, bypassEventFilter))
       .map(async (group) => {
         const bot = await this.bots.findOne({
           where: { id: group.botId, tenantId: group.tenantId, status: BusinessStatus.ACTIVE },
           select: { id: true, tenantId: true, tokenRef: true, status: true },
         })
-        if (!bot || !group.chatId) return undefined
+        if (!bot || !group.chatId) {
+          this.logger.warn(
+            `Telegram 通知跳过: group=${group.id}, event=${event}, reason=${!bot ? '活动机器人不存在' : '群 Chat ID 为空'}, bot=${group.botId}`,
+          )
+          return undefined
+        }
         try {
           const sent = await this.telegram.sendMessage({
             tokenRef: bot.tokenRef,
@@ -553,6 +571,19 @@ export class TelegramNotificationService {
       })
     return (await Promise.all(deliveries)).filter(
       (item): item is { groupId: string; messageId: number } => Boolean(item),
+    )
+  }
+
+  private isGroupEligible(
+    group: TelegramGroupEntity,
+    event: TelegramNotificationEvent,
+    bypassEventFilter = false,
+  ): boolean {
+    return (
+      group.bindingState === TelegramGroupBindingState.ACTIVE &&
+      group.notificationsEnabled &&
+      Boolean(group.chatId) &&
+      (bypassEventFilter || group.notificationEvents?.includes(event))
     )
   }
 }

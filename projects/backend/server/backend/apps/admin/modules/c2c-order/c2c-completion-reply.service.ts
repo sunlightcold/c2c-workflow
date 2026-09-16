@@ -3,13 +3,13 @@ import {
   MerchantEntity,
   MerchantOrderCompletionReplyStatus,
   MerchantOrderEntity,
+  MerchantOrderSide,
   MerchantOrderStatus,
-  MerchantOrderStatusHistoryEntity,
   MerchantPlatform,
 } from '@admin/database'
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Brackets, DataSource, Repository } from 'typeorm'
+import { Brackets, Repository } from 'typeorm'
 import { MerchantPlatformCredentialService } from '../business/merchant-platform-credential.service'
 import {
   C2cBuyOrderStatus,
@@ -19,11 +19,12 @@ import {
 } from '../c2c-platform'
 import { C2C_SECRET_RESOLVER, type C2cSecretResolver } from './c2c-secret-resolver'
 import { C2cPlatformChatService } from './c2c-platform-chat.service'
+import { C2C_ORDER_SYNC_STORE } from './c2c-order.tokens'
+import type { C2cOrderSyncStore } from './c2c-order-sync.types'
 
 const CLAIM_LEASE_MS = 5 * 60_000
 const RETRY_DELAY_MIN_MS = 60_000
 const RETRY_DELAY_MAX_MS = 60 * 60_000
-const SCAN_LIMIT = 50
 
 @Injectable()
 export class C2cCompletionReplyService {
@@ -34,7 +35,7 @@ export class C2cCompletionReplyService {
     private readonly merchants: Repository<MerchantEntity>,
     @InjectRepository(MerchantOrderEntity)
     private readonly orders: Repository<MerchantOrderEntity>,
-    private readonly dataSource: DataSource,
+    @Inject(C2C_ORDER_SYNC_STORE) private readonly syncStore: C2cOrderSyncStore,
     private readonly credentialService: MerchantPlatformCredentialService,
     @Inject(C2C_SECRET_RESOLVER) private readonly secretResolver: C2cSecretResolver,
     private readonly credentialFactory: C2cPlatformCredentialFactory,
@@ -53,9 +54,18 @@ export class C2cCompletionReplyService {
     const results: Array<Record<string, unknown>> = []
     for (const merchant of merchants) {
       try {
-        results.push(await this.scanMerchant(merchant, now))
+        const result = await this.scanMerchant(merchant, now)
+        await this.merchants.update(
+          { id: merchant.id, tenantId: merchant.tenantId },
+          {
+            c2cChatOrderCompletedLastScanAt: now,
+            c2cChatOrderCompletedLastError: null,
+          },
+        )
+        results.push(result)
       } catch (error) {
         const message = this.errorMessage(error)
+        await this.recordScanFailure(merchant, message)
         this.logger.error(`C2C 完成自动回复扫描失败: merchant=${merchant.id}, error=${message}`)
         results.push({ merchantId: merchant.id, error: message })
       }
@@ -90,10 +100,82 @@ export class C2cCompletionReplyService {
       return { merchantId: merchant.id, skipped: true, reason: 'MISSING_ENABLED_AT' }
     }
     const staleBefore = new Date(now.getTime() - CLAIM_LEASE_MS)
-    const candidates = await this.orders
+    const candidates = await this.findPendingCandidates(merchant)
+
+    let credentials: C2cPlatformCredentials | undefined
+    let checked = 0
+    let checkFailed = 0
+    let sent = 0
+    let failed = 0
+    let skipped = 0
+    for (const order of candidates) {
+      try {
+        if (order.status === MerchantOrderStatus.PENDING_RELEASE) {
+          credentials ??= await this.resolveCredentials(merchant)
+          const detail = await this.platformClient.getOrderDetail(
+            merchant.platform,
+            credentials,
+            order.platformOrderId,
+          )
+          if (detail.platformOrderId !== order.platformOrderId) {
+            throw new Error('上游订单详情返回的订单号不一致')
+          }
+          await this.syncStore.updateObservedStatus({
+            tenantId: order.tenantId,
+            merchantId: order.merchantId,
+            merchantOrderId: order.id,
+            platformStatus: detail.status,
+            observedAt: now,
+          })
+          checked += 1
+          if (detail.status === C2cBuyOrderStatus.COMPLETED) {
+            order.status = MerchantOrderStatus.COMPLETED
+            order.platformStatus = detail.status
+          } else if (
+            [C2cBuyOrderStatus.CANCELLED, C2cBuyOrderStatus.EXPIRED].includes(detail.status)
+          ) {
+            await this.markSkipped(order, `上游订单状态 ${detail.status} 已终止，无需发送完成回复`)
+            skipped += 1
+            continue
+          } else {
+            continue
+          }
+        }
+        const delivered = await this.sendClaimed(order, now)
+        if (delivered === true) sent += 1
+        if (delivered === false) failed += 1
+      } catch (error) {
+        checkFailed += 1
+        this.logger.error(
+          `C2C 完成状态查询失败: merchant=${merchant.id}, order=${order.platformOrderId}, error=${this.errorMessage(error)}`,
+        )
+      }
+    }
+
+    const retryable = await this.findRetryableCandidates(merchant, now, staleBefore)
+    for (const order of retryable) {
+      const delivered = await this.sendClaimed(order, now)
+      if (delivered === true) sent += 1
+      if (delivered === false) failed += 1
+    }
+    return {
+      merchantId: merchant.id,
+      candidates: candidates.length,
+      checked,
+      checkFailed,
+      retryable: retryable.length,
+      sent,
+      failed,
+      skipped,
+    }
+  }
+
+  private findPendingCandidates(merchant: MerchantEntity): Promise<MerchantOrderEntity[]> {
+    return this.orders
       .createQueryBuilder('merchant_order')
       .where('merchant_order."tenantId" = :tenantId', { tenantId: merchant.tenantId })
       .andWhere('merchant_order."merchantId" = :merchantId', { merchantId: merchant.id })
+      .andWhere('merchant_order.side = :side', { side: MerchantOrderSide.BUY })
       .andWhere('merchant_order."platformCreatedAt" >= :enabledAt', {
         enabledAt: merchant.c2cChatOrderCompletedEnabledAt!,
       })
@@ -107,7 +189,32 @@ export class C2cCompletionReplyService {
             .orWhere('merchant_order."completionReplyStatus" = :pending', {
               pending: MerchantOrderCompletionReplyStatus.PENDING,
             })
-            .orWhere(
+        }),
+      )
+      .orderBy('merchant_order."platformCreatedAt"', 'ASC')
+      .getMany()
+  }
+
+  private findRetryableCandidates(
+    merchant: MerchantEntity,
+    now: Date,
+    staleBefore: Date,
+  ): Promise<MerchantOrderEntity[]> {
+    return this.orders
+      .createQueryBuilder('merchant_order')
+      .where('merchant_order."tenantId" = :tenantId', { tenantId: merchant.tenantId })
+      .andWhere('merchant_order."merchantId" = :merchantId', { merchantId: merchant.id })
+      .andWhere('merchant_order.side = :side', { side: MerchantOrderSide.BUY })
+      .andWhere('merchant_order."platformCreatedAt" >= :enabledAt', {
+        enabledAt: merchant.c2cChatOrderCompletedEnabledAt!,
+      })
+      .andWhere('merchant_order.status = :completed', {
+        completed: MerchantOrderStatus.COMPLETED,
+      })
+      .andWhere(
+        new Brackets((query) => {
+          query
+            .where(
               '(merchant_order."completionReplyStatus" = :failed AND ' +
                 '(merchant_order."completionReplyNextRetryAt" IS NULL OR ' +
                 'merchant_order."completionReplyNextRetryAt" <= :now))',
@@ -120,53 +227,8 @@ export class C2cCompletionReplyService {
             )
         }),
       )
-      .orderBy('merchant_order."platformCreatedAt"', 'ASC')
-      .take(SCAN_LIMIT)
+      .orderBy('merchant_order."completionReplyNextRetryAt"', 'ASC', 'NULLS FIRST')
       .getMany()
-
-    let credentials: C2cPlatformCredentials | undefined
-    let checked = 0
-    let sent = 0
-    let failed = 0
-    let skipped = 0
-    for (const order of candidates) {
-      if (order.status === MerchantOrderStatus.PENDING_RELEASE) {
-        credentials ??= await this.resolveCredentials(merchant)
-        const detail = await this.platformClient.getOrderDetail(
-          merchant.platform,
-          credentials,
-          order.platformOrderId,
-        )
-        checked += 1
-        if (detail.platformOrderId !== order.platformOrderId) {
-          throw new Error('上游订单详情返回的订单号不一致')
-        }
-        if (detail.status === C2cBuyOrderStatus.COMPLETED) {
-          await this.markOrderCompleted(order, now)
-          order.status = MerchantOrderStatus.COMPLETED
-          order.platformStatus = detail.status
-        } else if (
-          [C2cBuyOrderStatus.CANCELLED, C2cBuyOrderStatus.EXPIRED].includes(detail.status)
-        ) {
-          await this.markSkipped(order, `上游订单状态 ${detail.status} 已终止，无需发送完成回复`)
-          skipped += 1
-          continue
-        } else {
-          continue
-        }
-      }
-      const delivered = await this.sendClaimed(order, now)
-      if (delivered === true) sent += 1
-      if (delivered === false) failed += 1
-    }
-    return {
-      merchantId: merchant.id,
-      candidates: candidates.length,
-      checked,
-      sent,
-      failed,
-      skipped,
-    }
   }
 
   private isEligibleMerchant(merchant: MerchantEntity | null): boolean {
@@ -252,32 +314,6 @@ export class C2cCompletionReplyService {
     }
   }
 
-  private async markOrderCompleted(order: MerchantOrderEntity, now: Date): Promise<void> {
-    await this.dataSource.transaction(async (manager) => {
-      const repository = manager.getRepository(MerchantOrderEntity)
-      const current = await repository.findOne({
-        where: { id: order.id, tenantId: order.tenantId, merchantId: order.merchantId },
-        lock: { mode: 'pessimistic_write' },
-      })
-      if (!current || current.status === MerchantOrderStatus.COMPLETED) return
-      const previous = current.status
-      current.status = MerchantOrderStatus.COMPLETED
-      current.platformStatus = C2cBuyOrderStatus.COMPLETED
-      current.platformUpdatedAt = now
-      await repository.save(current)
-      await manager.getRepository(MerchantOrderStatusHistoryEntity).save({
-        tenantId: current.tenantId,
-        merchantId: current.merchantId,
-        merchantOrderId: current.id,
-        fromStatus: previous,
-        toStatus: MerchantOrderStatus.COMPLETED,
-        source: 'COMPLETION_REPLY_SCAN',
-        platformStatus: C2cBuyOrderStatus.COMPLETED,
-        reason: null,
-      })
-    })
-  }
-
   private markSkipped(order: MerchantOrderEntity, reason: string): Promise<unknown> {
     return this.orders.update(
       { id: order.id, tenantId: order.tenantId, merchantId: order.merchantId },
@@ -296,6 +332,19 @@ export class C2cCompletionReplyService {
     )
     const secret = await this.secretResolver.resolve(reference.credentialRef)
     return this.credentialFactory.create(merchant.platform, reference, secret)
+  }
+
+  private async recordScanFailure(merchant: MerchantEntity, error: string): Promise<void> {
+    try {
+      await this.merchants.update(
+        { id: merchant.id, tenantId: merchant.tenantId },
+        { c2cChatOrderCompletedLastError: error },
+      )
+    } catch (persistenceError) {
+      this.logger.error(
+        `C2C 完成自动回复扫描错误保存失败: merchant=${merchant.id}, error=${this.errorMessage(persistenceError)}`,
+      )
+    }
   }
 
   private errorMessage(error: unknown): string {

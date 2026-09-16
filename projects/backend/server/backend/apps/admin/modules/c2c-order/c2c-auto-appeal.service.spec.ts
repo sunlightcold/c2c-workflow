@@ -1,4 +1,9 @@
-import { BusinessStatus, MerchantOrderAutoAppealStatus, MerchantPlatform } from '@admin/database'
+import {
+  BusinessStatus,
+  MerchantOrderAutoAppealStatus,
+  MerchantOrderSide,
+  MerchantPlatform,
+} from '@admin/database'
 import { C2cBuyOrderStatus } from '../c2c-platform'
 import {
   C2cAppealProcessingError,
@@ -27,7 +32,7 @@ describe('C2cAutoAppealService', () => {
     autoAppealAttempts: 0,
     autoAppealNextAttemptAt: null,
   }
-  const merchants = { find: jest.fn() }
+  const merchants = { find: jest.fn(), update: jest.fn() }
   const query = {
     innerJoin: jest.fn(),
     addSelect: jest.fn(),
@@ -43,6 +48,7 @@ describe('C2cAutoAppealService', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     merchants.find.mockResolvedValue([merchant])
+    merchants.update.mockResolvedValue({ affected: 1 })
     Object.values(query).forEach((mock) => mock.mockReturnValue(query))
     query.getMany.mockResolvedValue([order])
     orders.createQueryBuilder.mockReturnValue(query)
@@ -62,16 +68,33 @@ describe('C2cAutoAppealService', () => {
     expect(query.andWhere).toHaveBeenCalledWith('payment_order.status = :paymentStatus', {
       paymentStatus: 'SUCCESS',
     })
+    expect(query.andWhere).toHaveBeenCalledWith('merchant_order.side = :side', {
+      side: MerchantOrderSide.BUY,
+    })
     expect(query.andWhere).toHaveBeenCalledWith(
       'payment_order."platformConfirmStatus" = :platformConfirmStatus',
       { platformConfirmStatus: 'SUCCESS' },
     )
+    expect(query.andWhere).toHaveBeenCalledWith(
+      'payment_order."platformConfirmedAt" >= :enabledAt',
+      { enabledAt: merchant.autoAppealEnabledAt },
+    )
+    expect(query.andWhere).toHaveBeenCalledWith(
+      'payment_order."platformConfirmedAt" <= :paidBefore',
+      { paidBefore: new Date('2026-09-16T07:42:00.000Z') },
+    )
+    expect(query.addSelect).toHaveBeenCalledWith('payment_order.platformConfirmedAt')
+    expect(query.orderBy).toHaveBeenCalledWith('payment_order.platformConfirmedAt', 'ASC')
     expect(orders.update).toHaveBeenCalledWith(
       { id: 'order-1', tenantId: 'tenant-1', merchantId: 'merchant-1' },
       expect.objectContaining({
         autoAppealStatus: MerchantOrderAutoAppealStatus.SUBMITTED,
         autoAppealProcessedAt: now,
       }),
+    )
+    expect(merchants.update).toHaveBeenCalledWith(
+      { id: 'merchant-1', tenantId: 'tenant-1' },
+      { autoAppealLastScanAt: now, autoAppealLastError: null },
     )
   })
 
@@ -154,5 +177,23 @@ describe('C2cAutoAppealService', () => {
       },
     })
     expect(orders.createQueryBuilder).not.toHaveBeenCalled()
+  })
+
+  it('isolates one merchant scan failure and continues with the remaining merchants', async () => {
+    const secondMerchant = { ...merchant, id: 'merchant-2' }
+    merchants.find.mockResolvedValue([merchant, secondMerchant])
+    query.getMany
+      .mockRejectedValueOnce(new Error('credential unavailable'))
+      .mockResolvedValueOnce([order])
+
+    await expect(createService().scanAll(now)).resolves.toEqual([
+      expect.objectContaining({ merchantId: 'merchant-1', error: 'credential unavailable' }),
+      expect.objectContaining({ merchantId: 'merchant-2', submitted: 1 }),
+    ])
+    expect(appeals.submitForAuto).toHaveBeenCalledTimes(1)
+    expect(merchants.update).toHaveBeenCalledWith(
+      { id: 'merchant-1', tenantId: 'tenant-1' },
+      { autoAppealLastError: 'credential unavailable' },
+    )
   })
 })

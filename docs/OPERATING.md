@@ -76,6 +76,13 @@ Windows 本地开发固定使用 WSL2 内的 Docker Engine。先运行
 ```
 
 脚本把进程信息和日志写入根目录 `.runtime/`；已健康运行的服务会跳过，固定端口被其他进程占用时会停止并明确报错。
+全部服务就绪后，当前终端默认持续显示后端的标准输出和错误日志；按 `Ctrl+C` 只停止日志跟随，后台服务继续运行。
+CI 或其他脚本只需完成启动、不需要持续跟随日志时使用：
+
+```bash
+./scripts/start-local.sh -NoFollowLogs
+```
+
 只需启动基础设施时使用 `.\scripts\Start-LocalInfra.ps1`。不要调用 Windows Docker CLI，也不要连接 Windows 原生 PostgreSQL/Redis 服务。
 PostgreSQL 与 Redis 数据固定保存在 `E:\software\develop\docker-volumes\c2c-workflow`，不得改用 C 盘目录或 Docker 命名卷。
 

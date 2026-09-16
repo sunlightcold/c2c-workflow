@@ -121,8 +121,13 @@ export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore
                payment_order."merchantId" AS "merchantId",
                payment_order.status,
                payment_order."upstreamId" AS "upstreamId",
-               payment_order."platformConfirmStatus" AS "platformConfirmStatus"
+               payment_order."platformConfirmStatus" AS "platformConfirmStatus",
+               payment_order."platformConfirmAttempts" AS "platformConfirmAttempts",
+               payment_order."platformConfirmLastAttemptAt" AS "platformConfirmLastAttemptAt"
         FROM payment_order
+        INNER JOIN merchant
+          ON merchant.id = payment_order."merchantId"
+         AND merchant."tenantId" = payment_order."tenantId"
         WHERE (
             payment_order.status = ANY($1::payment_order_status_enum[])
             AND NOT EXISTS (
@@ -133,10 +138,25 @@ export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore
           ) OR (
             payment_order.status = 'SUCCESS'
             AND (
-              payment_order."platformConfirmStatus" = $2
+              (
+                payment_order."platformConfirmStatus" = $2
+                AND (
+                  merchant.platform <> 'OKX'
+                  OR merchant."paidConfirmIntervalMaxMs" = 0
+                  OR merchant."paidConfirmNextAt" IS NULL
+                  OR merchant."paidConfirmNextAt" <= NOW()
+                )
+              )
               OR (
                 payment_order."platformConfirmStatus" = $3
-                AND payment_order."platformConfirmLastAttemptAt" <= NOW() - INTERVAL '60 seconds'
+                AND payment_order."platformConfirmLastAttemptAt" <= NOW()
+                  - (merchant."requestTimeoutMs" * 4 + 5000) * INTERVAL '1 millisecond'
+                AND (
+                  merchant.platform <> 'OKX'
+                  OR merchant."paidConfirmIntervalMaxMs" = 0
+                  OR merchant."paidConfirmNextAt" IS NULL
+                  OR merchant."paidConfirmNextAt" <= NOW()
+                )
               )
             )
           )
@@ -179,7 +199,7 @@ export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore
     referenceId: string
     message: string
   }): Promise<boolean> {
-    const rows = await this.dataSource.query(
+    const [rows] = (await this.dataSource.query(
       `
         INSERT INTO automatic_payment_failure_notice
           ("tenantId", "merchantId", code, "referenceId", message)
@@ -188,7 +208,7 @@ export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore
         RETURNING id
       `,
       [input.tenantId, input.merchantId, input.code, input.referenceId, input.message],
-    )
+    )) as [Array<{ id: string }>, number]
     return rows.length === 1
   }
 

@@ -7,6 +7,7 @@ import {
 } from '@admin/database'
 import { EVENT_KEYS } from '../event-emitter'
 import { C2cAutomaticPaymentService } from './c2c-automatic-payment.service'
+import { Logger } from '@nestjs/common'
 
 describe('C2cAutomaticPaymentService', () => {
   const now = new Date('2026-09-13T02:00:00.000Z')
@@ -56,6 +57,8 @@ describe('C2cAutomaticPaymentService', () => {
     jest.clearAllMocks()
     store.claimFailureNotification.mockResolvedValue(true)
   })
+
+  afterEach(() => jest.restoreAllMocks())
 
   it('creates and immediately submits an eligible instant order through the merchant payment flow', async () => {
     store.findCandidates.mockResolvedValue([candidate])
@@ -113,6 +116,7 @@ describe('C2cAutomaticPaymentService', () => {
   })
 
   it('notifies only once when the same automatic payment keeps failing', async () => {
+    const errorLog = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined)
     store.findCandidates.mockResolvedValue([candidate])
     merchantPayments.create.mockRejectedValue(new Error('Request failed with status code 404'))
     store.claimFailureNotification.mockResolvedValueOnce(true).mockResolvedValue(false)
@@ -129,6 +133,11 @@ describe('C2cAutomaticPaymentService', () => {
       message: 'Request failed with status code 404',
       referenceId: 'merchant-order-1',
     })
+    expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('tenantId=tenant-1'))
+    expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('merchantId=merchant-1'))
+    expect(errorLog).toHaveBeenCalledWith(
+      expect.stringContaining('merchantOrderId=merchant-order-1'),
+    )
   })
 
   it('rematches a pending configuration and submits it without creating a second payment order', async () => {
@@ -269,6 +278,40 @@ describe('C2cAutomaticPaymentService', () => {
       { recoverProcessing: false },
     )
     expect(payments.submit).not.toHaveBeenCalled()
+  })
+
+  it('queues recoverable confirmations concurrently instead of blocking on the first order', async () => {
+    store.findRecoverablePayments.mockResolvedValue([
+      {
+        id: 'payment-1',
+        tenantId: 'tenant-1',
+        status: PaymentOrderStatus.SUCCESS,
+        platformConfirmStatus: PlatformConfirmationStatus.PENDING,
+      },
+      {
+        id: 'payment-2',
+        tenantId: 'tenant-1',
+        status: PaymentOrderStatus.SUCCESS,
+        platformConfirmStatus: PlatformConfirmationStatus.PENDING,
+      },
+    ])
+    let finishFirst!: () => void
+    const firstPending = new Promise<void>((resolve) => {
+      finishFirst = resolve
+    })
+    payments.confirmPlatform
+      .mockImplementationOnce(async () => firstPending)
+      .mockResolvedValueOnce({ id: 'payment-2' })
+
+    const recovery = service.recover()
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve)
+    })
+    const startedBeforeFirstCompleted = payments.confirmPlatform.mock.calls.length
+    finishFirst()
+    await recovery
+
+    expect(startedBeforeFirstCompleted).toBe(2)
   })
 
   it('never resubmits ready batches from recovery and only reconciles active batches', async () => {

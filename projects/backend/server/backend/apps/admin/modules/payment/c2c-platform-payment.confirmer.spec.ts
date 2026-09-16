@@ -13,6 +13,7 @@ import {
   type PlatformConfirmationStore,
 } from './c2c-platform-payment.confirmer'
 import { PlatformFundsExceptionError } from './payment-execution.errors'
+import { Logger } from '@nestjs/common'
 
 describe('C2cPlatformPaymentConfirmer', () => {
   const executable = {
@@ -59,6 +60,7 @@ describe('C2cPlatformPaymentConfirmer', () => {
     merchant: {
       id: 'merchant-1',
       tenantId: 'tenant-1',
+      code: 'MCH-OKX-1',
       platform: MerchantPlatform.BINANCE,
       status: BusinessStatus.ACTIVE,
     },
@@ -187,6 +189,28 @@ describe('C2cPlatformPaymentConfirmer', () => {
       ],
       ['tenant-1', 'merchant-order-1', MerchantOrderStatus.PENDING_RELEASE, C2cBuyOrderStatus.PAID],
     ])
+  })
+
+  it('logs the full merchant-order-payment relationship without credentials', async () => {
+    const log = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined)
+
+    await confirmer.confirmPaid({
+      ...executable,
+      batchId: 'batch-1',
+      batchNo: 'BAT-1',
+      batchUpstreamId: 'alipay-batch-1',
+    })
+
+    const messages = log.mock.calls.map(([message]) => String(message)).join('\n')
+    expect(messages).toContain('merchantCode=MCH-OKX-1')
+    expect(messages).toContain('merchantOrderId=merchant-order-1')
+    expect(messages).toContain('platformOrderId=platform-order-1')
+    expect(messages).toContain('paymentOrderId=payment-1')
+    expect(messages).toContain('paymentNo=PAY001')
+    expect(messages).toContain('paymentUpstreamId=ALIPAY-1')
+    expect(messages).toContain('batchNo=BAT-1')
+    expect(messages).not.toContain('secret')
+    expect(messages).not.toContain('authorization')
   })
 
   it('finishes platform confirmation after the merchant is disabled', async () => {

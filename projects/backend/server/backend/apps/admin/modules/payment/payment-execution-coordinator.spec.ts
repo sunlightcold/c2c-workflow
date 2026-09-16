@@ -5,7 +5,7 @@ import {
 } from './payment-execution-coordinator'
 import { PlatformFundsExceptionError } from './payment-execution.errors'
 import { PaymentOrderState } from './payment-order-state-machine'
-import { ConflictException } from '@nestjs/common'
+import { ConflictException, Logger } from '@nestjs/common'
 import { PaymentSourceType, PlatformConfirmationStatus } from '@admin/database'
 
 describe('PaymentExecutionCoordinator', () => {
@@ -15,6 +15,7 @@ describe('PaymentExecutionCoordinator', () => {
     merchantId: 'm1',
     sourceType: PaymentSourceType.C2C_BUY,
     sourceBusinessNo: 'platform-order-1',
+    paymentNo: 'PAY-1',
     status: PaymentOrderState.READY,
   }
   const store = {
@@ -31,7 +32,7 @@ describe('PaymentExecutionCoordinator', () => {
   let coordinator: PaymentExecutionCoordinator
 
   beforeEach(() => {
-    jest.clearAllMocks()
+    jest.resetAllMocks()
     store.claim.mockResolvedValue({ ...order, status: PaymentOrderState.SUBMITTING })
     store.get.mockResolvedValue({ ...order, status: PaymentOrderState.UNKNOWN })
     store.transition.mockImplementation(async (_order, status) => ({ ...order, status }))
@@ -65,6 +66,27 @@ describe('PaymentExecutionCoordinator', () => {
     expect(store.claim).toHaveBeenCalledWith('t1', 'o1')
     expect(executor.submit).toHaveBeenCalledTimes(1)
     expect(confirmer.confirmPaid).toHaveBeenCalledTimes(1)
+  })
+
+  it('logs searchable payment, platform order, upstream, batch and status relationships', async () => {
+    const log = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined)
+    executor.submit.mockResolvedValue({
+      status: PaymentExecutionStatus.SUCCESS,
+      upstreamId: 'alipay-order-1',
+    })
+    confirmer.confirmPaid.mockResolvedValue(undefined)
+
+    await coordinator.submit('t1', 'o1')
+
+    const messages = log.mock.calls.map(([message]) => String(message)).join('\n')
+    expect(messages).toContain('tenantId=t1')
+    expect(messages).toContain('merchantId=m1')
+    expect(messages).toContain('paymentOrderId=o1')
+    expect(messages).toContain('paymentNo=PAY-1')
+    expect(messages).toContain('platformOrderId=platform-order-1')
+    expect(messages).toContain('paymentUpstreamId=alipay-order-1')
+    expect(messages).toContain('batchId=none')
+    expect(messages).toContain('C2C 标记付款成功')
   })
 
   it('leaves a paid order pending when platform confirmation fails without resending money', async () => {

@@ -1,4 +1,5 @@
 import { BusinessStatus, PaymentBatchItemStatus, TelegramGroupBindingState } from '@admin/database'
+import { Logger } from '@nestjs/common'
 import type { TelegramApiClient } from './telegram-api.client'
 import {
   TelegramNotificationService,
@@ -22,6 +23,7 @@ describe('TelegramNotificationService', () => {
   )
 
   beforeEach(() => {
+    jest.restoreAllMocks()
     jest.clearAllMocks()
     ;(telegram.sendMessage as jest.Mock).mockResolvedValue({ messageId: 1 })
     groups.find.mockResolvedValue([])
@@ -497,6 +499,36 @@ describe('TelegramNotificationService', () => {
     expect(telegram.sendMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({ chatId: 'chat-a', replyToMessageId: 77 }),
     )
+  })
+
+  it('warns with the batch identity when a terminal result has no deliverable group', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation()
+    groups.find.mockResolvedValue([])
+    paymentBatches.findOne.mockResolvedValue({
+      id: 'batch-1',
+      batchNo: 'BAT-1',
+      tenantId: 'tenant-a',
+      merchantId: 'merchant-a',
+      triggerSource: 'AUTOMATIC',
+      currency: 'CNY',
+      status: 'SUCCESS',
+      totalCount: 2,
+      totalAmount: '30.00',
+      successCount: 2,
+      failedCount: 0,
+      telegramSubmissionMessages: [],
+    })
+
+    await service.notifyBatchStatus({
+      tenantId: 'tenant-a',
+      merchantId: 'merchant-a',
+      batchId: 'batch-1',
+      batchNo: 'BAT-1',
+      status: 'SUCCESS',
+    })
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('batch=BAT-1'))
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('没有可投递群组'))
   })
 
   it.each([

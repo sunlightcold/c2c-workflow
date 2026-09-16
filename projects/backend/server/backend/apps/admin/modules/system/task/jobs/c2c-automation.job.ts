@@ -1,9 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { Inject, Injectable, Logger } from '@nestjs/common'
-import {
-  C2C_ORDER_SYNC_STORE,
-  C2cOrderSyncService,
-} from '../../../c2c-order/c2c-order-sync.service'
+import { C2cOrderSyncService } from '../../../c2c-order/c2c-order-sync.service'
+import { C2C_ORDER_SYNC_STORE } from '../../../c2c-order/c2c-order.tokens'
 import type { C2cOrderSyncStore } from '../../../c2c-order/c2c-order-sync.types'
 import { C2cAutomaticPaymentService } from '../../../payment/c2c-automatic-payment.service'
 import { C2cAutoAppealService } from '../../../c2c-order/c2c-auto-appeal.service'

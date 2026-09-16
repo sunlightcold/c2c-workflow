@@ -67,7 +67,7 @@ export class TypeOrmPaymentOrderStore implements PaymentOrderStore {
     input: ExecutablePaymentOrder,
     allowed: readonly PlatformConfirmationStatus[],
   ): Promise<ExecutablePaymentOrder | null> {
-    const result = await this.dataSource
+    const query = this.dataSource
       .createQueryBuilder()
       .update(PaymentOrderEntity)
       .set({
@@ -82,8 +82,12 @@ export class TypeOrmPaymentOrderStore implements PaymentOrderStore {
       })
       .andWhere('status = :status', { status: PaymentOrderState.SUCCESS })
       .andWhere('"platformConfirmStatus" IN (:...allowed)', { allowed })
-      .returning('*')
-      .execute()
+    if (allowed.includes(PlatformConfirmationStatus.PROCESSING)) {
+      query.andWhere('"platformConfirmAttempts" = :previousAttempts', {
+        previousAttempts: input.platformConfirmAttempts ?? -1,
+      })
+    }
+    const result = await query.returning('*').execute()
     return result.affected === 1 ? this.toExecutable(result.raw[0] as PaymentOrderEntity) : null
   }
 
@@ -282,6 +286,7 @@ export class TypeOrmPaymentOrderStore implements PaymentOrderStore {
       paymentNo: order.paymentNo,
       sourceBusinessNo: order.sourceBusinessNo,
       platformConfirmStatus: order.platformConfirmStatus,
+      platformConfirmAttempts: order.platformConfirmAttempts,
       platformConfirmLastAttemptAt: order.platformConfirmLastAttemptAt,
       platformConfirmLastError: order.platformConfirmLastError,
       lastError: order.lastError,

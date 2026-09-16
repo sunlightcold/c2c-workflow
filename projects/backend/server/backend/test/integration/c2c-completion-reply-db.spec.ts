@@ -13,6 +13,7 @@ import {
   migrateC2cBusinessFoundation,
 } from '@/apps/admin/database/migrations/c2c-business-foundation.migration'
 import { migrateC2cAutomaticPayments } from '@/apps/admin/database/migrations/c2c-automatic-payments.migration'
+import { migrateC2cAutomationScanCorrectness } from '@/apps/admin/database/migrations/c2c-automation-scan-correctness.migration'
 import { migrateC2cFullProviderParity } from '@/apps/admin/database/migrations/c2c-full-provider-parity.migration'
 import { migrateC2cMerchantAccountOperations } from '@/apps/admin/database/migrations/c2c-merchant-account-operations.migration'
 import { migrateC2cMerchantOrderAppeals } from '@/apps/admin/database/migrations/c2c-merchant-order-appeals.migration'
@@ -24,6 +25,7 @@ import { migrateC2cPaymentRouting } from '@/apps/admin/database/migrations/c2c-p
 import { migrateC2cPlatformConfirmationControl } from '@/apps/admin/database/migrations/c2c-platform-confirmation-control.migration'
 import { C2cCompletionReplyService } from '@/apps/admin/modules/c2c-order/c2c-completion-reply.service'
 import { C2cAutoAppealService } from '@/apps/admin/modules/c2c-order/c2c-auto-appeal.service'
+import { TypeOrmC2cOrderSyncStore } from '@/apps/admin/modules/c2c-order/typeorm-c2c-order-sync.store'
 import developmentConfig from '@/config/development'
 import { DataSource } from 'typeorm'
 
@@ -68,6 +70,7 @@ describe('C2C completion reply database integration', () => {
       await migrateC2cAutomaticPayments(manager)
       await migrateC2cPlatformConfirmationControl({ query: manager.query.bind(manager) })
       await migrateC2cFullProviderParity(manager)
+      await migrateC2cAutomationScanCorrectness(manager)
     })
   })
 
@@ -108,7 +111,7 @@ describe('C2C completion reply database integration', () => {
     return new C2cCompletionReplyService(
       dataSource.getRepository(MerchantEntity),
       dataSource.getRepository(MerchantOrderEntity),
-      dataSource,
+      new TypeOrmC2cOrderSyncStore(dataSource),
       unusedDependency,
       unusedDependency,
       unusedDependency,
@@ -163,9 +166,9 @@ describe('C2C completion reply database integration', () => {
       `INSERT INTO payment_order (
         "createdAt", "updatedAt", "tenantId", "merchantId", "sourceType",
         "sourceBusinessNo", "paymentNo", amount, currency, "paymentMethod", "executionMode",
-        "payeeIdentity", "payeeName", status, "platformConfirmStatus"
+        "payeeIdentity", "payeeName", status, "platformConfirmStatus", "platformConfirmedAt"
       ) VALUES ($1, $1, $2, $3, 'C2C_BUY', 'BIN-COMPLETED-1', 'PAY-AUTO-APPEAL-1',
-        70, 'CNY', 'ALIPAY', 'INSTANT', 'payee@example.com', 'Payee', 'SUCCESS', 'SUCCESS')`,
+        70, 'CNY', 'ALIPAY', 'INSTANT', 'payee@example.com', 'Payee', 'SUCCESS', 'SUCCESS', $1)`,
       [new Date('2026-09-16T07:00:00.000Z'), tenantId, merchantId],
     )
     const appeals = { submitForAuto: jest.fn().mockResolvedValue(undefined) }

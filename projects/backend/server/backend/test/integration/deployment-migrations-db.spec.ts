@@ -42,6 +42,7 @@ describe('Deployment migrations database integration', () => {
     'C2cFullProviderParity1789024000000',
     'C2cPaidNotificationCapability1789025000000',
     'C2cPaymentPlatformStateSeparation1789026000000',
+    'C2cAutomationScanCorrectness1789027000000',
   ]
   const { postgres } = developmentConfig.admin
   const schema = `deployment_migrations_test_${process.pid}_${Date.now()}`

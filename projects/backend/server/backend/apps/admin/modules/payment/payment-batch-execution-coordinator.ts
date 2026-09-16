@@ -1,5 +1,5 @@
 import { PaymentBatchStatus, PaymentSourceType, PlatformConfirmationStatus } from '@admin/database'
-import { ConflictException, Inject, Injectable, Optional } from '@nestjs/common'
+import { ConflictException, Inject, Injectable, Logger, Optional } from '@nestjs/common'
 import type { AlipayBatchResponse } from './alipay-batch.adapter'
 import { PaymentExecutionStatus, type PaymentExecutionResult } from './payment-adapter.types'
 import type { ExecutablePaymentOrder } from './payment-execution-coordinator'
@@ -12,6 +12,8 @@ export interface ExecutablePaymentBatchItem {
   id: string
   paymentOrderId: string
   paymentNo: string
+  sourceBusinessNo?: string
+  upstreamId?: string | null
   sourceType: PaymentSourceType
   amount: string
   payeeIdentity: string
@@ -77,9 +79,12 @@ export interface PaymentBatchPreflightVerifier {
 export const PAYMENT_BATCH_STORE = Symbol('PAYMENT_BATCH_STORE')
 export const PAYMENT_BATCH_EXECUTOR = Symbol('PAYMENT_BATCH_EXECUTOR')
 export const PAYMENT_BATCH_PREFLIGHT = Symbol('PAYMENT_BATCH_PREFLIGHT')
+const PLATFORM_CONFIRM_CONCURRENCY = 8
 
 @Injectable()
 export class PaymentBatchExecutionCoordinator {
+  private readonly logger = new Logger(PaymentBatchExecutionCoordinator.name)
+
   constructor(
     @Inject(PAYMENT_BATCH_STORE) private readonly store: PaymentBatchStore,
     @Inject(PAYMENT_BATCH_EXECUTOR) private readonly executor: PaymentBatchExecutor,
@@ -100,22 +105,26 @@ export class PaymentBatchExecutionCoordinator {
       }
     }
     const claimed = await this.store.claim(prepared)
+    this.logger.log(`支付批次提交开始: ${this.batchLogContext(claimed, 'SUBMIT')}`)
     this.emitStatus(claimed)
     let result: PaymentExecutionResult<AlipayBatchResponse>
     try {
       result = await this.executor.submit(claimed)
     } catch (error) {
+      const message = this.errorMessage(error)
       const outcome =
         error instanceof PaymentNotSubmittedError
-          ? await this.store.fail(claimed, this.errorMessage(error))
-          : await this.store.markUnknown(
-              claimed,
-              this.errorMessage(error),
-              this.initialSchedule(policy),
-            )
-      this.emitStatus(outcome, this.errorMessage(error))
+          ? await this.store.fail(claimed, message)
+          : await this.store.markUnknown(claimed, message, this.initialSchedule(policy))
+      this.logger.error(
+        `支付批次提交异常: ${this.batchLogContext(outcome, 'SUBMIT')}, error=${message}`,
+      )
+      this.emitStatus(outcome, message)
       return outcome
     }
+    this.logger.log(
+      `支付批次上游提交响应: ${this.batchLogContext(claimed, 'SUBMIT', result)}, upstreamStatus=${result.status}`,
+    )
     if (result.status === PaymentExecutionStatus.FAILED) {
       const outcome = await this.store.fail(claimed, result.errorMessage)
       this.emitStatus(outcome, result.errorMessage)
@@ -136,6 +145,9 @@ export class PaymentBatchExecutionCoordinator {
       result.upstreamId,
       this.initialSchedule(policy),
     )
+    this.logger.log(
+      `支付批次提交完成: ${this.batchLogContext(submitted, 'SUBMIT', result)}, fromStatus=${claimed.status}, toStatus=${submitted.status}`,
+    )
     this.emitStatus(submitted)
     return submitted
   }
@@ -150,6 +162,7 @@ export class PaymentBatchExecutionCoordinator {
       ].includes(batch.status)
     )
       throw new ConflictException('只有提交中、处理中或结果未知的支付批次可以回查')
+    this.logger.log(`支付批次自动回查开始: ${this.batchLogContext(batch, 'RECONCILE')}`)
     return this.queryAndApply(batch)
   }
 
@@ -158,10 +171,12 @@ export class PaymentBatchExecutionCoordinator {
       ? await this.store.prepareForQuery(tenantId, batchId)
       : await this.store.prepare(tenantId, batchId)
     const schedule = this.nextSchedule(batch, this.executor.getReconciliationPolicy(batch))
+    this.logger.log(`支付批次人工查单开始: ${this.batchLogContext(batch, 'QUERY_UPSTREAM')}`)
     let result: PaymentExecutionResult<AlipayBatchResponse>
     try {
       result = await this.executor.query(batch)
     } catch (error) {
+      const message = this.errorMessage(error)
       let current = batch
       if (
         [
@@ -170,18 +185,24 @@ export class PaymentBatchExecutionCoordinator {
           PaymentBatchStatus.UNKNOWN,
         ].includes(batch.status)
       ) {
-        current = await this.store.markUnknown(batch, this.errorMessage(error), schedule)
-        this.emitStatus(current, this.errorMessage(error))
+        current = await this.store.markUnknown(batch, message, schedule)
+        this.emitStatus(current, message)
       }
+      this.logger.error(
+        `支付批次人工查单异常: ${this.batchLogContext(current, 'QUERY_UPSTREAM')}, error=${message}`,
+      )
       return {
         batch: current,
         upstream: {
           status: PaymentExecutionStatus.UNKNOWN,
-          errorMessage: this.errorMessage(error),
+          errorMessage: message,
           raw: null,
         },
       }
     }
+    this.logger.log(
+      `支付批次人工查单响应: ${this.batchLogContext(batch, 'QUERY_UPSTREAM', result)}, upstreamStatus=${result.status}`,
+    )
     let current = batch
     if (
       [
@@ -215,10 +236,17 @@ export class PaymentBatchExecutionCoordinator {
     try {
       result = await this.executor.query(batch)
     } catch (error) {
-      const outcome = await this.store.markUnknown(batch, this.errorMessage(error), schedule)
-      this.emitStatus(outcome, this.errorMessage(error))
+      const message = this.errorMessage(error)
+      const outcome = await this.store.markUnknown(batch, message, schedule)
+      this.logger.error(
+        `支付批次自动回查异常: ${this.batchLogContext(outcome, 'RECONCILE')}, error=${message}`,
+      )
+      this.emitStatus(outcome, message)
       return outcome
     }
+    this.logger.log(
+      `支付批次自动回查响应: ${this.batchLogContext(batch, 'RECONCILE', result)}, upstreamStatus=${result.status}`,
+    )
     if (result.status === PaymentExecutionStatus.UNKNOWN) {
       const outcome = await this.store.markUnknown(batch, result.errorMessage, schedule)
       this.emitStatus(outcome, result.errorMessage)
@@ -245,12 +273,26 @@ export class PaymentBatchExecutionCoordinator {
       this.emitStatus(unknown, this.errorMessage(error))
       return unknown
     }
-    const confirmationResults: ExecutablePaymentOrder[] = []
-    for (const payment of outcome.paymentsToConfirm) {
-      confirmationResults.push(
-        await this.payments.confirmPlatform(payment, { suppressFailureNotification: true }),
-      )
-    }
+    // Batch settlement and platform confirmation are separate outcomes. Publish the
+    // persisted batch result first so a slow or interrupted confirmation cannot hide it.
+    this.emitStatus(outcome.batch)
+    this.logger.log(
+      `支付批次状态更新: ${this.batchLogContext(outcome.batch, 'APPLY_RESULT', result)}, fromStatus=${batch.status}, toStatus=${outcome.batch.status}, pendingPlatformConfirmations=${outcome.paymentsToConfirm.length}`,
+    )
+    const confirmationResults = await mapWithConcurrency(
+      outcome.paymentsToConfirm,
+      PLATFORM_CONFIRM_CONCURRENCY,
+      (payment) =>
+        this.payments.confirmPlatform(
+          {
+            ...payment,
+            batchId: outcome.batch.id,
+            batchNo: outcome.batch.batchNo,
+            batchUpstreamId: outcome.batch.upstreamId,
+          },
+          { suppressFailureNotification: true },
+        ),
+    )
     if (confirmationResults.length && batch.merchantId) {
       this.eventEmitter?.emit(EVENT_KEYS.TELEGRAM_BATCH_PLATFORM_CONFIRMATION_RESULT, {
         tenantId: batch.tenantId,
@@ -266,8 +308,13 @@ export class PaymentBatchExecutionCoordinator {
           errorMessage: payment.platformConfirmLastError ?? null,
         })),
       })
+      const succeeded = confirmationResults.filter(
+        (payment) => payment.platformConfirmStatus === PlatformConfirmationStatus.SUCCESS,
+      ).length
+      this.logger.log(
+        `支付批次标记付款汇总: ${this.batchLogContext(outcome.batch, 'PLATFORM_CONFIRM')}, total=${confirmationResults.length}, succeeded=${succeeded}, failed=${confirmationResults.length - succeeded}`,
+      )
     }
-    this.emitStatus(outcome.batch)
     return outcome.batch
   }
 
@@ -318,4 +365,50 @@ export class PaymentBatchExecutionCoordinator {
   private errorMessage(error: unknown): string {
     return (error instanceof Error ? error.message : String(error)).slice(0, 512)
   }
+
+  private batchLogContext(
+    batch: ExecutablePaymentBatch,
+    operation: string,
+    result?: PaymentExecutionResult<AlipayBatchResponse>,
+  ): string {
+    const paymentRefs = batch.items
+      .map(
+        (item) =>
+          `${item.paymentOrderId}/${item.paymentNo}/${item.sourceBusinessNo ?? 'unknown'}/${item.upstreamId ?? 'none'}`,
+      )
+      .join('|')
+    return [
+      `tenantId=${batch.tenantId}`,
+      `merchantId=${batch.merchantId ?? 'unknown'}`,
+      `batchId=${batch.id}`,
+      `batchNo=${batch.batchNo}`,
+      `batchUpstreamId=${result?.upstreamId ?? batch.upstreamId ?? 'none'}`,
+      `operation=${operation}`,
+      `batchStatus=${batch.status}`,
+      `reconciliationAttempts=${batch.reconciliationAttempts}`,
+      `itemCount=${batch.items.length}`,
+      `paymentRefs=[${paymentRefs}]`,
+    ].join(', ')
+  }
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>,
+): Promise<R[]> {
+  if (!items.length) return []
+  const results = new Array<R>(items.length)
+  let cursor = 0
+  const worker = async () => {
+    while (true) {
+      const index = cursor++
+      if (index >= items.length) return
+      results[index] = await mapper(items[index])
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(Math.max(1, concurrency), items.length) }, () => worker()),
+  )
+  return results
 }

@@ -94,8 +94,8 @@ jobs:
       - name: Build and publish image
         uses: docker/build-push-action@v6
         with:
-          context: projects/backend
-          file: projects/backend/docker/Dockerfile
+          context: projects/backend/output
+          file: projects/backend/output/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
