@@ -55,6 +55,8 @@ jobs:
           test -s output/volumes/apps/migrate/main.js
           test -s output/compose.yaml
           test -s output/backup.sh
+          test -s output/deploy.sh
+          bash -n output/deploy.sh
           test -s output/README.md
           test -s output/.env.example
           test -s output.zip

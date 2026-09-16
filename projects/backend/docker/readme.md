@@ -58,31 +58,26 @@ curl --fail --silent --show-error http://127.0.0.1:3000/v1/auth/captcha >/dev/nu
 登录 GHCR。服务器构建只安装生产依赖并组装镜像，不再重复执行 Nest/Webpack 编译。解压部署包后执行：
 
 ```bash
-cp .env.example .env
-chmod 600 .env
-mkdir -p volumes/logs volumes/static volumes/postgres_data volumes/redis_data
-sudo chown -R 1000:1000 volumes/logs volumes/static
-
-# 在 .env 中将镜像改成本地标签，并禁止 Compose 尝试拉取远端镜像：
-# C2C_BACKEND_IMAGE=c2c-workflow-backend:local
-# C2C_PULL_POLICY=never
-
-docker compose --env-file .env config --quiet
-docker compose --env-file .env build --pull app
-docker compose --env-file .env up -d postgres redis
-docker compose --env-file .env up -d migrate
-docker compose --env-file .env up -d app
-docker compose --env-file .env ps
-docker compose --env-file .env logs --tail=200 migrate app
-curl --fail --silent --show-error http://127.0.0.1:3000/v1/auth/captcha >/dev/null
+bash ./deploy.sh
 ```
+
+首次执行会生成 `.env` 并提示填写必要配置；填写后再次执行同一命令即可。后续每次更新覆盖部署包
+文件后仍只执行 `bash ./deploy.sh`。脚本会自动备份运行中的 PostgreSQL、固定本地镜像配置、构建
+镜像、执行迁移、启动服务并等待健康检查。仅在明确不需要备份时可使用
+`C2C_SKIP_BACKUP=1 bash ./deploy.sh`。
 
 本地构建会从 Docker Hub 下载 `node:22-bookworm-slim` 和 `postgres`/`redis` 基础镜像，
 但不需要 GitHub Token。服务器需要 Docker Engine、Compose v2 和能访问 Docker Hub 的网络。
 
 ## 更新
 
-先执行 `bash ./backup.sh`，再把 `.env` 的镜像改为新 `sha-<SHA>` 标签：
+本地构建部署更新时，覆盖新部署包文件后执行：
+
+```bash
+bash ./deploy.sh
+```
+
+GHCR 镜像部署仍先执行 `bash ./backup.sh`，再把 `.env` 的镜像改为新 `sha-<SHA>` 标签：
 
 ```bash
 bash ./backup.sh
