@@ -12,6 +12,7 @@ import {
   C2cAppealUpstreamStatusError,
 } from './c2c-order-appeal.service'
 import { C2cAutoAppealService } from './c2c-auto-appeal.service'
+import { In } from 'typeorm'
 
 describe('C2cAutoAppealService', () => {
   const now = new Date('2026-09-16T08:00:00.000Z')
@@ -165,13 +166,13 @@ describe('C2cAutoAppealService', () => {
     )
   })
 
-  it('only asks the repository for active auto-appeal Binance merchants', async () => {
+  it('asks the repository for active Binance and OKX auto-appeal merchants', async () => {
     merchants.find.mockResolvedValue([])
 
     await expect(createService().scanAll(now)).resolves.toEqual([])
     expect(merchants.find).toHaveBeenCalledWith({
       where: {
-        platform: MerchantPlatform.BINANCE,
+        platform: In([MerchantPlatform.BINANCE, MerchantPlatform.OKX]),
         status: BusinessStatus.ACTIVE,
         autoAppealEnabled: true,
       },

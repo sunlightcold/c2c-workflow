@@ -69,7 +69,7 @@ export class MerchantOrderDetailDto extends TenantContextDto {
 }
 
 export class MerchantOrderAppealSubmitDto extends MerchantOrderDetailDto {
-  @ApiProperty({ description: '币安实时返回的申诉原因码' })
+  @ApiProperty({ description: '当前交易平台返回或定义的申诉原因码' })
   @Type(() => Number)
   @IsInt()
   @Min(1)

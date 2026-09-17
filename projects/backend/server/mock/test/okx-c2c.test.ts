@@ -127,9 +127,14 @@ describe('OKX C2C mock', () => {
       signaturePublicKey: publicKey.export({ format: 'der', type: 'spki' }).toString('base64'),
     })
     const upload = getOkxC2cPlugin().handle(
-      request('POST', '/v3/c2c/files/', { type: 'paymentProof' }, {
-        file: { filename: 'receipt.jpg', type: 'image/jpeg', size: 128 },
-      }),
+      request(
+        'POST',
+        '/v3/c2c/files/',
+        { type: 'paymentProof' },
+        {
+          file: { filename: 'receipt.jpg', type: 'image/jpeg', size: 128 },
+        },
+      ),
     )
     expect(upload.body).toMatchObject({
       code: 0,
@@ -166,17 +171,82 @@ describe('OKX C2C mock', () => {
 
   it('rejects an empty or unsupported payment proof upload', () => {
     const empty = getOkxC2cPlugin().handle(
-      request('POST', '/v3/c2c/files/', { type: 'paymentProof' }, {
-        file: { filename: 'receipt.jpg', type: 'image/jpeg', size: 0 },
-      }),
+      request(
+        'POST',
+        '/v3/c2c/files/',
+        { type: 'paymentProof' },
+        {
+          file: { filename: 'receipt.jpg', type: 'image/jpeg', size: 0 },
+        },
+      ),
     )
     expect(empty.body).toMatchObject({ code: '400012' })
     const unsupported = getOkxC2cPlugin().handle(
-      request('POST', '/v3/c2c/files/', { type: 'paymentProof' }, {
-        file: { filename: 'receipt.txt', type: 'text/plain', size: 10 },
-      }),
+      request(
+        'POST',
+        '/v3/c2c/files/',
+        { type: 'paymentProof' },
+        {
+          file: { filename: 'receipt.txt', type: 'text/plain', size: 10 },
+        },
+      ),
     )
     expect(unsupported.body).toMatchObject({ code: '400013' })
+  })
+
+  it('uploads a JPG reminder and submits its URL as a signed appeal', () => {
+    const uploadPath = '/v3/c2c/files/'
+    const appealPath = '/v3/c2c/appeal/appealUrge'
+    const timestamp = String(Date.now())
+    const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+    getOkxC2cState().updateSettings({
+      signaturePublicKey: publicKey.export({ format: 'der', type: 'spki' }).toString('base64'),
+    })
+    const signedHeaders = (path: string, body: string) =>
+      new Headers({
+        Authorization: 'Bearer mock-okx-authorization',
+        Cookie: 'token=mock-okx-token; sid=mock-okx-session',
+        'x-request-timestamp': timestamp,
+        'x-client-signature': `{P1363}${sign('sha256', Buffer.from(`${path}${body}${timestamp}`), {
+          key: privateKey,
+          dsaEncoding: 'ieee-p1363',
+        }).toString('base64')}`,
+        'x-client-signature-version': '1.3',
+      })
+    const upload = getOkxC2cPlugin().handle({
+      ...request(
+        'POST',
+        uploadPath,
+        { type: 'reminder', t: timestamp },
+        {
+          file: { filename: 'receipt.jpg', type: 'image/jpeg', size: 128 },
+        },
+      ),
+      headers: signedHeaders(uploadPath, ''),
+    })
+    expect(upload.body).toMatchObject({
+      code: 0,
+      data: { imgPath: 'https://mock.okx.test/c2c/reminder/receipt.jpg' },
+    })
+
+    const appealBody = {
+      publicOrderId: 260905000000001,
+      imageUrls: 'https://mock.okx.test/c2c/reminder/receipt.jpg',
+    }
+    getOkxC2cState().orders.update('260905000000001', (order) => ({
+      ...order,
+      paymentStatus: 'paid',
+    }))
+    const appeal = getOkxC2cPlugin().handle({
+      ...request('POST', appealPath, { t: timestamp }, appealBody),
+      headers: signedHeaders(appealPath, JSON.stringify(appealBody)),
+    })
+    expect(appeal.body).toMatchObject({ code: 0, requestId: 'mock-appeal-request' })
+    expect(getOkxC2cState().orders.find('260905000000001')).toMatchObject({
+      orderStatus: 'appeal',
+      orderProcessStatus: 3,
+      paymentStatus: 'paid',
+    })
   })
 
   it('rejects an incorrect account and supports deterministic failures', () => {

@@ -71,7 +71,7 @@ export class TelegramC2cAppealService {
         payload: { orderId: order.id },
       })
       return {
-        text: `币安当前未返回默认申诉原因，请选择 ${result.orderNo} 的申诉原因：`,
+        text: `平台当前未返回默认申诉原因，请选择 ${result.orderNo} 的申诉原因：`,
         replyMarkup: {
           inline_keyboard: result.reasons.map((reason) => [
             {

@@ -630,7 +630,10 @@ onMounted(async () => {
             <ADescriptionsItem label="申诉状态">
               {{ businessEnumText(detail.appealStatus) }}
             </ADescriptionsItem>
-            <ADescriptionsItem v-if="detail.appealComplaintNo" label="申诉单号">
+            <ADescriptionsItem
+              v-if="detail.appealComplaintNo"
+              label="申诉追踪号"
+            >
               {{ detail.appealComplaintNo }}
             </ADescriptionsItem>
             <ADescriptionsItem v-if="detail.lastError" label="订单异常">

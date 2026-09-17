@@ -126,7 +126,7 @@ describe('MerchantService', () => {
     expect(dataSource.transaction).not.toHaveBeenCalled()
   })
 
-  it('does not persist Binance-only chat or appeal switches for an OKX merchant', async () => {
+  it('disables unsupported chat but preserves automatic appeal for an OKX merchant', async () => {
     const { privateKey } = await import('node:crypto').then(({ generateKeyPairSync }) =>
       generateKeyPairSync('ec', { namedCurve: 'prime256v1' }),
     )
@@ -151,8 +151,33 @@ describe('MerchantService', () => {
         c2cChatOrderPaidEnabled: false,
         c2cChatOrderCompletedEnabled: false,
         c2cChatOrderCompletedEnabledAt: null,
-        autoAppealEnabled: false,
-        autoAppealEnabledAt: null,
+        autoAppealEnabled: true,
+        autoAppealEnabledAt: expect.any(Date),
+      }),
+    )
+  })
+
+  it('allows automatic appeal to be enabled when editing an OKX merchant', async () => {
+    merchantTxRepository.findOne.mockResolvedValue({
+      id: merchantId,
+      tenantId,
+      platform: MerchantPlatform.OKX,
+      paidConfirmIntervalMinMs: 2000,
+      paidConfirmIntervalMaxMs: 3000,
+      c2cChatOrderCreatedEnabled: false,
+      c2cChatOrderPaidEnabled: false,
+      c2cChatOrderCompletedEnabled: false,
+      c2cChatOrderCompletedEnabledAt: null,
+      autoAppealEnabled: false,
+      autoAppealEnabledAt: null,
+    })
+
+    await service.update(tenantId, merchantId, { autoAppealEnabled: true })
+
+    expect(merchantTxRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        autoAppealEnabled: true,
+        autoAppealEnabledAt: expect.any(Date),
       }),
     )
   })

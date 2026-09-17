@@ -8,10 +8,10 @@ import type {
   C2cComplaintPayload,
   C2cComplaintReason,
   C2cComplaintSubmissionResult,
-  C2cComplaintUpload,
   C2cListInput,
   C2cMarkPaidPolicy,
   C2cMarkPaidOptions,
+  C2cPaymentProofImage,
   C2cReportInput,
   C2cReportPage,
 } from './c2c-platform.types'
@@ -133,25 +133,38 @@ export class C2cPlatformClient {
     orderId: string,
   ): Promise<C2cComplaintReason[]> {
     this.requireCapability(platform, 'appeal')
-    return this.binance.getComplaintReasons(credentials as BinanceCredentials, orderId)
+    return platform === MerchantPlatform.BINANCE
+      ? this.binance.getComplaintReasons(credentials as BinanceCredentials, orderId)
+      : this.okx.getComplaintReasons()
   }
 
-  async getComplaintUploadUrl(
+  async uploadComplaintFiles(
     platform: MerchantPlatform,
     credentials: C2cPlatformCredentials,
-    fileName: string,
-  ): Promise<C2cComplaintUpload> {
+    orderId: string,
+    images: C2cPaymentProofImage[],
+  ): Promise<string[]> {
     this.requireCapability(platform, 'appeal')
-    return this.binance.getComplaintUploadUrl(credentials as BinanceCredentials, fileName)
-  }
-
-  async uploadComplaintFile(
-    platform: MerchantPlatform,
-    uploadUrl: string,
-    content: Buffer,
-  ): Promise<void> {
-    this.requireCapability(platform, 'appeal')
-    await this.binance.uploadComplaintFile(uploadUrl, content)
+    if (images.length === 0) throw new Error('申诉材料不能为空')
+    if (platform === MerchantPlatform.OKX) {
+      const imageUrl = await this.okx.uploadComplaintFile(
+        credentials as OkxWebPrivateCredentials,
+        orderId,
+        images[0],
+      )
+      return [imageUrl]
+    }
+    const filePaths: string[] = []
+    for (const image of images) {
+      const upload = await this.binance.getComplaintUploadUrl(
+        credentials as BinanceCredentials,
+        image.fileName,
+      )
+      if (!upload.uploadUrl || !upload.filePath) throw new Error('币安申诉材料上传地址无效')
+      await this.binance.uploadComplaintFile(upload.uploadUrl, image.content)
+      filePaths.push(upload.filePath)
+    }
+    return filePaths
   }
 
   async submitComplaint(
@@ -160,7 +173,9 @@ export class C2cPlatformClient {
     payload: C2cComplaintPayload,
   ): Promise<C2cComplaintSubmissionResult> {
     this.requireCapability(platform, 'appeal')
-    return this.binance.submitComplaint(credentials as BinanceCredentials, payload)
+    return platform === MerchantPlatform.BINANCE
+      ? this.binance.submitComplaint(credentials as BinanceCredentials, payload)
+      : this.okx.submitComplaint(credentials as OkxWebPrivateCredentials, payload)
   }
 
   private requireCapability(platform: MerchantPlatform, capability: C2cPlatformCapability): void {

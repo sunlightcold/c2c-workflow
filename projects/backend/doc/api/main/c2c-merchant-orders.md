@@ -2,16 +2,16 @@
 
 Controller：`C2cOrderController`。基础路径：`/v1/sys`。所有接口均要求登录并使用统一响应包装。
 
-| Method | Path                                 | 权限                          | Request                                                                                                              | data                                       |
-| ------ | ------------------------------------ | ----------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| GET    | `/merchant-orders`                   | `merchant:order:read`         | Query `{ tenantId?, merchantId?, platformOrderId?, status?, paymentMethod?, startTime?, endTime?, page?, pageSize? }` | 分页买币订单及关联支付单摘要；不传 `merchantId` 时查询经营单位内全部商家 |
-| GET    | `/merchant-orders/{id}`              | `merchant:order:read`         | Query `{ tenantId?, merchantId }`                                                                                    | 订单详情与状态时间线                       |
-| POST   | `/merchants/{id}/orders/sync`        | `merchant:order:sync`         | Query `{ tenantId? }`                                                                                                | `{ scanned, created, updated }`            |
-| POST   | `/merchant-orders/{id}/payment`      | `merchant:order:pay`          | Body `{ tenantId?, merchantId }`                                                                                     | 按启用支付方案创建支付并锁定支付账号与通道 |
-| POST   | `/merchant-orders/{id}/confirm-paid` | `merchant:order:confirm_paid` | Body `{ tenantId?, merchantId }`                                                                                     | 重试平台付款确认，不重复发起支付宝付款     |
-| POST   | `/merchant-orders/{id}/cancel`       | `merchant:order:cancel`       | Body `{ tenantId?, merchantId, reason }`                                                                             | 原子作废尚未提交资金请求的商家订单与支付单 |
-| GET    | `/merchant-orders/{id}/appeal-reasons` | `merchant:order:appeal`     | Query `{ tenantId?, merchantId }`                                                                                    | 查询币安实时申诉原因                       |
-| POST   | `/merchant-orders/{id}/appeal`       | `merchant:order:appeal`       | JSON `{ tenantId?, merchantId, reasonCode }`                                                                          | 自动获取付款回单、转图片、上传并提交一次币安申诉 |
+| Method | Path                                   | 权限                          | Request                                                                                                               | data                                                                     |
+| ------ | -------------------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| GET    | `/merchant-orders`                     | `merchant:order:read`         | Query `{ tenantId?, merchantId?, platformOrderId?, status?, paymentMethod?, startTime?, endTime?, page?, pageSize? }` | 分页买币订单及关联支付单摘要；不传 `merchantId` 时查询经营单位内全部商家 |
+| GET    | `/merchant-orders/{id}`                | `merchant:order:read`         | Query `{ tenantId?, merchantId }`                                                                                     | 订单详情与状态时间线                                                     |
+| POST   | `/merchants/{id}/orders/sync`          | `merchant:order:sync`         | Query `{ tenantId? }`                                                                                                 | `{ scanned, created, updated }`                                          |
+| POST   | `/merchant-orders/{id}/payment`        | `merchant:order:pay`          | Body `{ tenantId?, merchantId }`                                                                                      | 按启用支付方案创建支付并锁定支付账号与通道                               |
+| POST   | `/merchant-orders/{id}/confirm-paid`   | `merchant:order:confirm_paid` | Body `{ tenantId?, merchantId }`                                                                                      | 重试平台付款确认，不重复发起支付宝付款                                   |
+| POST   | `/merchant-orders/{id}/cancel`         | `merchant:order:cancel`       | Body `{ tenantId?, merchantId, reason }`                                                                              | 原子作废尚未提交资金请求的商家订单与支付单                               |
+| GET    | `/merchant-orders/{id}/appeal-reasons` | `merchant:order:appeal`       | Query `{ tenantId?, merchantId }`                                                                                     | 查询当前平台可用的申诉原因                                               |
+| POST   | `/merchant-orders/{id}/appeal`         | `merchant:order:appeal`       | JSON `{ tenantId?, merchantId, reasonCode }`                                                                          | 自动获取付款回单、转图片、上传并提交一次平台申诉                         |
 
 每个请求先按登录人解析所属单位，再同时约束商家。平台人员需要提交当前经营的 `tenantId`；
 代理商人员只能访问 JWT 所属单位。同步仅获取 `BUY` 订单，完整时间窗口和全部分页成功后才推进检查点。
@@ -27,11 +27,9 @@ Controller：`C2cOrderController`。基础路径：`/v1/sys`。所有接口均�
 `READY`。已加入未提交批次的支付单会从批次中移除并重算汇总；资金请求进入 `SUBMITTING` 后拒绝
 普通作废。平台确认补偿仅处理支付状态为 `SUCCESS` 且平台确认状态为 `FAILED` 的订单；平台确认状态 `SUCCESS` 时幂等返回。
 
-申诉仅支持币安买币订单，并要求本地订单为 `PENDING_RELEASE`、关联支付单资金状态为 `SUCCESS`、平台确认状态为 `SUCCESS`、币安实时
-订单状态为 `PAID`。原因码必须来自本次实时查询。提交前系统原子占用订单；系统通过支付通道回单能力获取 PDF，下载后转换为最多 5 页 JPEG，再上传币安；回单处理或材料上传前失败会释放占用，
-允许人工重试；最终提交请求发出后若结果不确定则保留 `PROCESSING`，禁止重复提交，等待人工核对。
-回单只在请求期间保留于内存并上传至币安预签名地址，系统不保存图片二进制或预签名地址。欧易当前
-明确不支持申诉接口。
+申诉支持币安和欧易买币订单，并要求本地订单为 `PENDING_RELEASE`、关联支付单资金状态为 `SUCCESS`、平台确认状态为 `SUCCESS`、平台实时订单状态为 `PAID`。币安原因码来自实时查询；欧易使用固定原因 `1 / 已付款，催促卖家放币`。提交前系统原子占用订单；系统通过支付通道回单能力获取 PDF 并转为 JPG。币安最多上传 5 页并提交，欧易只取第一页，通过 `/v3/c2c/files/?type=reminder` 上传后，将返回的 `data.imgPath` 提交至 `/v3/c2c/appeal/appealUrge`。
+
+回单处理或材料上传前失败会释放占用，允许人工重试；最终提交请求发出后若结果不确定则保留 `PROCESSING`，禁止重复提交，等待人工核对。币安保存平台申诉单号，欧易保存响应 `requestId` 作为申诉追踪号。回单只在请求期间保留于内存，系统不保存图片二进制或临时上传地址。
 
 商家订单保存平台状态快照、收款资料、付款方式 ID 和支付时限。重复同步只更新同一订单；状态变化
 追加时间线。V1 的数据库约束拒绝 `SELL` 订单，后台不存在收款确认或放币入口。

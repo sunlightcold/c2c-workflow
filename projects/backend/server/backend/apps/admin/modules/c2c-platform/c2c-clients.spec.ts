@@ -41,7 +41,7 @@ describe('C2C buy-order clients', () => {
       sellOrders: false,
     })
     expect(okx.getCapabilities()).toEqual({
-      appeal: false,
+      appeal: true,
       cancelOrder: false,
       chat: false,
       checkAntiFraud: true,
@@ -384,6 +384,95 @@ describe('C2C buy-order clients', () => {
           dsaEncoding: 'ieee-p1363',
         },
         signature,
+      ),
+    ).toBe(true)
+  })
+
+  it('uploads one JPG receipt and submits the returned URL to the OKX appeal endpoint', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+    http.request
+      .mockResolvedValueOnce({
+        code: 0,
+        data: { imgPath: 'https://okx.example.test/appeal/receipt.jpg?signature=redacted' },
+        requestId: 'upload-request-1',
+      })
+      .mockResolvedValueOnce({ code: 0, data: {}, requestId: 'appeal-request-1' })
+    const credentials = {
+      cookie: 'session',
+      authorization: 'token',
+      signaturePrivateKey: privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64'),
+      timeoutMs: 5000,
+      baseUrl: 'https://www.okx.com',
+    }
+    const receipt = {
+      content: Buffer.from('jpg-receipt'),
+      fileName: 'OKX-1-1.jpg',
+      imageType: 'jpeg' as const,
+    }
+
+    await expect(okx.uploadComplaintFile(credentials, '260917192544783', receipt)).resolves.toBe(
+      'https://okx.example.test/appeal/receipt.jpg?signature=redacted',
+    )
+    await expect(
+      okx.submitComplaint(credentials, {
+        description: '已付款，卖家未放币',
+        fileUrls: ['https://okx.example.test/appeal/receipt.jpg?signature=redacted'],
+        orderNo: '260917192544783',
+        reason: '催促卖家放币',
+        reasonCode: 1,
+      }),
+    ).resolves.toEqual({ data: { complaintNo: 'appeal-request-1' } })
+
+    const uploadRequest = http.request.mock.calls[0][0]
+    expect(uploadRequest).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        url: 'https://www.okx.com/v3/c2c/files/',
+        params: { type: 'reminder', t: expect.any(String) },
+        body: expect.any(FormData),
+        headers: expect.objectContaining({
+          Referer: 'https://www.okx.com/p2p/order?orderId=260917192544783',
+          'x-client-signature-version': '1.3',
+          'x-request-timestamp': expect.any(String),
+        }),
+      }),
+    )
+    const uploadSignature = Buffer.from(
+      uploadRequest.headers['x-client-signature'].slice('{P1363}'.length),
+      'base64',
+    )
+    expect(
+      verify(
+        'sha256',
+        Buffer.from(`/v3/c2c/files/${uploadRequest.params.t}`),
+        { key: publicKey, dsaEncoding: 'ieee-p1363' },
+        uploadSignature,
+      ),
+    ).toBe(true)
+    const appealRequest = http.request.mock.calls[1][0]
+    expect(appealRequest).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        url: 'https://www.okx.com/v3/c2c/appeal/appealUrge',
+        params: { t: expect.any(String) },
+        body: '{"publicOrderId":260917192544783,"imageUrls":"https://okx.example.test/appeal/receipt.jpg?signature=redacted"}',
+        headers: expect.objectContaining({
+          Referer: 'https://www.okx.com/p2p/order?orderId=260917192544783',
+          'x-client-signature-version': '1.3',
+          'x-request-timestamp': expect.any(String),
+        }),
+      }),
+    )
+    const appealSignature = Buffer.from(
+      appealRequest.headers['x-client-signature'].slice('{P1363}'.length),
+      'base64',
+    )
+    expect(
+      verify(
+        'sha256',
+        Buffer.from(`/v3/c2c/appeal/appealUrge${appealRequest.body}${appealRequest.params.t}`),
+        { key: publicKey, dsaEncoding: 'ieee-p1363' },
+        appealSignature,
       ),
     ).toBe(true)
   })

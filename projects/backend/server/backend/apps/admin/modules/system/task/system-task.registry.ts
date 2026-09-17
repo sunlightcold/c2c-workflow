@@ -73,7 +73,7 @@ export const SYSTEM_TASKS: SystemTaskDefinition[] = [
     type: SysTaskTypeEnum.Interval,
     status: SysTaskStatus.Activated,
     every: C2C_AUTO_APPEAL_INTERVAL_MS,
-    description: '每30秒检查超过商家配置等待时间且币安仍为已付款待放行状态的买单并自动申诉',
+    description: '每30秒检查超过商家配置等待时间且平台仍为已付款待放行状态的买单并自动申诉',
   },
   {
     id: '00000000-0000-4000-8000-000000000109',

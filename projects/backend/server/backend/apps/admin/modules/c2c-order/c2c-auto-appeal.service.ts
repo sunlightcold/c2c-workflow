@@ -13,7 +13,7 @@ import {
 } from '@admin/database'
 import { Injectable, Logger } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { IsNull, LessThanOrEqual, Repository } from 'typeorm'
+import { In, IsNull, LessThanOrEqual, Repository } from 'typeorm'
 import { C2cOrderAppealService } from './c2c-order-appeal.service'
 import {
   C2cAppealProcessingError,
@@ -46,7 +46,7 @@ export class C2cAutoAppealService {
   async scanAll(now = new Date()) {
     const merchants = await this.merchants.find({
       where: {
-        platform: MerchantPlatform.BINANCE,
+        platform: In([MerchantPlatform.BINANCE, MerchantPlatform.OKX]),
         status: BusinessStatus.ACTIVE,
         autoAppealEnabled: true,
       },

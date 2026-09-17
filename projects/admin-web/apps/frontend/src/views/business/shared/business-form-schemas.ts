@@ -1059,7 +1059,7 @@ export function createMerchantOrderAppealModalOptions(
               label: reasonDesc,
               value: reasonCode,
             })),
-            props: { placeholder: '请选择币安实时返回的申诉原因' },
+            props: { placeholder: '请选择平台返回的申诉原因' },
             title: '申诉原因',
             type: 'select',
             validate: required('请选择申诉原因'),

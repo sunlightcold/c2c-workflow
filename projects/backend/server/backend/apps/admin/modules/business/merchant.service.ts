@@ -139,15 +139,14 @@ export class MerchantService {
       input.paidConfirmIntervalMinMs ?? 0,
       input.paidConfirmIntervalMaxMs ?? 0,
     )
-    const supportsBinanceFeatures = input.platform === MerchantPlatform.BINANCE
+    const supportsPlatformChat = input.platform === MerchantPlatform.BINANCE
     const c2cChatOrderCreatedEnabled =
-      supportsBinanceFeatures && this.valueOr(input.c2cChatOrderCreatedEnabled, false)
+      supportsPlatformChat && this.valueOr(input.c2cChatOrderCreatedEnabled, false)
     const c2cChatOrderPaidEnabled =
-      supportsBinanceFeatures && this.valueOr(input.c2cChatOrderPaidEnabled, false)
+      supportsPlatformChat && this.valueOr(input.c2cChatOrderPaidEnabled, false)
     const c2cChatOrderCompletedEnabled =
-      supportsBinanceFeatures && this.valueOr(input.c2cChatOrderCompletedEnabled, false)
-    const autoAppealEnabled =
-      supportsBinanceFeatures && this.valueOr(input.autoAppealEnabled, false)
+      supportsPlatformChat && this.valueOr(input.c2cChatOrderCompletedEnabled, false)
+    const autoAppealEnabled = this.valueOr(input.autoAppealEnabled, false)
     return this.dataSource.transaction(async (manager) => {
       const merchants = manager.getRepository(MerchantEntity)
       const merchant = await merchants.save(
@@ -255,8 +254,6 @@ export class MerchantService {
         merchant.c2cChatOrderPaidEnabled = false
         merchant.c2cChatOrderCompletedEnabled = false
         merchant.c2cChatOrderCompletedEnabledAt = null
-        merchant.autoAppealEnabled = false
-        merchant.autoAppealEnabledAt = null
       }
       if ('telegramGroupId' in input) {
         await this.applyTelegramGroup(manager, merchant, input.telegramGroupId)

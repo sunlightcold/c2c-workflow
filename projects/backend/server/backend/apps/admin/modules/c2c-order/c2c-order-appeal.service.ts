@@ -187,23 +187,12 @@ export class C2cOrderAppealService {
       }
       const document = await this.downloader.download(receipt.downloadUrl)
       const images = await this.receiptImages.convert(document, context.platformOrderId)
-      filePaths = []
-      for (const image of images) {
-        const upload = await this.platformClient.getComplaintUploadUrl(
-          context.platform,
-          credentials,
-          image.fileName,
-        )
-        if (!upload.uploadUrl || !upload.filePath) {
-          throw new Error('币安申诉材料上传地址无效')
-        }
-        await this.platformClient.uploadComplaintFile(
-          context.platform,
-          upload.uploadUrl,
-          image.content,
-        )
-        filePaths.push(upload.filePath)
-      }
+      filePaths = await this.platformClient.uploadComplaintFiles(
+        context.platform,
+        credentials,
+        context.platformOrderId,
+        images.map((image) => ({ ...image, imageType: 'jpeg' })),
+      )
     } catch (error) {
       await this.store.releaseClaim(tenantId, merchantId, orderId, this.errorMessage(error))
       throw error
@@ -297,10 +286,10 @@ export class C2cOrderAppealService {
 
   private complaintNo(value: string | number | undefined): string {
     if (typeof value !== 'string' && typeof value !== 'number') {
-      throw new Error('币安未返回申诉单号')
+      throw new Error('平台未返回申诉追踪号')
     }
     const complaintNo = String(value).trim()
-    if (!complaintNo) throw new Error('币安未返回申诉单号')
+    if (!complaintNo) throw new Error('平台未返回申诉追踪号')
     return complaintNo
   }
 

@@ -54,9 +54,12 @@ describe('C2cPlatformClient', () => {
     getOrderDetail: jest.fn(),
     markOrderAsPaid: jest.fn(),
     sendChatText: jest.fn(),
+    getComplaintReasons: jest.fn(),
+    uploadComplaintFile: jest.fn(),
+    submitComplaint: jest.fn(),
     getMarkPaidPolicy: jest.fn().mockReturnValue({ paymentProof: 'SKIP' }),
     getCapabilities: jest.fn().mockReturnValue({
-      appeal: false,
+      appeal: true,
       cancelOrder: false,
       chat: false,
       checkAntiFraud: true,
@@ -150,11 +153,45 @@ describe('C2cPlatformClient', () => {
     },
   )
 
-  it('rejects unsupported OKX appeals without guessing an upstream endpoint', async () => {
+  it('delegates the complete OKX appeal flow without routing credentials through Binance', async () => {
+    const proof = {
+      content: Buffer.from('proof'),
+      fileName: 'OKX-1-1.jpg',
+      imageType: 'jpeg' as const,
+    }
+    okx.getComplaintReasons.mockReturnValue([{ reasonCode: 1, reasonDesc: '已付款，催促卖家放币' }])
+    okx.uploadComplaintFile.mockResolvedValue('https://okx.example.test/receipt.jpg')
+    okx.submitComplaint.mockResolvedValue({ data: { complaintNo: 'request-1' } })
+
     await expect(
       client.getComplaintReasons(MerchantPlatform.OKX, okxCredentials, 'OKX-1'),
-    ).rejects.toEqual(new C2cPlatformCapabilityError(MerchantPlatform.OKX, 'appeal'))
+    ).resolves.toEqual([{ reasonCode: 1, reasonDesc: '已付款，催促卖家放币' }])
+    await expect(
+      client.uploadComplaintFiles(MerchantPlatform.OKX, okxCredentials, 'OKX-1', [
+        proof,
+        {
+          content: Buffer.from('second-page'),
+          fileName: 'OKX-1-2.jpg',
+          imageType: 'jpeg',
+        },
+      ]),
+    ).resolves.toEqual(['https://okx.example.test/receipt.jpg'])
+    await expect(
+      client.submitComplaint(MerchantPlatform.OKX, okxCredentials, {
+        description: '已付款',
+        fileUrls: ['https://okx.example.test/receipt.jpg'],
+        orderNo: 'OKX-1',
+        reason: '已付款，催促卖家放币',
+        reasonCode: 1,
+      }),
+    ).resolves.toEqual({ data: { complaintNo: 'request-1' } })
+
     expect(binance.getComplaintReasons).not.toHaveBeenCalled()
+    expect(binance.getComplaintUploadUrl).not.toHaveBeenCalled()
+    expect(binance.uploadComplaintFile).not.toHaveBeenCalled()
+    expect(binance.submitComplaint).not.toHaveBeenCalled()
+    expect(okx.uploadComplaintFile).toHaveBeenCalledTimes(1)
+    expect(okx.uploadComplaintFile).toHaveBeenCalledWith(okxCredentials, 'OKX-1', proof)
   })
 
   it('sends Binance chat text and rejects unsupported OKX chat', async () => {
@@ -181,11 +218,14 @@ describe('C2cPlatformClient', () => {
       client.getComplaintReasons(MerchantPlatform.BINANCE, binanceCredentials, 'BIN-1'),
     ).resolves.toEqual([{ reasonCode: 1, reasonDesc: '未放币' }])
     await expect(
-      client.getComplaintUploadUrl(MerchantPlatform.BINANCE, binanceCredentials, 'proof.jpg'),
-    ).resolves.toEqual({ uploadUrl: 'https://upload', filePath: 'a' })
-    await expect(
-      client.uploadComplaintFile(MerchantPlatform.BINANCE, 'https://upload', Buffer.from('proof')),
-    ).resolves.toBeUndefined()
+      client.uploadComplaintFiles(MerchantPlatform.BINANCE, binanceCredentials, 'BIN-1', [
+        {
+          content: Buffer.from('proof'),
+          fileName: 'proof.jpg',
+          imageType: 'jpeg',
+        },
+      ]),
+    ).resolves.toEqual(['a'])
     await expect(
       client.submitComplaint(MerchantPlatform.BINANCE, binanceCredentials, {
         description: '已付款',

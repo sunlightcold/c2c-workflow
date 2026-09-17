@@ -3,13 +3,15 @@ export const OKX_C2C_PATHS = {
   antiFraud: '/v4/c2c/risk/antiFraudPopup/info',
   detail: '/v3/c2c/orders',
   markOrderAsPaid: '/v3/c2c/orders/:publicOrderId/payment/paid',
+  uploadFile: '/v3/c2c/files/',
+  submitAppeal: '/v3/c2c/appeal/appealUrge',
 } as const
 
 export interface OkxC2cMockOrder {
   id: string
   publicTradingOrderId: string
   side: 'buy' | 'sell'
-  orderStatus: 'new' | 'completed' | 'cancelled'
+  orderStatus: 'new' | 'appeal' | 'completed' | 'cancelled'
   orderProcessStatus: number
   paymentStatus: 'unpaid' | 'paid' | 'confirmed'
   baseAmount: string

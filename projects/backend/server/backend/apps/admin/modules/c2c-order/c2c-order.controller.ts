@@ -50,7 +50,7 @@ export class C2cOrderController {
 
   @Get('merchant-orders/:id/appeal-reasons')
   @Permission(MerchantOrderPermissions.APPEAL)
-  @ApiOperation({ summary: '查询币安商家订单的实时申诉原因' })
+  @ApiOperation({ summary: '查询商家订单可用的申诉原因' })
   appealReasons(
     @Param('id', ParseUUIDPipe) id: string,
     @Query() dto: MerchantOrderDetailDto,
@@ -65,7 +65,7 @@ export class C2cOrderController {
 
   @Post('merchant-orders/:id/appeal')
   @Permission(MerchantOrderPermissions.APPEAL)
-  @ApiOperation({ summary: '提交币安商家订单申诉' })
+  @ApiOperation({ summary: '提交商家订单申诉' })
   appeal(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: MerchantOrderAppealSubmitDto,

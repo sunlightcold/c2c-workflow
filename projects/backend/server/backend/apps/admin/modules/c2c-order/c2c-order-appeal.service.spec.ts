@@ -6,7 +6,7 @@ import {
   PlatformConfirmationStatus,
   PaymentOrderStatus,
 } from '@admin/database'
-import { BadRequestException, ServiceUnavailableException } from '@nestjs/common'
+import { ServiceUnavailableException } from '@nestjs/common'
 import type { Repository } from 'typeorm'
 import type { MerchantEntity } from '@admin/database'
 import type { MerchantPlatformCredentialService } from '../business/merchant-platform-credential.service'
@@ -43,10 +43,9 @@ describe('C2cOrderAppealService', () => {
   const platformClient = {
     getCapabilities: jest.fn(),
     getComplaintReasons: jest.fn(),
-    getComplaintUploadUrl: jest.fn(),
     getOrderDetail: jest.fn(),
     submitComplaint: jest.fn(),
-    uploadComplaintFile: jest.fn(),
+    uploadComplaintFiles: jest.fn(),
   }
   const store: jest.Mocked<C2cOrderAppealStore> = {
     claim: jest.fn(),
@@ -86,17 +85,9 @@ describe('C2cOrderAppealService', () => {
     platformClient.getComplaintReasons.mockResolvedValue([
       { reasonCode: 6, reasonDesc: '卖家收款后未放行' },
     ])
-    platformClient.getComplaintUploadUrl
+    platformClient.uploadComplaintFiles
       .mockReset()
-      .mockResolvedValueOnce({
-        uploadUrl: 'http://127.0.0.1:13002/upload/1',
-        filePath: '/mock/receipt-1.jpg',
-      })
-      .mockResolvedValueOnce({
-        uploadUrl: 'http://127.0.0.1:13002/upload/2',
-        filePath: '/mock/receipt-2.jpg',
-      })
-    platformClient.uploadComplaintFile.mockResolvedValue(undefined)
+      .mockResolvedValue(['/mock/receipt-1.jpg', '/mock/receipt-2.jpg'])
     platformClient.submitComplaint.mockResolvedValue({
       data: { complaintNo: '30006788' },
     })
@@ -151,17 +142,22 @@ describe('C2cOrderAppealService', () => {
     expect(receipts.getReceipt).toHaveBeenCalledWith('tenant-1', 'merchant-1', 'payment-1')
     expect(downloader.download).toHaveBeenCalledWith('https://example.test/receipt.pdf')
     expect(receiptImages.convert).toHaveBeenCalledWith(Buffer.from('%PDF'), 'BIN-1')
-    expect(platformClient.uploadComplaintFile).toHaveBeenNthCalledWith(
-      1,
+    expect(platformClient.uploadComplaintFiles).toHaveBeenCalledWith(
       MerchantPlatform.BINANCE,
-      'http://127.0.0.1:13002/upload/1',
-      Buffer.from('page-1'),
-    )
-    expect(platformClient.uploadComplaintFile).toHaveBeenNthCalledWith(
-      2,
-      MerchantPlatform.BINANCE,
-      'http://127.0.0.1:13002/upload/2',
-      Buffer.from('page-2'),
+      expect.any(Object),
+      'BIN-1',
+      [
+        expect.objectContaining({
+          content: Buffer.from('page-1'),
+          fileName: 'BIN-1-1.jpg',
+          imageType: 'jpeg',
+        }),
+        expect.objectContaining({
+          content: Buffer.from('page-2'),
+          fileName: 'BIN-1-2.jpg',
+          imageType: 'jpeg',
+        }),
+      ],
     )
     expect(platformClient.submitComplaint).toHaveBeenCalledWith(
       MerchantPlatform.BINANCE,
@@ -192,7 +188,7 @@ describe('C2cOrderAppealService', () => {
   })
 
   it('releases the claim when receipt upload fails before submission', async () => {
-    platformClient.uploadComplaintFile.mockRejectedValue(new Error('upload failed'))
+    platformClient.uploadComplaintFiles.mockReset().mockRejectedValue(new Error('upload failed'))
 
     await expect(
       service.submit('tenant-1', 'merchant-1', 'order-1', {
@@ -201,6 +197,90 @@ describe('C2cOrderAppealService', () => {
     ).rejects.toThrow('upload failed')
     expect(store.releaseClaim).toHaveBeenCalled()
     expect(platformClient.submitComplaint).not.toHaveBeenCalled()
+  })
+
+  it('uploads the JPG receipt before submitting an OKX appeal with its returned URL', async () => {
+    orders.detail.mockResolvedValue({
+      ...order,
+      platform: MerchantPlatform.OKX,
+      platformOrderId: '260917192544783',
+    })
+    merchants.findOne.mockResolvedValue({
+      id: 'merchant-1',
+      tenantId: 'tenant-1',
+      platform: MerchantPlatform.OKX,
+      status: BusinessStatus.ACTIVE,
+    })
+    credentialFactory.create.mockReturnValue({ cookie: 'cookie', authorization: 'token' })
+    platformClient.getOrderDetail.mockResolvedValue({
+      platformOrderId: '260917192544783',
+      status: C2cBuyOrderStatus.PAID,
+    })
+    platformClient.getComplaintReasons.mockResolvedValue([
+      { reasonCode: 1, reasonDesc: '已付款，催促卖家放币' },
+    ])
+    receiptImages.convert.mockResolvedValue([
+      {
+        fileName: '260917192544783-1.jpg',
+        content: Buffer.from('jpg-receipt'),
+        width: 100,
+        height: 200,
+      },
+    ])
+    receiptImages.convert.mockResolvedValue([
+      {
+        fileName: '260917192544783-1.jpg',
+        content: Buffer.from('jpg-receipt-page-1'),
+        width: 100,
+        height: 200,
+      },
+      {
+        fileName: '260917192544783-2.jpg',
+        content: Buffer.from('jpg-receipt-page-2'),
+        width: 100,
+        height: 200,
+      },
+    ])
+    platformClient.uploadComplaintFiles
+      .mockReset()
+      .mockResolvedValue(['https://okx.example.test/appeal/receipt.jpg?signature=redacted'])
+    platformClient.submitComplaint.mockResolvedValue({
+      data: { complaintNo: 'appeal-request-1' },
+    })
+
+    await expect(
+      service.submit('tenant-1', 'merchant-1', 'order-1', { reasonCode: 1 }),
+    ).resolves.toEqual({
+      complaintNo: 'appeal-request-1',
+      orderNo: '260917192544783',
+      reason: '已付款，催促卖家放币',
+      reasonCode: 1,
+    })
+    expect(platformClient.uploadComplaintFiles).toHaveBeenCalledWith(
+      MerchantPlatform.OKX,
+      expect.objectContaining({ cookie: 'cookie', authorization: 'token' }),
+      '260917192544783',
+      [
+        expect.objectContaining({
+          content: Buffer.from('jpg-receipt-page-1'),
+          fileName: '260917192544783-1.jpg',
+          imageType: 'jpeg',
+        }),
+        expect.objectContaining({
+          content: Buffer.from('jpg-receipt-page-2'),
+          fileName: '260917192544783-2.jpg',
+          imageType: 'jpeg',
+        }),
+      ],
+    )
+    expect(platformClient.submitComplaint).toHaveBeenCalledWith(
+      MerchantPlatform.OKX,
+      expect.any(Object),
+      expect.objectContaining({
+        fileUrls: ['https://okx.example.test/appeal/receipt.jpg?signature=redacted'],
+        orderNo: '260917192544783',
+      }),
+    )
   })
 
   it('releases the claim when the selected reason is no longer returned by Binance', async () => {
@@ -214,7 +294,7 @@ describe('C2cOrderAppealService', () => {
       }),
     ).rejects.toThrow('申诉原因已失效')
     expect(store.releaseClaim).toHaveBeenCalled()
-    expect(platformClient.getComplaintUploadUrl).not.toHaveBeenCalled()
+    expect(platformClient.uploadComplaintFiles).not.toHaveBeenCalled()
     expect(platformClient.submitComplaint).not.toHaveBeenCalled()
   })
 
@@ -249,23 +329,6 @@ describe('C2cOrderAppealService', () => {
       '支付成功且平台确认付款后才可以申诉',
     )
     expect(credentials.getActiveReference).not.toHaveBeenCalled()
-  })
-
-  it('reports OKX appeals as unsupported without resolving credentials', async () => {
-    orders.detail.mockResolvedValue({ ...order, platform: MerchantPlatform.OKX })
-    merchants.findOne.mockResolvedValue({
-      id: 'merchant-1',
-      tenantId: 'tenant-1',
-      platform: MerchantPlatform.OKX,
-      status: BusinessStatus.ACTIVE,
-    })
-    platformClient.getCapabilities.mockReturnValue({ appeal: false })
-
-    await expect(service.getReasons('tenant-1', 'merchant-1', 'order-1')).rejects.toBeInstanceOf(
-      BadRequestException,
-    )
-    expect(credentials.getActiveReference).not.toHaveBeenCalled()
-    expect(platformClient.getComplaintReasons).not.toHaveBeenCalled()
   })
 
   it('rejects a repeated submitted appeal', async () => {

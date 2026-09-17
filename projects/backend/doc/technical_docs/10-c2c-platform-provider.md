@@ -47,7 +47,7 @@
 
 Binance 使用 API Key、Secret Key、HMAC 查询签名以及可选 `x-user-id`。订单列表、详情、付款确认和申诉均使用已验证的固定 API 路径。
 
-OKX 使用 Cookie、Authorization 和 PKCS#8 EC 私钥，只允许 `OKX_WEB_PRIVATE` Adapter 访问固定的订单、风控、凭证和付款路径。付款签名原文为固定请求路径、紧凑 JSON 请求体和毫秒时间戳，输出 IEEE P1363 签名。`markAsPaidDisabled`、申诉状态、非买单、凭据失效和付款资料缺失都会阻止自动付款。
+OKX 使用 Cookie、Authorization 和 PKCS#8 EC 私钥，只允许 `OKX_WEB_PRIVATE` Adapter 访问固定的订单、风控、凭证、付款和申诉路径。签名原文为固定请求路径、紧凑 JSON 请求体和毫秒时间戳，输出 IEEE P1363 签名。欧易申诉先向 `/v3/c2c/files/?type=reminder` 上传一张 JPG，再将返回的 `data.imgPath` 提交至 `/v3/c2c/appeal/appealUrge`。`markAsPaidDisabled`、申诉状态、非买单、凭据失效和付款资料缺失都会阻止自动付款。
 
 ## 扩展规则
 

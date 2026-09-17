@@ -97,6 +97,9 @@ describe('merchant order operation forms', () => {
     );
 
     expect(reason?.options).toEqual([{ label: '卖家收款后未放行', value: 6 }]);
+    expect(reason?.props).toMatchObject({
+      placeholder: '请选择平台返回的申诉原因',
+    });
     expect(
       options.formProps?.rule?.some(({ field }) => field === 'receiptHandling'),
     ).toBe(false);

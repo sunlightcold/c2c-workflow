@@ -49,7 +49,9 @@ export class OkxC2cMockPlugin {
       if (request.method === 'GET' && request.path === '/v4/c2c/risk/antiFraudPopup/info')
         return this.antiFraud()
       if (request.method === 'POST' && request.path === '/v3/c2c/files/')
-        return this.uploadPaymentProof(request)
+        return this.uploadFile(request)
+      if (request.method === 'POST' && request.path === '/v3/c2c/appeal/appealUrge')
+        return this.submitAppeal(request)
       if (request.method === 'GET' && request.path.startsWith('/v3/c2c/orders/'))
         return this.detail(request.path)
       if (request.method === 'POST' && request.path.endsWith('/payment/paid'))
@@ -115,16 +117,53 @@ export class OkxC2cMockPlugin {
     }
   }
 
-  private uploadPaymentProof(request: OkxRequest) {
-    if (request.query.type !== 'paymentProof') return errorResponse('400006', '上传类型不匹配')
+  private uploadFile(request: OkxRequest) {
+    if (!['paymentProof', 'reminder'].includes(request.query.type))
+      return errorResponse('400006', '上传类型不匹配')
     const file = request.body.file as
       | { filename?: string; type?: string; size?: number }
       | undefined
     if (!file || !file.filename || !file.size || file.size <= 0)
       return errorResponse('400012', '付款凭证文件不能为空')
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type ?? ''))
+    const acceptedTypes =
+      request.query.type === 'reminder' ? ['image/jpeg'] : ['image/jpeg', 'image/png', 'image/webp']
+    if (!acceptedTypes.includes(file.type ?? ''))
       return errorResponse('400013', '付款凭证文件格式不支持')
+    if (request.query.type === 'reminder') {
+      const signatureError = this.verifyClientSignature(request, '')
+      if (signatureError) return signatureError
+      return {
+        status: 200,
+        body: {
+          code: 0,
+          data: { imgPath: 'https://mock.okx.test/c2c/reminder/receipt.jpg' },
+          requestId: 'mock-appeal-upload-request',
+        },
+      }
+    }
     return { status: 200, body: { code: 0, data: { imgPath: '/mock/payment-proof/receipt.jpg' } } }
+  }
+
+  private submitAppeal(request: OkxRequest) {
+    const signatureError = this.verifyClientSignature(request, JSON.stringify(request.body))
+    if (signatureError) return signatureError
+    const id = required(String(request.body.publicOrderId ?? ''), 'publicOrderId')
+    const imageUrl = required(request.body.imageUrls, 'imageUrls')
+    if (imageUrl !== 'https://mock.okx.test/c2c/reminder/receipt.jpg') {
+      return errorResponse('400014', '申诉回单地址不匹配')
+    }
+    const order = this.find(id)
+    if (!order) return errorResponse('400404', '订单不存在', 404)
+    if (order.paymentStatus !== 'paid') return errorResponse('400015', '订单尚未付款')
+    const now = Date.now()
+    const updated = this.update(id, (current) => ({
+      ...current,
+      orderStatus: 'appeal',
+      orderProcessStatus: 3,
+      modifyDate: now,
+    }))
+    if (!updated) return errorResponse('400404', '订单不存在', 404)
+    return { status: 200, body: { code: 0, data: {}, requestId: 'mock-appeal-request' } }
   }
 
   private markOrderAsPaid(request: OkxRequest) {
@@ -137,34 +176,8 @@ export class OkxC2cMockPlugin {
     )
     const order = this.find(id)
     if (!order) return errorResponse('400404', '订单不存在', 404)
-    if (!request.headers.get('x-request-timestamp'))
-      return errorResponse('400007', '缺少签名时间戳')
-    if (!request.headers.get('x-client-signature')?.startsWith('{P1363}'))
-      return errorResponse('400008', '缺少客户端签名')
-    if (request.headers.get('x-client-signature-version') !== '1.3')
-      return errorResponse('400009', '签名版本不匹配')
-    const publicKey = this.getSettings().signaturePublicKey
-    if (publicKey) {
-      const timestamp = request.headers.get('x-request-timestamp')!
-      const rawSignature = request.headers.get('x-client-signature')!.slice('{P1363}'.length)
-      let valid = false
-      try {
-        valid = verify(
-          'sha256',
-          Buffer.from(`${request.path}${JSON.stringify(request.body)}${timestamp}`, 'utf8'),
-          {
-            key: Buffer.from(publicKey, 'base64'),
-            format: 'der',
-            type: 'spki',
-            dsaEncoding: 'ieee-p1363',
-          },
-          Buffer.from(rawSignature, 'base64'),
-        )
-      } catch {
-        valid = false
-      }
-      if (!valid) return errorResponse('400011', '客户端签名无效')
-    }
+    const signatureError = this.verifyClientSignature(request, JSON.stringify(request.body))
+    if (signatureError) return signatureError
     if (String(request.body.receiptAccountId) !== order.receiptAccountId)
       return errorResponse('400004', 'receiptAccountId不匹配')
     const proofUrls = request.body.paymentProofFileUrls
@@ -188,6 +201,36 @@ export class OkxC2cMockPlugin {
     }))
     if (!updated) return errorResponse('400404', '订单不存在', 404)
     return { status: 200, body: { code: 0, data: {}, requestId: 'mock-paid-request' } }
+  }
+
+  private verifyClientSignature(request: OkxRequest, body: string) {
+    if (!request.headers.get('x-request-timestamp'))
+      return errorResponse('400007', '缺少签名时间戳')
+    if (!request.headers.get('x-client-signature')?.startsWith('{P1363}'))
+      return errorResponse('400008', '缺少客户端签名')
+    if (request.headers.get('x-client-signature-version') !== '1.3')
+      return errorResponse('400009', '签名版本不匹配')
+    const publicKey = this.getSettings().signaturePublicKey
+    if (!publicKey) return null
+    const timestamp = request.headers.get('x-request-timestamp')!
+    const rawSignature = request.headers.get('x-client-signature')!.slice('{P1363}'.length)
+    let valid = false
+    try {
+      valid = verify(
+        'sha256',
+        Buffer.from(`${request.path}${body}${timestamp}`, 'utf8'),
+        {
+          key: Buffer.from(publicKey, 'base64'),
+          format: 'der',
+          type: 'spki',
+          dsaEncoding: 'ieee-p1363',
+        },
+        Buffer.from(rawSignature, 'base64'),
+      )
+    } catch {
+      valid = false
+    }
+    return valid ? null : errorResponse('400011', '客户端签名无效')
   }
 
   private listItem(order: OkxC2cMockOrder) {

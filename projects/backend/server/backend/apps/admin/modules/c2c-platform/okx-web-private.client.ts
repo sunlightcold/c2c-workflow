@@ -4,6 +4,8 @@ import type { KeyObject } from 'node:crypto'
 import {
   C2C_HTTP_TRANSPORT,
   type C2cCapabilities,
+  type C2cComplaintPayload,
+  type C2cComplaintSubmissionResult,
   type C2cHttpTransport,
   type C2cListInput,
   type C2cMarkPaidOptions,
@@ -210,6 +212,72 @@ export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCred
     return { supported: true, ...(response.requestId ? { requestId: response.requestId } : {}) }
   }
 
+  getComplaintReasons() {
+    return [{ reasonCode: 1, reasonDesc: '已付款，催促卖家放币' }]
+  }
+
+  async uploadComplaintFile(
+    credentials: OkxWebPrivateCredentials,
+    orderId: string,
+    image: C2cPaymentProofImage,
+  ): Promise<string> {
+    if (image.imageType !== 'jpeg') throw new Error('欧易申诉回单仅支持 JPG 格式')
+    const path = '/v3/c2c/files/'
+    const timestamp = Date.now()
+    const signingKey = this.parseSigningKey(credentials)
+    const form = new FormData()
+    form.append(
+      'file',
+      new Blob([new Uint8Array(image.content)], { type: 'image/jpeg' }),
+      image.fileName || 'receipt.jpg',
+    )
+    const response = await this.request<{ imgPath?: string }>(
+      credentials,
+      'POST',
+      path,
+      { type: 'reminder', t: String(timestamp) },
+      form,
+      {
+        Referer: this.orderReferer(credentials, orderId),
+        'x-request-timestamp': String(timestamp),
+        'x-client-signature-version': '1.3',
+        'x-client-signature': this.createClientSignature(signingKey, path, '', timestamp),
+      },
+    )
+    const imageUrl = response.data?.imgPath?.trim()
+    if (!imageUrl) throw new Error('欧易申诉回单上传未返回图片地址')
+    return imageUrl
+  }
+
+  async submitComplaint(
+    credentials: OkxWebPrivateCredentials,
+    payload: C2cComplaintPayload,
+  ): Promise<C2cComplaintSubmissionResult> {
+    if (payload.fileUrls.length !== 1 || !payload.fileUrls[0]?.trim()) {
+      throw new Error('欧易申诉必须且只能提交一张 JPG 回单')
+    }
+    const path = '/v3/c2c/appeal/appealUrge'
+    const timestamp = Date.now()
+    const signingKey = this.parseSigningKey(credentials)
+    const orderId = this.numericOrderId(payload.orderNo)
+    const body = `{"publicOrderId":${orderId},"imageUrls":${JSON.stringify(payload.fileUrls[0].trim())}}`
+    const response = await this.post<Record<string, never>>(
+      credentials,
+      path,
+      body,
+      { t: String(timestamp) },
+      {
+        Referer: this.orderReferer(credentials, orderId),
+        'x-request-timestamp': String(timestamp),
+        'x-client-signature-version': '1.3',
+        'x-client-signature': this.createClientSignature(signingKey, path, body, timestamp),
+      },
+    )
+    const requestId = response.requestId?.trim()
+    if (!requestId) throw new Error('欧易申诉提交未返回请求编号')
+    return { data: { complaintNo: requestId } }
+  }
+
   sendChatText(
     _credentials: OkxWebPrivateCredentials,
     _orderId: string,
@@ -220,7 +288,7 @@ export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCred
 
   getCapabilities(): C2cCapabilities {
     return {
-      appeal: false,
+      appeal: true,
       cancelOrder: false,
       chat: false,
       checkAntiFraud: true,
@@ -370,6 +438,14 @@ export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCred
     const orderId = value.trim()
     if (!orderId) throw new Error('欧易 C2C 订单 ID 为空')
     return encodeURIComponent(orderId)
+  }
+
+  private numericOrderId(value: string) {
+    const orderId = value.trim()
+    if (!/^\d+$/.test(orderId) || BigInt(orderId) <= 0n) {
+      throw new Error('欧易 C2C 订单 ID 无效')
+    }
+    return orderId
   }
 
   private toNumericStatus(status: string) {
