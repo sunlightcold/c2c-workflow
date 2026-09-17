@@ -57,6 +57,11 @@ export interface PaymentBatchStore {
     errorMessage?: string,
     schedule?: PaymentBatchReconciliationSchedule,
   ) => Promise<ExecutablePaymentBatch>
+  recordReconciliationPending: (
+    batch: ExecutablePaymentBatch,
+    errorMessage: string | undefined,
+    schedule: PaymentBatchReconciliationSchedule,
+  ) => Promise<ExecutablePaymentBatch>
   fail: (batch: ExecutablePaymentBatch, errorMessage?: string) => Promise<ExecutablePaymentBatch>
   applyQuery: (
     batch: ExecutablePaymentBatch,
@@ -64,6 +69,7 @@ export interface PaymentBatchStore {
     schedule?: PaymentBatchReconciliationSchedule,
   ) => Promise<PaymentBatchApplyOutcome>
   prepareForQuery?: (tenantId: string, batchId: string) => Promise<ExecutablePaymentBatch>
+  runLocked: <T>(key: string, work: () => Promise<T>) => Promise<T | undefined>
 }
 
 export interface PaymentBatchExecutor {
@@ -95,6 +101,35 @@ export class PaymentBatchExecutionCoordinator {
   ) {}
 
   async submit(tenantId: string, batchId: string): Promise<ExecutablePaymentBatch> {
+    const result = await this.store.runLocked(this.batchOperationLockKey(tenantId, batchId), () =>
+      this.submitUnlocked(tenantId, batchId),
+    )
+    if (!result) throw new ConflictException('支付批次正在提交或回查，请稍后重试')
+    return result
+  }
+
+  async reconcile(
+    tenantId: string,
+    batchId: string,
+    options: { respectSchedule?: boolean; skipIfBusy?: boolean } = {},
+  ): Promise<ExecutablePaymentBatch | undefined> {
+    const result = await this.store.runLocked(this.batchOperationLockKey(tenantId, batchId), () =>
+      this.reconcileUnlocked(tenantId, batchId, options.respectSchedule ?? false),
+    )
+    if (result) return result
+    if (options.skipIfBusy) return undefined
+    throw new ConflictException('支付批次正在提交或回查，请稍后重试')
+  }
+
+  async queryUpstream(tenantId: string, batchId: string) {
+    const result = await this.store.runLocked(this.batchOperationLockKey(tenantId, batchId), () =>
+      this.queryUpstreamUnlocked(tenantId, batchId),
+    )
+    if (!result) throw new ConflictException('支付批次正在提交或回查，请稍后重试')
+    return result
+  }
+
+  private async submitUnlocked(tenantId: string, batchId: string): Promise<ExecutablePaymentBatch> {
     const prepared = await this.store.prepare(tenantId, batchId)
     if (prepared.status !== PaymentBatchStatus.READY)
       throw new ConflictException('只有待提交支付批次可以提交')
@@ -152,7 +187,11 @@ export class PaymentBatchExecutionCoordinator {
     return submitted
   }
 
-  async reconcile(tenantId: string, batchId: string): Promise<ExecutablePaymentBatch> {
+  private async reconcileUnlocked(
+    tenantId: string,
+    batchId: string,
+    respectSchedule: boolean,
+  ): Promise<ExecutablePaymentBatch | undefined> {
     const batch = await this.store.prepare(tenantId, batchId)
     if (
       ![
@@ -162,11 +201,12 @@ export class PaymentBatchExecutionCoordinator {
       ].includes(batch.status)
     )
       throw new ConflictException('只有提交中、处理中或结果未知的支付批次可以回查')
+    if (respectSchedule && !this.isReconciliationDue(batch)) return undefined
     this.logger.log(`支付批次自动回查开始: ${this.batchLogContext(batch, 'RECONCILE')}`)
     return this.queryAndApply(batch)
   }
 
-  async queryUpstream(tenantId: string, batchId: string) {
+  private async queryUpstreamUnlocked(tenantId: string, batchId: string) {
     const batch = this.store.prepareForQuery
       ? await this.store.prepareForQuery(tenantId, batchId)
       : await this.store.prepare(tenantId, batchId)
@@ -185,8 +225,7 @@ export class PaymentBatchExecutionCoordinator {
           PaymentBatchStatus.UNKNOWN,
         ].includes(batch.status)
       ) {
-        current = await this.store.markUnknown(batch, message, schedule)
-        this.emitStatus(current, message)
+        current = await this.store.recordReconciliationPending(batch, message, schedule)
       }
       this.logger.error(
         `支付批次人工查单异常: ${this.batchLogContext(current, 'QUERY_UPSTREAM')}, error=${message}`,
@@ -212,8 +251,7 @@ export class PaymentBatchExecutionCoordinator {
       ].includes(batch.status)
     ) {
       if (result.status === PaymentExecutionStatus.UNKNOWN) {
-        current = await this.store.markUnknown(batch, result.errorMessage, schedule)
-        this.emitStatus(current, result.errorMessage)
+        current = await this.store.recordReconciliationPending(batch, result.errorMessage, schedule)
       } else {
         const outcome = await this.applyQueryResultAndConfirm(batch, result, schedule)
         current = outcome
@@ -237,20 +275,17 @@ export class PaymentBatchExecutionCoordinator {
       result = await this.executor.query(batch)
     } catch (error) {
       const message = this.errorMessage(error)
-      const outcome = await this.store.markUnknown(batch, message, schedule)
+      const outcome = await this.store.recordReconciliationPending(batch, message, schedule)
       this.logger.error(
         `支付批次自动回查异常: ${this.batchLogContext(outcome, 'RECONCILE')}, error=${message}`,
       )
-      this.emitStatus(outcome, message)
       return outcome
     }
     this.logger.log(
       `支付批次自动回查响应: ${this.batchLogContext(batch, 'RECONCILE', result)}, upstreamStatus=${result.status}`,
     )
     if (result.status === PaymentExecutionStatus.UNKNOWN) {
-      const outcome = await this.store.markUnknown(batch, result.errorMessage, schedule)
-      this.emitStatus(outcome, result.errorMessage)
-      return outcome
+      return this.store.recordReconciliationPending(batch, result.errorMessage, schedule)
     }
     return this.applyQueryResultAndConfirm(batch, result, schedule)
   }
@@ -261,17 +296,13 @@ export class PaymentBatchExecutionCoordinator {
     schedule: PaymentBatchReconciliationSchedule,
   ): Promise<ExecutablePaymentBatch> {
     if (result.status === PaymentExecutionStatus.UNKNOWN) {
-      const outcome = await this.store.markUnknown(batch, result.errorMessage, schedule)
-      this.emitStatus(outcome, result.errorMessage)
-      return outcome
+      return this.store.recordReconciliationPending(batch, result.errorMessage, schedule)
     }
     let outcome: PaymentBatchApplyOutcome
     try {
       outcome = await this.applyQueryResult(batch, result, schedule)
     } catch (error) {
-      const unknown = await this.store.markUnknown(batch, this.errorMessage(error), schedule)
-      this.emitStatus(unknown, this.errorMessage(error))
-      return unknown
+      return this.store.recordReconciliationPending(batch, this.errorMessage(error), schedule)
     }
     // Batch settlement and platform confirmation are separate outcomes. Publish the
     // persisted batch result first so a slow or interrupted confirmation cannot hide it.
@@ -364,6 +395,16 @@ export class PaymentBatchExecutionCoordinator {
 
   private errorMessage(error: unknown): string {
     return (error instanceof Error ? error.message : String(error)).slice(0, 512)
+  }
+
+  private batchOperationLockKey(tenantId: string, batchId: string): string {
+    return `payment-batch:${tenantId}:${batchId}`
+  }
+
+  private isReconciliationDue(batch: ExecutablePaymentBatch): boolean {
+    if (batch.status === PaymentBatchStatus.SUBMITTING && batch.nextReconcileAt === null)
+      return true
+    return batch.nextReconcileAt !== null && batch.nextReconcileAt.getTime() <= Date.now()
   }
 
   private batchLogContext(

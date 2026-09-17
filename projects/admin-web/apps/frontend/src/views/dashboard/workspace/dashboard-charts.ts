@@ -2,6 +2,8 @@ import type { ECOption } from '@vben/plugins/echarts';
 
 import type { DashboardApi } from '#/api';
 
+import { decimalToChartNumber } from '#/utils/decimal';
+
 import {
   businessEnumText,
   merchantPlatformText,
@@ -64,7 +66,7 @@ export function buildTrendOption(
       },
       {
         data: rows.map(({ paymentSuccessAmount }) =>
-          Number(paymentSuccessAmount),
+          decimalToChartNumber(paymentSuccessAmount),
         ),
         lineStyle: { width: 3 },
         name: '成功金额',

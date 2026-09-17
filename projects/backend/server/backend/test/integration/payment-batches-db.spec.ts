@@ -38,6 +38,7 @@ import { migrateC2cPlatformConfirmationControl } from '@/apps/admin/database/mig
 import { migrateC2cFullProviderParity } from '@/apps/admin/database/migrations/c2c-full-provider-parity.migration'
 import { migratePaymentAccountCredentials } from '@/apps/admin/database/migrations/payment-account-credentials.migration'
 import { PaymentBatchService } from '@/apps/admin/modules/payment/payment-batch.service'
+import { TypeOrmC2cAutomaticPaymentStore } from '@/apps/admin/modules/payment/typeorm-c2c-automatic-payment.store'
 import { TypeOrmPaymentBatchStore } from '@/apps/admin/modules/payment/typeorm-payment-batch.store'
 import { PaymentExecutionStatus } from '@/apps/admin/modules/payment/payment-adapter.types'
 import developmentConfig from '@/config/development'
@@ -58,6 +59,7 @@ describe('Payment batch migration database integration', () => {
   let dataSource: DataSource
   let service: PaymentBatchService
   let store: TypeOrmPaymentBatchStore
+  let automaticPaymentStore: TypeOrmC2cAutomaticPaymentStore
 
   beforeAll(async () => {
     adminDataSource = new DataSource({
@@ -167,6 +169,7 @@ describe('Payment batch migration database integration', () => {
     })
     service = new PaymentBatchService(dataSource)
     store = new TypeOrmPaymentBatchStore(dataSource)
+    automaticPaymentStore = new TypeOrmC2cAutomaticPaymentStore(dataSource)
   })
 
   beforeEach(async () => {
@@ -321,6 +324,41 @@ describe('Payment batch migration database integration', () => {
     ).resolves.toEqual([{ status: 'SUBMITTING' }])
   })
 
+  it('discovers a submitting batch immediately so the operation lock can decide recovery', async () => {
+    const created = await service.create(tenantId, [orderId])
+    await store.claim(await store.prepare(tenantId, created.batch.id))
+
+    await expect(automaticPaymentStore.findRecoverableBatches(100)).resolves.toEqual([
+      expect.objectContaining({
+        id: created.batch.id,
+        status: PaymentBatchStatus.SUBMITTING,
+      }),
+    ])
+  })
+
+  it('allows only one operation to hold a payment batch advisory lock', async () => {
+    let releaseFirst!: () => void
+    let firstStarted!: () => void
+    const started = new Promise<void>((resolve) => {
+      firstStarted = resolve
+    })
+    const blocked = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    const lockKey = `payment-batch:${tenantId}:batch-lock-test`
+    const first = store.runLocked(lockKey, async () => {
+      firstStarted()
+      await blocked
+      return 'first'
+    })
+    await started
+
+    await expect(store.runLocked(lockKey, async () => 'second')).resolves.toBeUndefined()
+
+    releaseFirst()
+    await expect(first).resolves.toBe('first')
+  })
+
   it('rolls back the entire claim when the locked payment configuration becomes inactive', async () => {
     const created = await service.create(tenantId, [orderId])
     const prepared = await store.prepare(tenantId, created.batch.id)
@@ -371,6 +409,125 @@ describe('Payment batch migration database integration', () => {
       processingCount: 0,
       unknownCount: 0,
     })
+  })
+
+  it('records an inconclusive reconciliation without changing business statuses', async () => {
+    const created = await service.create(tenantId, [orderId])
+    const claimed = await store.claim(await store.prepare(tenantId, created.batch.id))
+    const processing = await store.markSubmitted(
+      claimed,
+      PaymentBatchStatus.PROCESSING,
+      'ALI-BAT-PENDING',
+    )
+    const nextReconcileAt = new Date('2026-09-17T12:00:05.000Z')
+
+    await expect(
+      store.recordReconciliationPending(processing, 'query timeout', {
+        reconciliationAttempts: 1,
+        nextReconcileAt,
+      }),
+    ).resolves.toMatchObject({
+      status: PaymentBatchStatus.PROCESSING,
+      reconciliationAttempts: 1,
+      nextReconcileAt,
+    })
+    await expect(
+      dataSource.query(
+        `SELECT status, "lastError", "reconciliationAttempts", "nextReconcileAt"
+         FROM payment_batch WHERE id = $1`,
+        [created.batch.id],
+      ),
+    ).resolves.toEqual([
+      {
+        status: 'PROCESSING',
+        lastError: 'query timeout',
+        reconciliationAttempts: 1,
+        nextReconcileAt,
+      },
+    ])
+    await expect(
+      dataSource.query(`SELECT status FROM payment_batch_item WHERE "batchId" = $1`, [
+        created.batch.id,
+      ]),
+    ).resolves.toEqual([{ status: 'PROCESSING' }])
+    await expect(
+      dataSource.query(`SELECT status FROM payment_order WHERE id = $1`, [orderId]),
+    ).resolves.toEqual([{ status: 'PROCESSING' }])
+  })
+
+  it('does not force unresolved items to unknown after reconciliation is exhausted', async () => {
+    const created = await service.create(tenantId, [orderId])
+    const claimed = await store.claim(await store.prepare(tenantId, created.batch.id))
+    const processing = await store.markSubmitted(
+      claimed,
+      PaymentBatchStatus.PROCESSING,
+      'ALI-BAT-PENDING',
+    )
+
+    const outcome = await store.applyQuery(
+      processing,
+      {
+        status: PaymentExecutionStatus.PROCESSING,
+        upstreamId: 'ALI-BAT-PENDING',
+        raw: {
+          code: '10000',
+          outBatchNo: processing.batchNo,
+          batchTransId: 'ALI-BAT-PENDING',
+          batchStatus: 'DEALING',
+          accDetailList: [
+            {
+              outBizNo: 'PAY-1',
+              detailId: 'DETAIL-PENDING',
+              status: 'DEALING',
+              transAmount: '100.00',
+            },
+          ],
+        },
+      },
+      { reconciliationAttempts: 12, nextReconcileAt: null },
+    )
+
+    expect(outcome.batch.status).toBe(PaymentBatchStatus.PROCESSING)
+    await expect(
+      dataSource.query(`SELECT status FROM payment_batch_item WHERE "batchId" = $1`, [
+        created.batch.id,
+      ]),
+    ).resolves.toEqual([{ status: 'PROCESSING' }])
+    await expect(
+      dataSource.query(`SELECT status FROM payment_order WHERE id = $1`, [orderId]),
+    ).resolves.toEqual([{ status: 'PROCESSING' }])
+  })
+
+  it('persists a successful submission when reconciliation marked the batch unknown first', async () => {
+    const created = await service.create(tenantId, [orderId])
+    const claimed = await store.claim(await store.prepare(tenantId, created.batch.id))
+    await store.markUnknown(claimed, 'concurrent reconciliation returned unknown')
+
+    await expect(
+      store.markSubmitted(claimed, PaymentBatchStatus.PROCESSING, 'ALI-BAT-RACE', {
+        reconciliationAttempts: 0,
+        nextReconcileAt: new Date('2026-09-17T12:00:15.000Z'),
+      }),
+    ).resolves.toMatchObject({
+      status: PaymentBatchStatus.PROCESSING,
+      upstreamId: 'ALI-BAT-RACE',
+    })
+    await expect(
+      dataSource.query(`SELECT status, "upstreamId" FROM payment_batch WHERE id = $1`, [
+        created.batch.id,
+      ]),
+    ).resolves.toEqual([{ status: 'PROCESSING', upstreamId: 'ALI-BAT-RACE' }])
+    await expect(
+      dataSource.query(`SELECT status FROM payment_batch_item WHERE "batchId" = $1`, [
+        created.batch.id,
+      ]),
+    ).resolves.toEqual([{ status: 'PROCESSING' }])
+    await expect(
+      dataSource.query(`SELECT status, "upstreamId" FROM payment_order WHERE id = $1`, [orderId]),
+    ).resolves.toEqual([{ status: 'PROCESSING', upstreamId: 'ALI-BAT-RACE' }])
+    await expect(
+      store.markSubmitted(claimed, PaymentBatchStatus.PROCESSING, 'ALI-BAT-CONFLICT'),
+    ).rejects.toThrow('支付宝批次流水号与已保存记录不一致')
   })
 
   it('allows an unknown submitted batch to use its original credentials after configuration stops', async () => {

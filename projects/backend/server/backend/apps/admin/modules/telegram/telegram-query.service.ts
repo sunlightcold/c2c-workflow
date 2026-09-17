@@ -3,6 +3,7 @@ import {
   createRelativeBusinessDayWindow,
   getCurrentBusinessDateParts,
 } from '@/common/time'
+import { formatDecimal, formatTrimmedDecimal } from '@/common/utils/decimal'
 import {
   PaymentBatchEntity,
   PaymentBatchItemEntity,
@@ -278,14 +279,6 @@ export class TelegramQueryService {
       assetAmount: summary.assetAmount,
       fiatAmount: summary.fiatAmount,
     }))
-    const totals = rows.reduce(
-      (sum, row) => ({
-        count: sum.count + Number(row.orderCount),
-        asset: sum.asset + Number(row.assetAmount),
-        fiat: sum.fiat + Number(row.fiatAmount),
-      }),
-      { count: 0, asset: 0, fiat: 0 },
-    )
     const details = rows.length
       ? rows
           .map(
@@ -303,9 +296,9 @@ export class TelegramQueryService {
         `日期：<code>${formattedDate}</code>\n` +
         `统计方向：买入 USDT\n\n` +
         `<b>汇总</b>\n` +
-        `订单总数：<code>${totals.count}</code> 笔\n` +
-        `USDT 总额：<code>${asset(totals.asset)}</code>\n` +
-        `法币总额：<code>¥${money(totals.fiat)}</code>\n\n` +
+        `订单总数：<code>${providerReport.orderCount}</code> 笔\n` +
+        `USDT 总额：<code>${asset(providerReport.assetAmount)}</code>\n` +
+        `法币总额：<code>¥${money(providerReport.fiatAmount)}</code>\n\n` +
         `<b>明细</b>\n${details}`,
     }
   }
@@ -334,15 +327,11 @@ export class TelegramQueryService {
 }
 
 function money(value: unknown): string {
-  const number = Number(value ?? 0)
-  return Number.isFinite(number) ? number.toFixed(2) : '0.00'
+  return formatDecimal(value, 2)
 }
 
 function asset(value: unknown): string {
-  const number = Number(value ?? 0)
-  return Number.isFinite(number)
-    ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 8 }).format(number)
-    : '0'
+  return formatTrimmedDecimal(value, 8)
 }
 
 function merchantOrderStatusLabel(status: string): string {

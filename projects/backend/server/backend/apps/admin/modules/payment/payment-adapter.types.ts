@@ -1,3 +1,5 @@
+import { decimal, sumDecimalStrings } from '@/common/utils/decimal'
+
 export const ALIPAY_GATEWAY = Symbol('ALIPAY_GATEWAY')
 
 export enum PaymentExecutionStatus {
@@ -35,13 +37,9 @@ export interface AlipayPayee {
 export function normalizeCnyAmount(value: string): string {
   const match = /^(0|[1-9]\d*)(?:\.(\d{1,2}))?$/.exec(value)
   if (!match) throw new Error('金额必须是最多两位小数的非负字符串')
-  return `${match[1]}.${(match[2] ?? '').padEnd(2, '0')}`
+  return decimal(value).toFixed(2)
 }
 
 export function sumCnyAmounts(values: string[]): string {
-  const cents = values.reduce((sum, value) => {
-    const normalized = normalizeCnyAmount(value)
-    return sum + BigInt(normalized.replace('.', ''))
-  }, 0n)
-  return `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`
+  return sumDecimalStrings(values.map(normalizeCnyAmount), 2)
 }

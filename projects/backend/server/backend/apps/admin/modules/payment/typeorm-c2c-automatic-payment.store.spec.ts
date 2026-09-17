@@ -43,13 +43,21 @@ describe('TypeOrmC2cAutomaticPaymentStore', () => {
       PlatformConfirmationStatus.PROCESSING,
       100,
     ])
-    expect(dataSource.query.mock.calls[1][1][0]).toEqual([
+    const [batchSql, batchParameters] = dataSource.query.mock.calls[1]
+    expect(batchParameters[0]).toEqual([
       PaymentBatchStatus.SUBMITTING,
       PaymentBatchStatus.PROCESSING,
       PaymentBatchStatus.UNKNOWN,
     ])
-    expect(dataSource.query.mock.calls[1][0]).not.toContain("status = 'READY'")
-    expect(dataSource.query.mock.calls[1][0]).toContain('"nextReconcileAt" <= NOW()')
+    expect(batchSql).not.toContain("status = 'READY'")
+    expect(batchSql).toContain('"nextReconcileAt" <= NOW()')
+    expect(batchSql).toContain('status = \'SUBMITTING\' AND "nextReconcileAt" IS NULL')
+    expect(batchSql).not.toContain('"updatedAt" <= NOW()')
+    expect(batchSql).toContain('LIMIT $2')
+    expect(batchParameters).toEqual([
+      [PaymentBatchStatus.SUBMITTING, PaymentBatchStatus.PROCESSING, PaymentBatchStatus.UNKNOWN],
+      100,
+    ])
   })
 
   it('builds automatic batch scopes from all ready batch orders regardless of source', async () => {

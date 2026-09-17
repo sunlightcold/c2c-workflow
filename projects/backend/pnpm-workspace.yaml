@@ -33,6 +33,7 @@ catalog:
   "@swc/core": ^1.10.7
   "@types/adm-zip": ^0.5.7
   "@types/archiver": ^6.0.3
+  "@types/big.js": ^6.2.2
   "@types/config": ^3.3.5
   "@types/express": ^5.0.0
   "@types/fs-extra": ^11.0.4
@@ -51,6 +52,7 @@ catalog:
   "alipay-sdk": ^4.14.0
   "archiver": ^7.0.1
   "axios": ^1.7.9
+  "big.js": ^7.0.1
   "bullmq": ^5.47.2
   "cache-manager": ^6.4.1
   "class-transformer": ^0.5.1

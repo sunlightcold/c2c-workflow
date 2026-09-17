@@ -1,4 +1,5 @@
 import { MerchantEntity } from '@admin/database'
+import { addDecimalStrings } from '@/common/utils/decimal'
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
@@ -69,11 +70,11 @@ export class C2cReportService {
         fiatAmount: '0',
       }
       summary.orderCount += 1
-      summary.assetAmount = addDecimal(summary.assetAmount, order.assetAmount)
-      summary.fiatAmount = addDecimal(summary.fiatAmount, order.fiatAmount)
+      summary.assetAmount = addDecimalStrings(summary.assetAmount, order.assetAmount)
+      summary.fiatAmount = addDecimalStrings(summary.fiatAmount, order.fiatAmount)
       statusSummary[order.status] = summary
-      assetAmount = addDecimal(assetAmount, order.assetAmount)
-      fiatAmount = addDecimal(fiatAmount, order.fiatAmount)
+      assetAmount = addDecimalStrings(assetAmount, order.assetAmount)
+      fiatAmount = addDecimalStrings(fiatAmount, order.fiatAmount)
     }
     return {
       orderCount: orders.length,
@@ -82,16 +83,4 @@ export class C2cReportService {
       statusSummary,
     }
   }
-}
-
-function addDecimal(left: string, right: string): string {
-  const [leftWhole, leftFraction = ''] = left.split('.')
-  const [rightWhole, rightFraction = ''] = right.split('.')
-  const scale = Math.max(leftFraction.length, rightFraction.length)
-  const leftValue = BigInt(`${leftWhole}${leftFraction.padEnd(scale, '0')}`)
-  const rightValue = BigInt(`${rightWhole}${rightFraction.padEnd(scale, '0')}`)
-  const value = (leftValue + rightValue).toString().padStart(scale + 1, '0')
-  if (!scale) return value
-  const result = `${value.slice(0, -scale)}.${value.slice(-scale)}`
-  return result.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1')
 }

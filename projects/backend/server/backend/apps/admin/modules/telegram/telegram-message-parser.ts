@@ -1,3 +1,5 @@
+import { isPositiveDecimal } from '@/common/utils/decimal'
+
 export interface TelegramManualPaymentInput {
   amount: string
   payeeIdentity: string
@@ -34,7 +36,7 @@ export function parseTelegramManualPayments(text: string): ParsedTelegramPayment
       results.push({ index: index + 1, error: '商户订单号不能为空且不能超过 128 个字符' })
       continue
     }
-    if (!amountPattern.test(amount) || Number(amount) <= 0) {
+    if (!amountPattern.test(amount) || !isPositiveDecimal(amount)) {
       results.push({ index: index + 1, error: '金额必须是大于 0 且最多两位小数的数字' })
       continue
     }

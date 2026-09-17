@@ -322,6 +322,9 @@ describe('C2cAutomaticPaymentService', () => {
     await service.recover()
 
     expect(batchExecution.submit).not.toHaveBeenCalled()
-    expect(batchExecution.reconcile).toHaveBeenCalledWith('tenant-1', 'batch-processing')
+    expect(batchExecution.reconcile).toHaveBeenCalledWith('tenant-1', 'batch-processing', {
+      respectSchedule: true,
+      skipIfBusy: true,
+    })
   })
 })

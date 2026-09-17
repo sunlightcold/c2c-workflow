@@ -36,8 +36,10 @@ describe('PaymentBatchExecutionCoordinator', () => {
     claim: jest.fn(),
     markSubmitted: jest.fn(),
     markUnknown: jest.fn(),
+    recordReconciliationPending: jest.fn(),
     fail: jest.fn(),
     applyQuery: jest.fn(),
+    runLocked: jest.fn(),
   }
   const executor = {
     submit: jest.fn(),
@@ -60,12 +62,17 @@ describe('PaymentBatchExecutionCoordinator', () => {
     store.claim.mockResolvedValue({ ...batch, status: PaymentBatchStatus.SUBMITTING })
     store.markSubmitted.mockImplementation(async (_batch, status) => ({ ...batch, status }))
     store.markUnknown.mockResolvedValue({ ...batch, status: PaymentBatchStatus.UNKNOWN })
+    store.recordReconciliationPending.mockImplementation(async (current, _message, schedule) => ({
+      ...current,
+      ...schedule,
+    }))
     store.fail.mockResolvedValue({ ...batch, status: PaymentBatchStatus.FAILED })
     store.applyQuery.mockResolvedValue({
       batch: { ...batch, status: PaymentBatchStatus.SUCCESS },
       paymentsToConfirm: [{ id: 'order-1', tenantId: 'tenant-1', status: 'SUCCESS' }],
     })
     payments.confirmPlatform.mockResolvedValue({ status: 'COMPLETED' })
+    store.runLocked.mockImplementation(async (_key, work) => work())
     coordinator = new PaymentBatchExecutionCoordinator(
       store,
       executor,
@@ -196,6 +203,43 @@ describe('PaymentBatchExecutionCoordinator', () => {
     })
   })
 
+  it('keeps processing status when an automatic query returns an unknown result', async () => {
+    store.prepare.mockResolvedValue({ ...batch, status: PaymentBatchStatus.PROCESSING })
+    executor.query.mockResolvedValue({
+      status: PaymentExecutionStatus.UNKNOWN,
+      errorMessage: 'upstream result unavailable',
+      raw: {},
+    })
+
+    await expect(coordinator.reconcile('tenant-1', 'batch-1')).resolves.toMatchObject({
+      status: PaymentBatchStatus.PROCESSING,
+    })
+
+    expect(store.recordReconciliationPending).toHaveBeenCalledWith(
+      expect.objectContaining({ status: PaymentBatchStatus.PROCESSING }),
+      'upstream result unavailable',
+      expect.objectContaining({ reconciliationAttempts: 1 }),
+    )
+    expect(store.markUnknown).not.toHaveBeenCalled()
+    expect(store.applyQuery).not.toHaveBeenCalled()
+  })
+
+  it('keeps processing status when an automatic query throws', async () => {
+    store.prepare.mockResolvedValue({ ...batch, status: PaymentBatchStatus.PROCESSING })
+    executor.query.mockRejectedValue(new Error('query timeout'))
+
+    await expect(coordinator.reconcile('tenant-1', 'batch-1')).resolves.toMatchObject({
+      status: PaymentBatchStatus.PROCESSING,
+    })
+
+    expect(store.recordReconciliationPending).toHaveBeenCalledWith(
+      expect.objectContaining({ status: PaymentBatchStatus.PROCESSING }),
+      'query timeout',
+      expect.objectContaining({ reconciliationAttempts: 1 }),
+    )
+    expect(store.markUnknown).not.toHaveBeenCalled()
+  })
+
   it('fails without querying when the request was definitely not submitted', async () => {
     executor.submit.mockRejectedValue(new PaymentNotSubmittedError('支付宝凭据无效'))
 
@@ -209,18 +253,62 @@ describe('PaymentBatchExecutionCoordinator', () => {
     expect(executor.query).not.toHaveBeenCalled()
   })
 
-  it('keeps the batch unknown when returned details cannot be safely matched', async () => {
+  it('keeps the batch processing when returned details cannot be safely matched', async () => {
     store.prepare.mockResolvedValue({ ...batch, status: PaymentBatchStatus.PROCESSING })
     executor.query.mockResolvedValue({ status: PaymentExecutionStatus.SUCCESS, raw: {} })
     store.applyQuery.mockRejectedValue(new Error('支付宝批次包含未知支付明细'))
 
     await expect(coordinator.reconcile('tenant-1', 'batch-1')).resolves.toMatchObject({
-      status: PaymentBatchStatus.UNKNOWN,
+      status: PaymentBatchStatus.PROCESSING,
     })
-    expect(store.markUnknown).toHaveBeenCalledWith(
+    expect(store.recordReconciliationPending).toHaveBeenCalledWith(
       expect.objectContaining({ status: PaymentBatchStatus.PROCESSING }),
       '支付宝批次包含未知支付明细',
       expect.objectContaining({ reconciliationAttempts: 1 }),
+    )
+    expect(store.markUnknown).not.toHaveBeenCalled()
+  })
+
+  it('rechecks the reconciliation schedule after acquiring the batch lock', async () => {
+    store.prepare.mockResolvedValue({
+      ...batch,
+      status: PaymentBatchStatus.PROCESSING,
+      nextReconcileAt: new Date(Date.now() + 60_000),
+    })
+
+    await expect(
+      coordinator.reconcile('tenant-1', 'batch-1', {
+        respectSchedule: true,
+        skipIfBusy: true,
+      }),
+    ).resolves.toBeUndefined()
+
+    expect(executor.query).not.toHaveBeenCalled()
+  })
+
+  it('serializes submit and reconciliation with the same batch operation lock', async () => {
+    executor.submit.mockResolvedValue({ status: PaymentExecutionStatus.PROCESSING, raw: {} })
+
+    await coordinator.submit('tenant-1', 'batch-1')
+    store.prepare.mockResolvedValue({ ...batch, status: PaymentBatchStatus.PROCESSING })
+    executor.query.mockResolvedValue({ status: PaymentExecutionStatus.PROCESSING, raw: {} })
+    await coordinator.reconcile('tenant-1', 'batch-1')
+    await coordinator.queryUpstream('tenant-1', 'batch-1')
+
+    expect(store.runLocked).toHaveBeenNthCalledWith(
+      1,
+      'payment-batch:tenant-1:batch-1',
+      expect.any(Function),
+    )
+    expect(store.runLocked).toHaveBeenNthCalledWith(
+      2,
+      'payment-batch:tenant-1:batch-1',
+      expect.any(Function),
+    )
+    expect(store.runLocked).toHaveBeenNthCalledWith(
+      3,
+      'payment-batch:tenant-1:batch-1',
+      expect.any(Function),
     )
   })
 

@@ -8,6 +8,7 @@ import {
   PaymentSourceType,
 } from '@admin/database'
 import { Inject, Injectable } from '@nestjs/common'
+import { decimal } from '@/common/utils/decimal'
 import {
   C2cPlatformClient,
   type C2cPlatformCredentials,
@@ -288,7 +289,7 @@ export class C2cPaymentPreflightVerifier {
 
   private sameAmount(left: string, right: string): boolean {
     try {
-      return normalizeCnyAmount(left) === normalizeCnyAmount(right)
+      return decimal(left).eq(decimal(normalizeCnyAmount(right)))
     } catch {
       return false
     }

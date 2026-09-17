@@ -87,6 +87,9 @@ catalogs:
     '@types/archiver':
       specifier: ^6.0.3
       version: 6.0.3
+    '@types/big.js':
+      specifier: ^6.2.2
+      version: 6.2.2
     '@types/config':
       specifier: ^3.3.5
       version: 3.3.5
@@ -141,6 +144,9 @@ catalogs:
     axios:
       specifier: ^1.7.9
       version: 1.8.4
+    big.js:
+      specifier: ^7.0.1
+      version: 7.0.1
     bullmq:
       specifier: ^5.47.2
       version: 5.47.2
@@ -395,6 +401,9 @@ importers:
       axios:
         specifier: 'catalog:'
         version: 1.8.4
+      big.js:
+        specifier: 'catalog:'
+        version: 7.0.1
       bullmq:
         specifier: 'catalog:'
         version: 5.47.2
@@ -516,6 +525,9 @@ importers:
       '@types/archiver':
         specifier: 'catalog:'
         version: 6.0.3
+      '@types/big.js':
+        specifier: 'catalog:'
+        version: 6.2.2
       '@types/config':
         specifier: 'catalog:'
         version: 3.3.5
@@ -2839,6 +2851,9 @@ packages:
   '@types/babel__traverse@7.20.6':
     resolution: {integrity: sha512-r1bzfrm0tomOI8g1SzvCaQHo6Lcv6zu0EA+W2kHrt8dyrHQxGzBBL4kdkzIS+jBMV+EYcMAEAqXqYaLJq5rOZg==, tarball: https://registry.npmjs.org/@types/babel__traverse/-/babel__traverse-7.20.6.tgz}
 
+  '@types/big.js@6.2.2':
+    resolution: {integrity: sha512-e2cOW9YlVzFY2iScnGBBkplKsrn2CsObHQ2Hiw4V1sSyiGbgWL8IyqE3zFi1Pt5o1pdAtYkDAIsF3KKUPjdzaA==, tarball: https://registry.npmjs.org/@types/big.js/-/big.js-6.2.2.tgz}
+
   '@types/body-parser@1.19.5':
     resolution: {integrity: sha512-fB3Zu92ucau0iQ0JMCFQE7b/dv8Ot07NI3KaZIkIUNXq82k4eBAqUaneXfleGY9JWskeS9y+u0nXMyspcuQrCg==, tarball: https://registry.npmjs.org/@types/body-parser/-/body-parser-1.19.5.tgz}
 
@@ -3434,6 +3449,9 @@ packages:
   big-integer@1.6.52:
     resolution: {integrity: sha512-QxD8cf2eVqJOOz63z6JIN9BzvVs/dlySa5HGSBH5xtR8dPteIRQnBxxKqkNTiT6jbDTF6jAfrd4oMcND9RGbQg==, tarball: https://registry.npmjs.org/big-integer/-/big-integer-1.6.52.tgz}
     engines: {node: '>=0.6'}
+
+  big.js@7.0.1:
+    resolution: {integrity: sha512-iFgV784tD8kq4ccF1xtNMZnXeZzVuXWWM+ERFzKQjv+A5G9HC8CY3DuV45vgzFFcW+u2tIvmF95+AzWgs6BjCg==, tarball: https://registry.npmjs.org/big.js/-/big.js-7.0.1.tgz}
 
   bignumber.js@9.3.1:
     resolution: {integrity: sha512-Ko0uX15oIUS7wJ3Rb30Fs6SkVbLmPBAKdlm7q9+ak9bbIeFf0MwuBsQV6z7+X768/cHsfg+WlysDWJcmthjsjQ==, tarball: https://registry.npmjs.org/bignumber.js/-/bignumber.js-9.3.1.tgz}
@@ -9829,6 +9847,8 @@ snapshots:
     dependencies:
       '@babel/types': 7.26.10
 
+  '@types/big.js@6.2.2': {}
+
   '@types/body-parser@1.19.5':
     dependencies:
       '@types/connect': 3.4.38
@@ -10604,6 +10624,8 @@ snapshots:
   base64id@2.0.0: {}
 
   big-integer@1.6.52: {}
+
+  big.js@7.0.1: {}
 
   bignumber.js@9.3.1: {}
 

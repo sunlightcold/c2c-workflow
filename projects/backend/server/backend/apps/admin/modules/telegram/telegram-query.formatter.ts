@@ -1,3 +1,4 @@
+import { formatDecimal } from '@/common/utils/decimal'
 import { PaymentBatchStatus, PaymentOrderStatus } from '@admin/database'
 
 export interface TelegramInlineButton {
@@ -243,8 +244,7 @@ function compact(value: unknown, maxLength: number): string {
 }
 
 function money(value: unknown): string {
-  const number = Number(value ?? 0)
-  return Number.isFinite(number) ? number.toFixed(2) : '0.00'
+  return formatDecimal(value, 2)
 }
 
 function dateTime(value: Date | string | null | undefined): string {

@@ -1,4 +1,5 @@
 import { createRecentBusinessDaysWindow, toBusinessDateSql } from '@/common/time'
+import { formatDecimal } from '@/common/utils/decimal'
 import { Injectable } from '@nestjs/common'
 import { DataSource } from 'typeorm'
 import type {
@@ -303,5 +304,5 @@ function numeric(value: unknown): number {
 }
 
 function money(value: unknown): string {
-  return numeric(value).toFixed(2)
+  return formatDecimal(value, 2)
 }

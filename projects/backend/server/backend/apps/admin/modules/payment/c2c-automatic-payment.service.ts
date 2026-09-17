@@ -174,7 +174,10 @@ export class C2cAutomaticPaymentService {
     )
     const batchResult = await this.runItems(batches, (batch) =>
       this.store.runLocked(`batch-recovery:${batch.id}`, () =>
-        this.batchExecution.reconcile(batch.tenantId, batch.id),
+        this.batchExecution.reconcile(batch.tenantId, batch.id, {
+          respectSchedule: true,
+          skipIfBusy: true,
+        }),
       ),
     )
     return { payments: paymentResult, batches: batchResult }

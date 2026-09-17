@@ -9,6 +9,7 @@ import { IconifyIcon } from '@vben/icons';
 import { useMediaQuery } from '@vueuse/core';
 
 import { getDashboardOverviewApi } from '#/api';
+import { formatCny } from '#/utils/decimal';
 
 import { merchantPlatformText } from '../../business/shared/business-ui';
 import { useBusinessTenantFilter } from '../../business/shared/use-business-tenant-filter';
@@ -149,12 +150,7 @@ function handleRangeChange(value: number | string) {
 }
 
 function formatMoney(value?: string) {
-  return new Intl.NumberFormat('zh-CN', {
-    currency: 'CNY',
-    maximumFractionDigits: 2,
-    minimumFractionDigits: 2,
-    style: 'currency',
-  }).format(Number(value ?? 0));
+  return formatCny(value);
 }
 
 function formatCount(value?: number) {

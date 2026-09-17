@@ -143,6 +143,28 @@ describe('TelegramQueryService', () => {
     expect(dataSource.query).not.toHaveBeenCalled()
   })
 
+  it('renders exact provider totals without native-number aggregation', async () => {
+    c2cReports.getProviderDailyReport.mockResolvedValue({
+      orderCount: 2,
+      assetAmount: '0.300000000000000001',
+      fiatAmount: '9007199254740993.03',
+      statusSummary: {
+        COMPLETED: {
+          orderCount: 1,
+          assetAmount: '0.1',
+          fiatAmount: '9007199254740993.01',
+        },
+        CANCELLED: { orderCount: 1, assetAmount: '0.200000000000000001', fiatAmount: '0.02' },
+      },
+    })
+
+    const reply = await service.dailyReport('tenant-1', 'merchant-1', '20260914')
+
+    expect(reply.text).toContain('订单总数：<code>2</code> 笔')
+    expect(reply.text).toContain('USDT 总额：<code>0.3</code>')
+    expect(reply.text).toContain('法币总额：<code>¥9007199254740993.03</code>')
+  })
+
   it('downloads and converts a ready PDF receipt into JPG photos', async () => {
     orders.findOne.mockResolvedValue({
       id: '00000000-0000-4000-8000-000000000001',

@@ -94,4 +94,28 @@ describe('DashboardService', () => {
     expect(allSql).not.toContain("status IN ('SUCCESS', 'PLATFORM_CONFIRM_PENDING', 'COMPLETED')")
     expect(allSql).toContain("status IN ('SUCCESS')")
   })
+
+  it('keeps dashboard monetary strings exact beyond Number safe integer range', async () => {
+    dataSource.query
+      .mockResolvedValueOnce([
+        {
+          merchantOrderAmount: '9007199254740993.015',
+          paymentAmount: '9007199254740993.015',
+          paymentSuccessAmount: '9007199254740993.015',
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+
+    const result = await service.overview('tenant-1', 7, now)
+
+    expect(result.summary).toMatchObject({
+      merchantOrderAmount: '9007199254740993.02',
+      paymentAmount: '9007199254740993.02',
+      paymentSuccessAmount: '9007199254740993.02',
+    })
+  })
 })

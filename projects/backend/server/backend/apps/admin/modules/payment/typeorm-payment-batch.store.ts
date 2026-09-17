@@ -157,25 +157,47 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
     schedule?: PaymentBatchReconciliationSchedule,
   ): Promise<ExecutablePaymentBatch> {
     return this.dataSource.transaction(async (manager) => {
-      const batch = await this.lockBatch(manager, input, [PaymentBatchStatus.SUBMITTING])
+      const batch = await this.lockBatch(manager, input, [
+        PaymentBatchStatus.SUBMITTING,
+        PaymentBatchStatus.PROCESSING,
+        PaymentBatchStatus.UNKNOWN,
+      ])
+      if (upstreamId && batch.upstreamId && upstreamId !== batch.upstreamId) {
+        throw new ConflictException('支付宝批次流水号与已保存记录不一致')
+      }
       const { items, orders } = await this.lockItemsAndOrders(manager, batch)
       for (const item of items) {
-        if (item.status === PaymentBatchItemStatus.SUBMITTING)
+        if (
+          [PaymentBatchItemStatus.SUBMITTING, PaymentBatchItemStatus.UNKNOWN].includes(item.status)
+        ) {
           item.status = PaymentBatchItemStatus.PROCESSING
+          item.errorMessage = null
+        }
       }
       await manager.save(items)
       Object.assign(batch, this.countItems(items), {
         upstreamId: upstreamId ?? batch.upstreamId,
+        lastError: null,
         ...(schedule ?? {}),
       })
       await this.transitionBatch(manager, batch, status)
       for (const order of orders) {
-        if (order.status !== PaymentOrderStatus.SUBMITTING) continue
+        if (
+          ![
+            PaymentOrderStatus.SUBMITTING,
+            PaymentOrderStatus.PROCESSING,
+            PaymentOrderStatus.UNKNOWN,
+          ].includes(order.status)
+        ) {
+          continue
+        }
         const previous = order.status
         order.status = PaymentOrderStatus.PROCESSING
         order.upstreamId = upstreamId ?? order.upstreamId
+        order.lastError = null
         await manager.save(order)
-        await this.paymentHistory(manager, order, previous, order.status)
+        if (previous !== order.status)
+          await this.paymentHistory(manager, order, previous, order.status)
       }
       return {
         ...input,
@@ -200,6 +222,48 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
       errorMessage,
       schedule,
     )
+  }
+
+  recordReconciliationPending(
+    input: ExecutablePaymentBatch,
+    errorMessage: string | undefined,
+    schedule: PaymentBatchReconciliationSchedule,
+  ): Promise<ExecutablePaymentBatch> {
+    return this.dataSource.transaction(async (manager) => {
+      const batch = await this.lockBatch(manager, input, [
+        PaymentBatchStatus.SUBMITTING,
+        PaymentBatchStatus.PROCESSING,
+        PaymentBatchStatus.UNKNOWN,
+      ])
+      Object.assign(batch, schedule, { lastError: errorMessage ?? null })
+      await manager.save(batch)
+      return {
+        ...input,
+        status: batch.status,
+        upstreamId: batch.upstreamId,
+        reconciliationAttempts: batch.reconciliationAttempts,
+        nextReconcileAt: batch.nextReconcileAt,
+      }
+    })
+  }
+
+  async runLocked<T>(key: string, work: () => Promise<T>): Promise<T | undefined> {
+    const runner = this.dataSource.createQueryRunner()
+    await runner.connect()
+    try {
+      const [result] = (await runner.query(
+        'SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS acquired',
+        [key],
+      )) as Array<{ acquired: boolean }>
+      if (!result?.acquired) return undefined
+      try {
+        return await work()
+      } finally {
+        await runner.query('SELECT pg_advisory_unlock(hashtextextended($1, 0))', [key])
+      }
+    } finally {
+      await runner.release()
+    }
   }
 
   fail(input: ExecutablePaymentBatch, errorMessage?: string): Promise<ExecutablePaymentBatch> {
@@ -359,15 +423,11 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
     const message = `支付批次自动回查已达到最大次数（${schedule.reconciliationAttempts} 次），请人工核实`
     for (const item of items) {
       if (this.isFinalItem(item.status)) continue
-      item.status = PaymentBatchItemStatus.UNKNOWN
       item.errorMessage = message
       const order = orderByItemId.get(item.id)!
       if (!this.isActivePayment(order.status)) continue
-      const previous = order.status
-      order.status = PaymentOrderStatus.UNKNOWN
       order.lastError = message
       await manager.save(order)
-      await this.paymentHistory(manager, order, previous, order.status, message)
     }
     await manager.save(items)
     return message

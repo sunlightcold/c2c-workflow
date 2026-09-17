@@ -159,6 +159,17 @@ describe('C2cPaymentPreflightVerifier', () => {
     )
   })
 
+  it('accepts an unchanged instant amount with trailing upstream zeros', async () => {
+    platformClient.getOrderDetail.mockResolvedValue({
+      ...platformOrder,
+      fiatAmount: '100.00000000',
+    })
+
+    await expect(verifier.verify('tenant-1', 'payment-1', now)).resolves.toMatchObject({
+      platformOrder: { fiatAmount: '100.00000000' },
+    })
+  })
+
   it('accepts an unchanged payable platform order before an Alipay password-protected batch claim', async () => {
     const batchOrder = {
       ...order,
@@ -184,6 +195,62 @@ describe('C2cPaymentPreflightVerifier', () => {
       platformOrder: { platformOrderId: 'platform-order-1' },
     })
   })
+
+  it.each(['100', '100.0', '100.00000000'])(
+    'accepts an unchanged batch amount with upstream format %s',
+    async (fiatAmount) => {
+      store.load.mockResolvedValue({
+        order: {
+          ...order,
+          status: PaymentOrderStatus.READY,
+          executionMode: PaymentExecutionMode.BATCH,
+        },
+        ...configuration,
+        merchantOrder: {
+          ...configuration.merchantOrder,
+          status: MerchantOrderStatus.PENDING_PAYMENT,
+        },
+        channel: {
+          ...configuration.channel,
+          adapterCode: PaymentAdapterCode.ALIPAY_BATCH,
+          executionMode: PaymentExecutionMode.BATCH,
+        },
+      })
+      platformClient.getOrderDetail.mockResolvedValue({ ...platformOrder, fiatAmount })
+
+      await expect(verifier.verifyBatch('tenant-1', 'payment-1', now)).resolves.toMatchObject({
+        platformOrder: { fiatAmount },
+      })
+    },
+  )
+
+  it.each(['100.001', '100.01000000', '101.00000000'])(
+    'rejects a real batch amount difference with upstream format %s',
+    async (fiatAmount) => {
+      store.load.mockResolvedValue({
+        order: {
+          ...order,
+          status: PaymentOrderStatus.READY,
+          executionMode: PaymentExecutionMode.BATCH,
+        },
+        ...configuration,
+        merchantOrder: {
+          ...configuration.merchantOrder,
+          status: MerchantOrderStatus.PENDING_PAYMENT,
+        },
+        channel: {
+          ...configuration.channel,
+          adapterCode: PaymentAdapterCode.ALIPAY_BATCH,
+          executionMode: PaymentExecutionMode.BATCH,
+        },
+      })
+      platformClient.getOrderDetail.mockResolvedValue({ ...platformOrder, fiatAmount })
+
+      await expect(verifier.verifyBatch('tenant-1', 'payment-1', now)).rejects.toEqual(
+        new PaymentNotSubmittedError('平台订单金额已变化'),
+      )
+    },
+  )
 
   it('reads an OKX order with the active merchant credential', async () => {
     const okxConfiguration = {
