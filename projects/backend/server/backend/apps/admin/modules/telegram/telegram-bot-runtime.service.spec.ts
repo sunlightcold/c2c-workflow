@@ -102,6 +102,105 @@ describe('TelegramBotRuntimeService', () => {
     await service.stop('tenant-1', 'bot-1')
   })
 
+  it('keeps running and reconnects after a transient polling failure', async () => {
+    jest.useFakeTimers()
+    telegram.getUpdates.mockRejectedValueOnce(new Error('network timeout')).mockImplementation(
+      (_tokenRef: string, _offset: number | undefined, signal: AbortSignal) =>
+        new Promise<never[]>((resolve) => {
+          signal.addEventListener('abort', () => resolve([]), { once: true })
+        }),
+    )
+    const service = new TelegramBotRuntimeService(bots as never, telegram as never, inbox as never)
+
+    try {
+      await service.start('tenant-1', 'bot-1')
+      await jest.advanceTimersByTimeAsync(0)
+
+      expect(service.getStatus('BOT_MAIN')).toMatchObject({
+        state: 'ERROR',
+        runtimeRunning: true,
+        message: 'Telegram 网络连接失败，5 秒后自动重试',
+      })
+      expect(telegram.getMe).toHaveBeenCalledTimes(1)
+
+      await service.start('tenant-1', 'bot-1')
+      expect(telegram.getMe).toHaveBeenCalledTimes(1)
+
+      await jest.advanceTimersByTimeAsync(4_999)
+      expect(telegram.getMe).toHaveBeenCalledTimes(1)
+
+      await jest.advanceTimersByTimeAsync(1)
+      expect(telegram.getMe).toHaveBeenCalledTimes(2)
+      expect(telegram.deleteWebhook).toHaveBeenCalledTimes(2)
+      expect(telegram.getUpdates).toHaveBeenCalledTimes(2)
+      expect(service.getStatus('BOT_MAIN')).toMatchObject({
+        state: 'ONLINE',
+        runtimeRunning: true,
+      })
+    } finally {
+      await service.stop('tenant-1', 'bot-1')
+      jest.useRealTimers()
+    }
+  })
+
+  it('backs off repeated connection failures and eventually reconnects', async () => {
+    jest.useFakeTimers()
+    telegram.getMe
+      .mockRejectedValueOnce(new Error('network timeout'))
+      .mockRejectedValueOnce(new Error('network timeout'))
+      .mockResolvedValue({ id: 1001, username: 'payment_bot' })
+    telegram.getUpdates.mockImplementation(
+      (_tokenRef: string, _offset: number | undefined, signal: AbortSignal) =>
+        new Promise<never[]>((resolve) => {
+          signal.addEventListener('abort', () => resolve([]), { once: true })
+        }),
+    )
+    const service = new TelegramBotRuntimeService(bots as never, telegram as never, inbox as never)
+
+    try {
+      await service.start('tenant-1', 'bot-1')
+      await jest.advanceTimersByTimeAsync(0)
+      expect(service.getStatus('BOT_MAIN').message).toBe('Telegram 网络连接失败，5 秒后自动重试')
+
+      await jest.advanceTimersByTimeAsync(5_000)
+      expect(telegram.getMe).toHaveBeenCalledTimes(2)
+      expect(service.getStatus('BOT_MAIN').message).toBe('Telegram 网络连接失败，10 秒后自动重试')
+
+      await jest.advanceTimersByTimeAsync(10_000)
+      expect(telegram.getMe).toHaveBeenCalledTimes(3)
+      expect(telegram.getUpdates).toHaveBeenCalledTimes(1)
+      expect(service.getStatus('BOT_MAIN')).toMatchObject({
+        state: 'ONLINE',
+        runtimeRunning: true,
+      })
+    } finally {
+      await service.stop('tenant-1', 'bot-1')
+      jest.useRealTimers()
+    }
+  })
+
+  it('stops immediately during reconnect backoff without another Telegram request', async () => {
+    jest.useFakeTimers()
+    telegram.getMe.mockRejectedValueOnce(new Error('network timeout'))
+    const service = new TelegramBotRuntimeService(bots as never, telegram as never, inbox as never)
+
+    try {
+      await service.start('tenant-1', 'bot-1')
+      await jest.advanceTimersByTimeAsync(0)
+
+      await expect(service.stop('tenant-1', 'bot-1')).resolves.toMatchObject({
+        state: 'NOT_STARTED',
+        runtimeRunning: false,
+      })
+      await jest.advanceTimersByTimeAsync(60_000)
+      expect(telegram.getMe).toHaveBeenCalledTimes(1)
+      expect(telegram.deleteWebhook).not.toHaveBeenCalled()
+      expect(telegram.getUpdates).not.toHaveBeenCalled()
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
   it('cancels the current long poll before restarting the robot runtime', async () => {
     const signals: AbortSignal[] = []
     telegram.getUpdates.mockImplementation(

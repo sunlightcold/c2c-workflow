@@ -17,6 +17,9 @@ export interface TelegramBotRuntimeStatus {
   lastUpdateAt?: string
 }
 
+const INITIAL_RECONNECT_DELAY_MS = 5_000
+const MAX_RECONNECT_DELAY_MS = 60_000
+
 @Injectable()
 export class TelegramBotRuntimeService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(TelegramBotRuntimeService.name)
@@ -152,33 +155,56 @@ export class TelegramBotRuntimeService implements OnApplicationBootstrap, OnModu
   }
 
   private async run(bot: TelegramBotEntity, generation: number, signal: AbortSignal) {
-    try {
-      const profile = await this.telegram.getMe(bot.tokenRef)
-      await this.telegram.deleteWebhook(bot.tokenRef)
-      this.setOnline(bot.code, true, profile)
-      while (this.generations.get(bot.code) === generation) {
-        const updates = await this.telegram.getUpdates(
-          bot.tokenRef,
-          this.offsets.get(bot.code),
-          signal,
-        )
-        for (const update of updates) {
-          if (this.generations.get(bot.code) !== generation) break
-          this.offsets.set(bot.code, update.update_id + 1)
-          await this.inbox.enqueue(bot, update)
-          const current = this.getStatus(bot.code)
-          this.statuses.set(bot.code, { ...current, lastUpdateAt: new Date().toISOString() })
+    let reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS
+    while (this.generations.get(bot.code) === generation) {
+      try {
+        this.setStatus(bot.code, 'CONNECTING', true, '正在连接 Telegram')
+        const profile = await this.telegram.getMe(bot.tokenRef)
+        await this.telegram.deleteWebhook(bot.tokenRef)
+        this.setOnline(bot.code, true, profile)
+        while (this.generations.get(bot.code) === generation) {
+          const updates = await this.telegram.getUpdates(
+            bot.tokenRef,
+            this.offsets.get(bot.code),
+            signal,
+          )
+          reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS
+          for (const update of updates) {
+            if (this.generations.get(bot.code) !== generation) break
+            this.offsets.set(bot.code, update.update_id + 1)
+            await this.inbox.enqueue(bot, update)
+            const current = this.getStatus(bot.code)
+            this.statuses.set(bot.code, { ...current, lastUpdateAt: new Date().toISOString() })
+          }
         }
-      }
-    } catch (error) {
-      if (this.generations.get(bot.code) === generation) {
-        this.setStatus(bot.code, 'ERROR', false, this.errorMessage(error))
-        this.logger.error(
-          `机器人 ${bot.code} 运行失败`,
-          error instanceof Error ? error.stack : String(error),
-        )
+      } catch (error) {
+        if (this.generations.get(bot.code) !== generation || signal.aborted) return
+        const message = this.errorMessage(error)
+        const retryAfterSeconds = reconnectDelayMs / 1_000
+        this.setStatus(bot.code, 'ERROR', true, `${message}，${retryAfterSeconds} 秒后自动重试`)
+        this.logger.warn(`机器人 ${bot.code} 连接失败，${retryAfterSeconds} 秒后重试：${message}`)
+        if (!(await this.waitForRetry(reconnectDelayMs, signal))) return
+        reconnectDelayMs = Math.min(reconnectDelayMs * 2, MAX_RECONNECT_DELAY_MS)
       }
     }
+  }
+
+  private waitForRetry(delayMs: number, signal: AbortSignal) {
+    if (signal.aborted) return Promise.resolve(false)
+    return new Promise<boolean>((resolve) => {
+      let settled = false
+      const finish = (shouldRetry: boolean) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        signal.removeEventListener('abort', onAbort)
+        resolve(shouldRetry)
+      }
+      const timer = setTimeout(() => finish(true), delayMs)
+      const onAbort = () => finish(false)
+      signal.addEventListener('abort', onAbort, { once: true })
+      if (signal.aborted) onAbort()
+    })
   }
 
   private async stopLoop(code: string) {
