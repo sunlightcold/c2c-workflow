@@ -53,6 +53,7 @@ trap show_failure_logs EXIT
 
 require_command docker
 require_command curl
+require_command sha256sum
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required"
 [[ -f "$compose_file" ]] || die "Compose file not found: $compose_file"
 
@@ -89,7 +90,27 @@ if (( ${#missing_variables[@]} > 0 )); then
   die "Configure these values in ${env_file}: ${missing_variables[*]}"
 fi
 
-set_env_value C2C_BACKEND_IMAGE c2c-workflow-backend:local
+admin_bundle="${script_dir}/volumes/apps/admin/main.js"
+migrate_bundle="${script_dir}/volumes/apps/migrate/main.js"
+[[ -s "$admin_bundle" ]] || die "Admin bundle not found: ${admin_bundle}"
+[[ -s "$migrate_bundle" ]] || die "Migration bundle not found: ${migrate_bundle}"
+admin_bundle_hash=$(sha256sum "$admin_bundle" | cut -d' ' -f1)
+migrate_bundle_hash=$(sha256sum "$migrate_bundle" | cut -d' ' -f1)
+application_image="c2c-workflow-backend:app-${admin_bundle_hash:0:16}"
+
+verify_image_bundle() {
+  local app_name=$1
+  local expected_hash=$2
+  local image_hash
+  image_hash=$(
+    docker run --rm --entrypoint sha256sum "$application_image" "/app/dist/apps/${app_name}/main.js" |
+      cut -d' ' -f1
+  )
+  [[ "$image_hash" == "$expected_hash" ]] ||
+    die "Image bundle mismatch for ${app_name}: expected ${expected_hash}, got ${image_hash:-missing}"
+}
+
+set_env_value C2C_BACKEND_IMAGE "$application_image"
 set_env_value C2C_PULL_POLICY never
 
 mkdir -p -- \
@@ -123,6 +144,8 @@ compose config --quiet
 
 echo "[3/6] Building local backend image..."
 compose build app
+verify_image_bundle admin "$admin_bundle_hash"
+verify_image_bundle migrate "$migrate_bundle_hash"
 
 echo "[4/6] Starting PostgreSQL, Redis and database migration..."
 compose up -d postgres redis migrate
@@ -135,7 +158,7 @@ if [[ "$migrate_exit_code" != 0 ]]; then
 fi
 
 echo "[5/6] Starting backend application..."
-compose up -d --remove-orphans app
+compose up -d --no-deps --remove-orphans --force-recreate app
 
 backend_port=$(env_value C2C_BACKEND_PORT)
 backend_port=${backend_port:-3000}
@@ -143,9 +166,16 @@ health_url="http://127.0.0.1:${backend_port}/v1/auth/captcha"
 echo "[6/6] Waiting for backend health check: ${health_url}"
 for (( attempt = 1; attempt <= health_attempts; attempt += 1 )); do
   if curl --fail --silent --show-error "$health_url" >/dev/null 2>&1; then
+    app_container=$(compose ps -q app)
+    [[ -n "$app_container" ]] || die "Backend application container was not created"
+    running_bundle_hash=$(
+      docker exec "$app_container" sha256sum /app/dist/apps/admin/main.js | cut -d' ' -f1
+    )
+    [[ "$running_bundle_hash" == "$admin_bundle_hash" ]] ||
+      die "Running backend bundle does not match the verified image"
     compose ps
     trap - EXIT
-    echo "C2C backend deployment completed successfully."
+    echo "C2C backend deployment completed successfully: ${application_image}"
     exit 0
   fi
   sleep "$health_interval_seconds"

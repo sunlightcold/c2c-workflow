@@ -1,5 +1,5 @@
 import AdmZip from 'adm-zip'
-import { cpSync } from 'node:fs'
+import { cpSync, existsSync, statSync } from 'node:fs'
 import { basename, join } from 'path'
 import Shell from 'shelljs'
 
@@ -90,6 +90,26 @@ async function handler() {
   Shell.cp('-R', join(dockerPath, 'readme.md'), join(outPath, 'README.md'))
   // 复制服务器部署变量模板
   Shell.cp('-R', join(workspaceRootPath, '.env.docker.example'), join(outPath, '.env.example'))
+
+  const requiredReleaseFiles = [
+    'Dockerfile',
+    'compose.yaml',
+    'deploy.sh',
+    'libs/build/package.json',
+    'package.json',
+    'pnpm-lock.yaml',
+    'server/backend/package.json',
+    'server/mock/package.json',
+    'volumes/apps/admin/main.js',
+    'volumes/apps/migrate/main.js',
+    'volumes/config/production.js',
+  ]
+  for (const relativePath of requiredReleaseFiles) {
+    const absolutePath = join(outPath, relativePath)
+    if (!existsSync(absolutePath) || statSync(absolutePath).size === 0) {
+      throw new Error(`Required release file is missing or empty: ${relativePath}`)
+    }
+  }
 
   console.log('build nestjs success, output path: ./output')
 

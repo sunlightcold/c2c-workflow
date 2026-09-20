@@ -62,8 +62,9 @@ bash ./deploy.sh
 ```
 
 首次执行会生成 `.env` 并提示填写必要配置；填写后再次执行同一命令即可。后续每次更新覆盖部署包
-文件后仍只执行 `bash ./deploy.sh`。脚本会自动备份运行中的 PostgreSQL、固定本地镜像配置、构建
-镜像、执行迁移、启动服务并等待健康检查。仅在明确不需要备份时可使用
+文件后仍只执行 `bash ./deploy.sh`。脚本会自动备份运行中的 PostgreSQL、构建版本化应用镜像，
+并在执行迁移和替换应用容器前核对镜像内的 admin、migrate bundle 与发布包 SHA256 完全一致。
+只有迁移、健康检查和运行 bundle 校验全部成功才报告部署完成。仅在明确不需要备份时可使用
 `C2C_SKIP_BACKUP=1 bash ./deploy.sh`。
 
 本地构建会从 Docker Hub 下载 `node:22-bookworm-slim` 和 `postgres`/`redis` 基础镜像，
