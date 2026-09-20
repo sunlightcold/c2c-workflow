@@ -15,6 +15,7 @@ import {
   type BusinessTimeConfig,
   type BusinessTimeOptions,
   type RecentBusinessDaysWindow,
+  type RequiredBusinessTimeRange,
 } from './business-time.types'
 
 dayjs.extend(utc)
@@ -36,6 +37,18 @@ export function createRelativeBusinessDayWindow(
   const config = resolveBusinessTimeConfig(options)
   const start = toBusinessNow(options.now, config.timeZone).startOf('day').add(dayOffset, 'day')
   return createBusinessDayWindowFromStart(start, config)
+}
+
+export function createCurrentBusinessMonthWindow(
+  options: BusinessTimeOptions = {},
+): RequiredBusinessTimeRange {
+  const config = resolveBusinessTimeConfig(options)
+  const current = toBusinessNow(options.now, config.timeZone)
+  return {
+    ...config,
+    endExclusive: current.toDate(),
+    start: current.startOf('month').toDate(),
+  }
 }
 
 export function createRecentBusinessDaysWindow(

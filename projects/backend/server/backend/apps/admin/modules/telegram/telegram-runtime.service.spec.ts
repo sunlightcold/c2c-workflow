@@ -35,6 +35,8 @@ describe('TelegramRuntimeService', () => {
     receipt: jest.fn(),
     balance: jest.fn(),
     todayStats: jest.fn(),
+    yesterdayStats: jest.fn(),
+    currentMonthStats: jest.fn(),
     status: jest.fn(),
   }
   const groups = { bindByMerchant: jest.fn() }
@@ -316,6 +318,8 @@ describe('TelegramRuntimeService', () => {
     )
     expect(reply.text).toContain('/receipt 订单号 - 获取支付回单（或发送：回单 订单号）')
     expect(reply.text).toContain('/stats - 查看今日支付统计（或发送：今日跑量/今日统计）')
+    expect(reply.text).toContain('昨日统计 - 查看昨日支付统计')
+    expect(reply.text).toContain('当月统计 - 查看当月支付统计')
     expect(reply.text).toContain('/submitbatch - 提交待处理支付批次（或发送：提交/提交批次）')
     expect(reply.text).toContain('/appeal C2C订单号 - 发起 C2C 订单申诉（或发送：申诉 订单号）')
     expect(reply.text).toContain('日报 [YYYYMMDD] - 查询 C2C 日报')
@@ -513,6 +517,67 @@ describe('TelegramRuntimeService', () => {
     })
 
     expect(queries.todayStats).toHaveBeenCalledWith('tenant-1', 'merchant-1')
+  })
+
+  it.each([
+    ['昨日统计', 'yesterdayStats'],
+    ['当月统计', 'currentMonthStats'],
+  ] as const)('returns merchant-scoped statistics for %s', async (command, queryMethod) => {
+    authorization.authorize.mockResolvedValueOnce({
+      allowed: true,
+      capabilities: [TelegramCapability.PAYMENT_STATISTICS],
+      group: { merchantId: 'merchant-1' },
+    })
+    queries[queryMethod].mockResolvedValue(`${command}结果`)
+    const runtime = new TelegramRuntimeService(
+      bots as never,
+      authorization as never,
+      telegram as never,
+      manualPayments as never,
+      batchPayments as never,
+      queries as never,
+      groups as never,
+    )
+
+    await runtime.handle({
+      botId: 'bot-1',
+      tenantId: 'tenant-1',
+      payload: {
+        message: { message_id: 14, chat: { id: -1001 }, from: { id: 88 }, text: command },
+      },
+    })
+
+    expect(queries[queryMethod]).toHaveBeenCalledWith('tenant-1', 'merchant-1')
+  })
+
+  it('does not query statistics when the group lacks the statistics capability', async () => {
+    authorization.authorize.mockResolvedValueOnce({
+      allowed: true,
+      capabilities: [],
+      group: { merchantId: 'merchant-1' },
+    })
+    const runtime = new TelegramRuntimeService(
+      bots as never,
+      authorization as never,
+      telegram as never,
+      manualPayments as never,
+      batchPayments as never,
+      queries as never,
+      groups as never,
+    )
+
+    await runtime.handle({
+      botId: 'bot-1',
+      tenantId: 'tenant-1',
+      payload: {
+        message: { message_id: 14, chat: { id: -1001 }, from: { id: 88 }, text: '昨日统计' },
+      },
+    })
+
+    expect(queries.yesterdayStats).not.toHaveBeenCalled()
+    expect(telegram.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '您没有查看支付统计的权限' }),
+    )
   })
 
   it('returns the authorized bot and group status', async () => {

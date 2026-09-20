@@ -8,6 +8,7 @@ jest.mock('@/common/utils/config', () => ({
 }))
 
 import {
+  createCurrentBusinessMonthWindow,
   createBusinessTimeBucket,
   createBusinessDateRangeWindow,
   createBusinessDayWindow,
@@ -49,6 +50,19 @@ describe('business time', () => {
     ])
     expect(window.rangeStart).toEqual(new Date('2026-05-17T16:00:00.000Z'))
     expect(window.rangeEndExclusive).toEqual(new Date('2026-05-24T16:00:00.000Z'))
+  })
+
+  it('creates the current business month window ending at the supplied current time', () => {
+    const window = createCurrentBusinessMonthWindow({
+      now: '2026-05-23T18:30:00.000Z',
+    })
+
+    expect(window).toMatchObject({
+      dbTimeZone: 'UTC',
+      timeZone: 'Asia/Shanghai',
+      start: new Date('2026-04-30T16:00:00.000Z'),
+      endExclusive: new Date('2026-05-23T18:30:00.000Z'),
+    })
   })
 
   it('creates half-open TypeORM operators for optional date range filters', () => {

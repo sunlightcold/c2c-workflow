@@ -20,6 +20,11 @@ export interface BusinessTimeRange extends BusinessTimeConfig {
   start?: Date
 }
 
+export interface RequiredBusinessTimeRange extends BusinessTimeConfig {
+  endExclusive: Date
+  start: Date
+}
+
 export interface BusinessDayWindow extends BusinessTimeRange {
   date: string
   endExclusive: Date

@@ -23,7 +23,10 @@ describe('TelegramQueryService', () => {
     c2cReports as never,
   )
 
-  beforeEach(() => jest.clearAllMocks())
+  beforeEach(() => {
+    jest.useRealTimers()
+    jest.clearAllMocks()
+  })
 
   it('queries every supported order identifier only inside the tenant and merchant', async () => {
     orders.findOne.mockResolvedValue({
@@ -111,12 +114,45 @@ describe('TelegramQueryService', () => {
 
     const reply = await service.todayStats('tenant-1', 'merchant-1')
 
+    expect(reply.text).toContain('<b>今日支付统计</b>')
     expect(reply.text).toContain('成功笔数：<code>2</code> 笔')
     expect(dataSource.query).toHaveBeenCalledWith(expect.stringContaining('"merchantId" = $2'), [
       'tenant-1',
       'merchant-1',
       expect.any(Date),
       expect.any(Date),
+    ])
+  })
+
+  it('returns yesterday statistics for the complete previous Shanghai business day', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-23T18:30:00.000Z'))
+    dataSource.query.mockResolvedValue([{}])
+
+    const reply = await service.yesterdayStats('tenant-1', 'merchant-1')
+
+    expect(reply.text).toContain('<b>昨日支付统计</b>')
+    expect(reply.text).toContain('统计口径：北京时间 昨日 00:00 - 今日 00:00')
+    expect(dataSource.query).toHaveBeenCalledWith(expect.stringContaining('"merchantId" = $2'), [
+      'tenant-1',
+      'merchant-1',
+      new Date('2026-05-22T16:00:00.000Z'),
+      new Date('2026-05-23T16:00:00.000Z'),
+    ])
+  })
+
+  it('returns current-month statistics from the Shanghai month start until now', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-05-23T18:30:00.000Z'))
+    dataSource.query.mockResolvedValue([{}])
+
+    const reply = await service.currentMonthStats('tenant-1', 'merchant-1')
+
+    expect(reply.text).toContain('<b>当月支付统计</b>')
+    expect(reply.text).toContain('统计口径：北京时间 本月 1 日 00:00 - 当前时间')
+    expect(dataSource.query).toHaveBeenCalledWith(expect.stringContaining('"merchantId" = $2'), [
+      'tenant-1',
+      'merchant-1',
+      new Date('2026-04-30T16:00:00.000Z'),
+      new Date('2026-05-23T18:30:00.000Z'),
     ])
   })
 

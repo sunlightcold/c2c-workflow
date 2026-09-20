@@ -7,6 +7,8 @@ describe('parseTelegramPayoutCommand', () => {
     ['查单 PAY001', { kind: 'QUERY', argument: 'PAY001' }],
     ['回单 PAY001', { kind: 'RECEIPT', argument: 'PAY001' }],
     ['今日跑量', { kind: 'STATISTICS' }],
+    ['昨日统计', { kind: 'YESTERDAY_STATISTICS' }],
+    ['当月统计', { kind: 'CURRENT_MONTH_STATISTICS' }],
     ['提交批次订单', { kind: 'SUBMIT_BATCH' }],
     ['申诉 BN001', { kind: 'APPEAL', argument: 'BN001' }],
     ['日报 20260914', { kind: 'DAILY_REPORT', argument: '20260914' }],

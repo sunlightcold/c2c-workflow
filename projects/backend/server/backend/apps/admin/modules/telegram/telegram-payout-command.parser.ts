@@ -1,6 +1,7 @@
 export type TelegramPayoutCommand =
   | { kind: 'APPEAL'; argument: string }
   | { kind: 'BIND'; argument: string }
+  | { kind: 'CURRENT_MONTH_STATISTICS' }
   | { kind: 'DAILY_REPORT'; argument?: string }
   | { kind: 'HELP' }
   | { kind: 'MANUAL_PAYMENT'; text: string }
@@ -12,6 +13,7 @@ export type TelegramPayoutCommand =
   | { kind: 'STATUS' }
   | { kind: 'SUBMIT_BATCH' }
   | { kind: 'UNKNOWN' }
+  | { kind: 'YESTERDAY_STATISTICS' }
 
 type SlashCommandKind =
   | 'APPEAL'
@@ -68,6 +70,8 @@ export function parseTelegramPayoutCommand(input: string): TelegramPayoutCommand
   }
 
   if (text === '今日跑量' || text === '今日统计') return { kind: 'STATISTICS' }
+  if (text === '昨日统计') return { kind: 'YESTERDAY_STATISTICS' }
+  if (text === '当月统计') return { kind: 'CURRENT_MONTH_STATISTICS' }
   if (text === '提交' || text === '提交批次' || text === '提交批次订单') {
     return { kind: 'SUBMIT_BATCH' }
   }

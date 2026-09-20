@@ -129,6 +129,8 @@
 | 查单     | `/query 标识`、`查单 标识`                   | `ORDER_QUERY`            |
 | 回单     | `/receipt 标识`、`回单 标识`                 | `RECEIPT_QUERY`          |
 | 今日统计 | `/stats`、`今日跑量`、`今日统计`             | `PAYMENT_STATISTICS`     |
+| 昨日统计 | `昨日统计`                                   | `PAYMENT_STATISTICS`     |
+| 当月统计 | `当月统计`                                   | `PAYMENT_STATISTICS`     |
 | 手工订单 | 每笔四行，可连续多笔                         | `ALIPAY_BATCH_PAYMENT`   |
 | 提交批次 | `/submitbatch`、`提交/提交批次/提交批次订单` | `PAYMENT_BATCH_SUBMIT`   |
 | C2C 申诉 | `/appeal C2C订单号`、`申诉 C2C订单号`        | `C2C_APPEAL`             |

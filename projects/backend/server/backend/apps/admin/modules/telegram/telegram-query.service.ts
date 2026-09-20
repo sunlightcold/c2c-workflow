@@ -1,7 +1,9 @@
 import {
   createBusinessDayWindow,
+  createCurrentBusinessMonthWindow,
   createRelativeBusinessDayWindow,
   getCurrentBusinessDateParts,
+  type RequiredBusinessTimeRange,
 } from '@/common/time'
 import { formatDecimal, formatTrimmedDecimal } from '@/common/utils/decimal'
 import {
@@ -212,50 +214,33 @@ export class TelegramQueryService {
   }
 
   async todayStats(tenantId: string, merchantId: string): Promise<TelegramBotReply> {
-    const window = createRelativeBusinessDayWindow(0)
-    const [row] = (await this.dataSource.query(
-      `SELECT COUNT(*)::text AS "totalCount",
-              COALESCE(SUM(amount), 0)::text AS "totalAmount",
-              COUNT(*) FILTER (WHERE status IN ('PENDING_CONFIG', 'CREATED', 'READY'))::text AS "awaitSubmitCount",
-              COUNT(*) FILTER (WHERE status IN ('SUBMITTING', 'PROCESSING', 'UNKNOWN'))::text AS "processingCount",
-              COUNT(*) FILTER (WHERE status = 'SUCCESS')::text AS "successCount",
-              COUNT(*) FILTER (WHERE status IN ('FAILED', 'CANCELLED', 'FUND_EXCEPTION'))::text AS "failedCount",
-              COALESCE(SUM(amount) FILTER (WHERE status = 'SUCCESS'), 0)::text AS "successAmount"
-       FROM payment_order
-       WHERE "tenantId" = $1 AND "merchantId" = $2
-         AND "createdAt" >= $3 AND "createdAt" < $4`,
-      [tenantId, merchantId, window.start, window.endExclusive],
-    )) as Array<{
-      awaitSubmitCount: string
-      failedCount: string
-      processingCount: string
-      successAmount: string
-      successCount: string
-      totalAmount: string
-      totalCount: string
-    }>
-    const total = Number(row?.totalCount ?? 0)
-    const success = Number(row?.successCount ?? 0)
-    const rate = total ? ((success / total) * 100).toFixed(2) : '0.00'
-    return {
-      parseMode: 'HTML',
-      text:
-        `<b>今日代付统计</b>\n` +
-        `<i>统计口径：北京时间 00:00 - 当前时间</i>\n\n` +
-        `<b>核心指标</b>\n` +
-        `成功金额：<code>¥${money(row?.successAmount)}</code>\n` +
-        `成功笔数：<code>${success}</code> 笔\n` +
-        `成功率：<code>${rate}%</code>\n\n` +
-        `<b>订单状态</b>\n` +
-        `总计：<code>${total}</code> 笔\n` +
-        `待提交：<code>${Number(row?.awaitSubmitCount ?? 0)}</code> 笔 / ` +
-        `处理中：<code>${Number(row?.processingCount ?? 0)}</code> 笔\n` +
-        `成功：<code>${success}</code> 笔 / ` +
-        `失败：<code>${Number(row?.failedCount ?? 0)}</code> 笔\n\n` +
-        `<b>金额明细</b>\n` +
-        `订单总额：<code>¥${money(row?.totalAmount)}</code>\n` +
-        `成功本金：<code>¥${money(row?.successAmount)}</code>`,
-    }
+    return this.paymentStats(
+      tenantId,
+      merchantId,
+      createRelativeBusinessDayWindow(0),
+      '今日支付统计',
+      '北京时间 00:00 - 当前时间',
+    )
+  }
+
+  async yesterdayStats(tenantId: string, merchantId: string): Promise<TelegramBotReply> {
+    return this.paymentStats(
+      tenantId,
+      merchantId,
+      createRelativeBusinessDayWindow(-1),
+      '昨日支付统计',
+      '北京时间 昨日 00:00 - 今日 00:00',
+    )
+  }
+
+  async currentMonthStats(tenantId: string, merchantId: string): Promise<TelegramBotReply> {
+    return this.paymentStats(
+      tenantId,
+      merchantId,
+      createCurrentBusinessMonthWindow(),
+      '当月支付统计',
+      '北京时间 本月 1 日 00:00 - 当前时间',
+    )
   }
 
   async dailyReport(
@@ -311,6 +296,58 @@ export class TelegramQueryService {
         '机器人状态：启用',
         '群组状态：已绑定',
       ].join('\n'),
+    }
+  }
+
+  private async paymentStats(
+    tenantId: string,
+    merchantId: string,
+    window: RequiredBusinessTimeRange,
+    title: string,
+    scope: string,
+  ): Promise<TelegramBotReply> {
+    const [row] = (await this.dataSource.query(
+      `SELECT COUNT(*)::text AS "totalCount",
+              COALESCE(SUM(amount), 0)::text AS "totalAmount",
+              COUNT(*) FILTER (WHERE status IN ('PENDING_CONFIG', 'CREATED', 'READY'))::text AS "awaitSubmitCount",
+              COUNT(*) FILTER (WHERE status IN ('SUBMITTING', 'PROCESSING', 'UNKNOWN'))::text AS "processingCount",
+              COUNT(*) FILTER (WHERE status = 'SUCCESS')::text AS "successCount",
+              COUNT(*) FILTER (WHERE status IN ('FAILED', 'CANCELLED', 'FUND_EXCEPTION'))::text AS "failedCount",
+              COALESCE(SUM(amount) FILTER (WHERE status = 'SUCCESS'), 0)::text AS "successAmount"
+       FROM payment_order
+       WHERE "tenantId" = $1 AND "merchantId" = $2
+         AND "createdAt" >= $3 AND "createdAt" < $4`,
+      [tenantId, merchantId, window.start, window.endExclusive],
+    )) as Array<{
+      awaitSubmitCount: string
+      failedCount: string
+      processingCount: string
+      successAmount: string
+      successCount: string
+      totalAmount: string
+      totalCount: string
+    }>
+    const total = Number(row?.totalCount ?? 0)
+    const success = Number(row?.successCount ?? 0)
+    const rate = total ? ((success / total) * 100).toFixed(2) : '0.00'
+    return {
+      parseMode: 'HTML',
+      text:
+        `<b>${title}</b>\n` +
+        `<i>统计口径：${scope}</i>\n\n` +
+        `<b>核心指标</b>\n` +
+        `成功金额：<code>¥${money(row?.successAmount)}</code>\n` +
+        `成功笔数：<code>${success}</code> 笔\n` +
+        `成功率：<code>${rate}%</code>\n\n` +
+        `<b>订单状态</b>\n` +
+        `总计：<code>${total}</code> 笔\n` +
+        `待提交：<code>${Number(row?.awaitSubmitCount ?? 0)}</code> 笔 / ` +
+        `处理中：<code>${Number(row?.processingCount ?? 0)}</code> 笔\n` +
+        `成功：<code>${success}</code> 笔 / ` +
+        `失败：<code>${Number(row?.failedCount ?? 0)}</code> 笔\n\n` +
+        `<b>金额明细</b>\n` +
+        `订单总额：<code>¥${money(row?.totalAmount)}</code>\n` +
+        `成功本金：<code>¥${money(row?.successAmount)}</code>`,
     }
   }
 

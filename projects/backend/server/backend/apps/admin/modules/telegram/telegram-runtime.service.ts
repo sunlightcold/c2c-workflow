@@ -11,7 +11,10 @@ import { TelegramQueryService } from './telegram-query.service'
 import { TelegramGroupService } from './telegram-group.service'
 import { TelegramC2cOrderActionService } from './telegram-c2c-order-action.service'
 import { TelegramC2cAppealService } from './telegram-c2c-appeal.service'
-import { parseTelegramPayoutCommand } from './telegram-payout-command.parser'
+import {
+  parseTelegramPayoutCommand,
+  type TelegramPayoutCommand,
+} from './telegram-payout-command.parser'
 import type { TelegramBotReply } from './telegram-query.formatter'
 
 interface TelegramUpdateInput {
@@ -34,6 +37,11 @@ interface TelegramCallbackMessage extends TelegramTextMessage {
   data: string
 }
 
+type StatisticsCommandKind = Extract<
+  TelegramPayoutCommand,
+  { kind: 'CURRENT_MONTH_STATISTICS' | 'STATISTICS' | 'YESTERDAY_STATISTICS' }
+>['kind']
+
 const commandCapabilities: Array<[TelegramCapability, string, string]> = [
   [
     TelegramCapability.ORDER_QUERY,
@@ -46,6 +54,8 @@ const commandCapabilities: Array<[TelegramCapability, string, string]> = [
     '/stats',
     '查看今日支付统计（或发送：今日跑量/今日统计）',
   ],
+  [TelegramCapability.PAYMENT_STATISTICS, '昨日统计', '查看昨日支付统计'],
+  [TelegramCapability.PAYMENT_STATISTICS, '当月统计', '查看当月支付统计'],
   [
     TelegramCapability.PAYMENT_BATCH_SUBMIT,
     '/submitbatch',
@@ -263,14 +273,8 @@ export class TelegramRuntimeService {
         )
         return true
       }
-      if (parsed.kind === 'STATISTICS') {
-        await this.reply(
-          bot.tokenRef,
-          message,
-          authorization.capabilities.includes(TelegramCapability.PAYMENT_STATISTICS)
-            ? await this.queries.todayStats(bot.tenantId, merchantId)
-            : '您没有查看支付统计的权限',
-        )
+      if (isStatisticsCommand(parsed.kind)) {
+        await this.handleStatisticsCommand(bot, message, authorization, parsed.kind)
         return true
       }
       if (parsed.kind === 'SUBMIT_BATCH') {
@@ -356,6 +360,29 @@ export class TelegramRuntimeService {
       return true
     }
     return false
+  }
+
+  private async handleStatisticsCommand(
+    bot: TelegramBotEntity,
+    message: TelegramTextMessage,
+    authorization: Extract<
+      Awaited<ReturnType<TelegramAuthorizationService['authorize']>>,
+      { allowed: true }
+    >,
+    kind: StatisticsCommandKind,
+  ): Promise<void> {
+    if (!authorization.capabilities.includes(TelegramCapability.PAYMENT_STATISTICS)) {
+      await this.reply(bot.tokenRef, message, '您没有查看支付统计的权限')
+      return
+    }
+    const merchantId = authorization.group.merchantId
+    const statistics =
+      kind === 'YESTERDAY_STATISTICS'
+        ? await this.queries.yesterdayStats(bot.tenantId, merchantId)
+        : kind === 'CURRENT_MONTH_STATISTICS'
+          ? await this.queries.currentMonthStats(bot.tenantId, merchantId)
+          : await this.queries.todayStats(bot.tenantId, merchantId)
+    await this.reply(bot.tokenRef, message, statistics)
   }
 
   // eslint-disable-next-line complexity
@@ -775,4 +802,10 @@ export class TelegramRuntimeService {
       chatName: typeof chat.title === 'string' ? chat.title : null,
     }
   }
+}
+
+function isStatisticsCommand(kind: TelegramPayoutCommand['kind']): kind is StatisticsCommandKind {
+  return (
+    kind === 'STATISTICS' || kind === 'YESTERDAY_STATISTICS' || kind === 'CURRENT_MONTH_STATISTICS'
+  )
 }
