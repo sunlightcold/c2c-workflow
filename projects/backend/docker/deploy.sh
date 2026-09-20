@@ -105,8 +105,12 @@ runtime_dependency_hash=$(
   sha256sum "${runtime_manifest_files[@]}" | sha256sum | cut -c1-16
 )
 runtime_image="c2c-workflow-backend-runtime:deps-${runtime_dependency_hash}"
+application_bundle="${script_dir}/image/app/dist/apps/admin/main.js"
+[[ -f "$application_bundle" ]] || die "Application bundle not found: ${application_bundle}"
+application_bundle_hash=$(sha256sum "$application_bundle" | cut -d' ' -f1)
+application_image="c2c-workflow-backend:app-${application_bundle_hash:0:16}"
 
-set_env_value C2C_BACKEND_IMAGE c2c-workflow-backend:local
+set_env_value C2C_BACKEND_IMAGE "$application_image"
 set_env_value C2C_RUNTIME_IMAGE "$runtime_image"
 set_env_value C2C_PULL_POLICY never
 
@@ -150,7 +154,7 @@ else
     "$script_dir"
 fi
 echo "Building application layer from precompiled output..."
-compose build app
+compose build --no-cache app
 
 echo "[4/6] Starting PostgreSQL, Redis and database migration..."
 compose up -d postgres redis migrate
@@ -163,7 +167,7 @@ if [[ "$migrate_exit_code" != 0 ]]; then
 fi
 
 echo "[5/6] Starting backend application..."
-compose up -d --remove-orphans app
+compose up -d --no-deps --remove-orphans --force-recreate app
 
 backend_port=$(env_value C2C_BACKEND_PORT)
 backend_port=${backend_port:-3000}
@@ -171,9 +175,14 @@ health_url="http://127.0.0.1:${backend_port}/v1/auth/captcha"
 echo "[6/6] Waiting for backend health check: ${health_url}"
 for (( attempt = 1; attempt <= health_attempts; attempt += 1 )); do
   if curl --fail --silent --show-error "$health_url" >/dev/null 2>&1; then
+    app_container=$(compose ps -q app)
+    [[ -n "$app_container" ]] || die "Backend application container was not created"
+    running_bundle_hash=$(docker exec "$app_container" sha256sum /app/dist/apps/admin/main.js | cut -d' ' -f1)
+    [[ "$running_bundle_hash" == "$application_bundle_hash" ]] ||
+      die "Running backend bundle does not match the release bundle"
     compose ps
     trap - EXIT
-    echo "C2C backend deployment completed successfully."
+    echo "C2C backend deployment completed successfully: ${application_image}"
     exit 0
   fi
   sleep "$health_interval_seconds"
