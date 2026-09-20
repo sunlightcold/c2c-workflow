@@ -3,6 +3,8 @@
 .artifacts
 **/node_modules
 **/dist
+!image/app/dist/
+!image/app/dist/**
 output
 output.zip
 coverage

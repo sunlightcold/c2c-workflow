@@ -53,10 +53,16 @@ jobs:
         run: |
           test -s output/volumes/apps/admin/main.js
           test -s output/volumes/apps/migrate/main.js
+          test -s output/image/app/dist/apps/admin/main.js
+          test -s output/image/app/dist/apps/migrate/main.js
           test -s output/compose.yaml
+          test -s output/Dockerfile
+          test -s output/Dockerfile.runtime
           test -s output/backup.sh
           test -s output/deploy.sh
           bash -n output/deploy.sh
+          test -s output/server/backend/package.json
+          test ! -e output/server/backend/apps
           test -s output/README.md
           test -s output/.env.example
           test -s output.zip
@@ -81,6 +87,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Calculate dependency runtime version
+        id: runtime
+        run: |
+          runtime_hash=$(
+            cd output
+            sha256sum \
+              Dockerfile.runtime \
+              package.json \
+              pnpm-workspace.yaml \
+              pnpm-lock.yaml \
+              server/backend/package.json \
+              | sha256sum | cut -c1-16
+          )
+          echo "hash=${runtime_hash}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and publish dependency runtime
+        uses: docker/build-push-action@v6
+        with:
+          context: projects/backend/output
+          file: projects/backend/output/Dockerfile.runtime
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY_IMAGE }}-runtime:deps-${{ steps.runtime.outputs.hash }}
+          cache-from: type=gha,scope=backend-runtime
+          cache-to: type=gha,mode=max,scope=backend-runtime
+          provenance: mode=max
+          sbom: true
+
       - name: Generate image metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -102,7 +136,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          build-args: |
+            C2C_RUNTIME_IMAGE=${{ env.REGISTRY_IMAGE }}-runtime:deps-${{ steps.runtime.outputs.hash }}
+          cache-from: type=gha,scope=backend-app
+          cache-to: type=gha,mode=max,scope=backend-app
           provenance: mode=max
           sbom: true

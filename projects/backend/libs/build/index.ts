@@ -1,22 +1,6 @@
 import AdmZip from 'adm-zip'
-import { cpSync } from 'node:fs'
-import { basename, join } from 'path'
+import { join } from 'path'
 import Shell from 'shelljs'
-
-const excludedBuildContextDirectories = new Set([
-  'coverage',
-  'dist',
-  'logs',
-  'node_modules',
-  'pm2logs',
-])
-
-function copyBuildContextDirectory(source: string, destination: string) {
-  cpSync(source, destination, {
-    recursive: true,
-    filter: (path) => !excludedBuildContextDirectories.has(basename(path)),
-  })
-}
 
 async function handler() {
   // 获取工作区根目录
@@ -38,6 +22,10 @@ async function handler() {
   const initJsonSourcePath = join(backendRootPath, 'initJson')
   const initJsonPath = join(volumesPath, 'initJson')
   const appsPath = join(volumesPath, 'apps')
+  const imageAppPath = join(outPath, 'image/app')
+  const imageAppsPath = join(imageAppPath, 'dist/apps')
+  const imageConfigPath = join(imageAppPath, 'config')
+  const imageInitJsonPath = join(imageAppPath, 'initJson')
 
   // Build backend app with a custom webpack config so we can raise
   // ForkTsChecker memory limits for large local workspaces.
@@ -55,13 +43,27 @@ async function handler() {
 
   Shell.rm('-rf', outPath)
   // 创建输出目录
-  Shell.mkdir(outPath, volumesPath, appConfigPath, logsPath, appsPath)
+  Shell.mkdir(
+    '-p',
+    outPath,
+    volumesPath,
+    appConfigPath,
+    logsPath,
+    initJsonPath,
+    appsPath,
+    imageAppPath,
+    imageAppsPath,
+    imageConfigPath,
+    imageInitJsonPath,
+  )
 
   runBuild('npx nest build --builder webpack --webpackPath webpack.build.config.js admin')
   Shell.cp('-R', join(distPath, 'apps/admin'), appsPath)
+  Shell.cp('-R', join(distPath, 'apps/admin'), imageAppsPath)
 
   runBuild('npx nest build --builder webpack --webpackPath webpack.build.config.js migrate')
   Shell.cp('-R', join(distPath, 'apps/migrate'), appsPath)
+  Shell.cp('-R', join(distPath, 'apps/migrate'), imageAppsPath)
 
   runBuild(
     'npx tsc config/production.ts --target ES2022 --module CommonJS --moduleResolution Node --esModuleInterop --skipLibCheck --outDir dist/config',
@@ -69,21 +71,27 @@ async function handler() {
 
   // 复制配置文件
   Shell.cp('-R', join(distPath, 'config/production.js'), appConfigPath)
+  Shell.cp('-R', join(distPath, 'config/production.js'), imageConfigPath)
   // 复制数据库数据文件
   if (Shell.test('-d', initJsonSourcePath)) {
     Shell.cp('-R', initJsonSourcePath, initJsonPath)
+    Shell.cp('-R', initJsonSourcePath, imageInitJsonPath)
   }
   // 复制 docker-compose
   Shell.cp('-R', join(dockerPath, 'compose.yaml'), outPath)
   Shell.cp('-R', join(dockerPath, 'Dockerfile'), outPath)
+  Shell.cp('-R', join(dockerPath, 'Dockerfile.runtime'), outPath)
   Shell.cp('-R', join(workspaceRootPath, '.dockerignore'), join(outPath, '.dockerignore'))
-  // Include the backend workspace as a self-contained Docker build context so
-  // the server can build the image locally without GHCR access.
+  // Dependency images only need workspace manifests. Application source is
+  // already compiled into volumes/apps and must not be shipped to production.
   Shell.cp('-R', join(workspaceRootPath, 'package.json'), outPath)
   Shell.cp('-R', join(workspaceRootPath, 'pnpm-workspace.yaml'), outPath)
   Shell.cp('-R', join(workspaceRootPath, 'pnpm-lock.yaml'), outPath)
-  copyBuildContextDirectory(join(workspaceRootPath, 'libs'), join(outPath, 'libs'))
-  copyBuildContextDirectory(join(workspaceRootPath, 'server'), join(outPath, 'server'))
+  Shell.mkdir('-p', join(outPath, 'server/backend'))
+  Shell.cp(
+    join(workspaceRootPath, 'server/backend/package.json'),
+    join(outPath, 'server/backend/package.json'),
+  )
   Shell.cp('-R', join(dockerPath, 'backup.sh'), outPath)
   Shell.cp('-R', join(dockerPath, 'deploy.sh'), outPath)
   Shell.cp('-R', join(dockerPath, 'diagnose-platform-confirmation.sh'), outPath)
