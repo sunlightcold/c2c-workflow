@@ -87,10 +87,9 @@ async function handler() {
   Shell.cp('-R', join(workspaceRootPath, 'package.json'), outPath)
   Shell.cp('-R', join(workspaceRootPath, 'pnpm-workspace.yaml'), outPath)
   Shell.cp('-R', join(workspaceRootPath, 'pnpm-lock.yaml'), outPath)
-  Shell.mkdir('-p', join(outPath, 'server/backend'))
   Shell.cp(
     join(workspaceRootPath, 'server/backend/package.json'),
-    join(outPath, 'server/backend/package.json'),
+    join(outPath, 'backend.package.json'),
   )
   Shell.cp('-R', join(dockerPath, 'backup.sh'), outPath)
   Shell.cp('-R', join(dockerPath, 'deploy.sh'), outPath)

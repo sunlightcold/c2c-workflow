@@ -95,7 +95,7 @@ runtime_manifest_files=(
   package.json
   pnpm-workspace.yaml
   pnpm-lock.yaml
-  server/backend/package.json
+  backend.package.json
 )
 for manifest_file in "${runtime_manifest_files[@]}"; do
   [[ -f "${script_dir}/${manifest_file}" ]] || die "Runtime manifest not found: ${script_dir}/${manifest_file}"
