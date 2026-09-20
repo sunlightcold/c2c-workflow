@@ -187,7 +187,7 @@ describe('PaymentBatchExecutionCoordinator', () => {
     )
   })
 
-  it('stops scheduling after the channel reconciliation attempt limit', async () => {
+  it('ends fast reconciliation after the channel attempt limit', async () => {
     store.prepare.mockResolvedValue({
       ...batch,
       status: PaymentBatchStatus.PROCESSING,
@@ -284,6 +284,27 @@ describe('PaymentBatchExecutionCoordinator', () => {
     ).resolves.toBeUndefined()
 
     expect(executor.query).not.toHaveBeenCalled()
+  })
+
+  it('recovers an active batch whose schedule was cleared by the previous attempt limit', async () => {
+    store.prepare.mockResolvedValue({
+      ...batch,
+      status: PaymentBatchStatus.PROCESSING,
+      reconciliationAttempts: 12,
+      nextReconcileAt: null,
+    })
+    executor.query.mockResolvedValue({ status: PaymentExecutionStatus.PROCESSING, raw: {} })
+
+    await coordinator.reconcile('tenant-1', 'batch-1', {
+      respectSchedule: true,
+      skipIfBusy: true,
+    })
+
+    expect(executor.query).toHaveBeenCalledTimes(1)
+    expect(store.applyQuery).toHaveBeenCalledWith(expect.any(Object), expect.any(Object), {
+      reconciliationAttempts: 13,
+      nextReconcileAt: null,
+    })
   })
 
   it('serializes submit and reconciliation with the same batch operation lock', async () => {

@@ -51,7 +51,8 @@ describe('TypeOrmC2cAutomaticPaymentStore', () => {
     ])
     expect(batchSql).not.toContain("status = 'READY'")
     expect(batchSql).toContain('"nextReconcileAt" <= NOW()')
-    expect(batchSql).toContain('status = \'SUBMITTING\' AND "nextReconcileAt" IS NULL')
+    expect(batchSql).toContain('"nextReconcileAt" IS NULL')
+    expect(batchSql).not.toContain('status = \'SUBMITTING\' AND "nextReconcileAt" IS NULL')
     expect(batchSql).not.toContain('"updatedAt" <= NOW()')
     expect(batchSql).toContain('LIMIT $2')
     expect(batchParameters).toEqual([

@@ -331,22 +331,16 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
           await this.processItem(manager, item, order)
         }
       }
-      const exhaustedMessage = await this.applyExhaustedReconciliation(
-        manager,
-        items,
-        orderByItemId,
-        schedule,
-      )
       const counts = this.countItems(items)
       Object.assign(batch, counts, {
         upstreamId: result.upstreamId ?? result.raw.batchTransId ?? batch.upstreamId,
-        lastError: exhaustedMessage ?? result.errorMessage ?? null,
+        lastError: result.errorMessage ?? null,
         reconciliationAttempts: schedule.reconciliationAttempts,
         nextReconcileAt: schedule.nextReconcileAt,
       })
       const next = this.aggregateStatus(items)
       batch.nextReconcileAt = this.resolveNextReconcileAt(next, schedule.nextReconcileAt)
-      await this.transitionBatch(manager, batch, next, exhaustedMessage ?? result.errorMessage)
+      await this.transitionBatch(manager, batch, next, result.errorMessage)
       return {
         batch: {
           ...input,
@@ -406,31 +400,6 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
         nextReconcileAt: batch.nextReconcileAt,
       }
     })
-  }
-
-  private async applyExhaustedReconciliation(
-    manager: EntityManager,
-    items: PaymentBatchItemEntity[],
-    orderByItemId: Map<string, PaymentOrderEntity>,
-    schedule: PaymentBatchReconciliationSchedule,
-  ): Promise<string | null> {
-    if (
-      schedule.nextReconcileAt !== null ||
-      !items.some((item) => !this.isFinalItem(item.status))
-    ) {
-      return null
-    }
-    const message = `支付批次自动回查已达到最大次数（${schedule.reconciliationAttempts} 次），请人工核实`
-    for (const item of items) {
-      if (this.isFinalItem(item.status)) continue
-      item.errorMessage = message
-      const order = orderByItemId.get(item.id)!
-      if (!this.isActivePayment(order.status)) continue
-      order.lastError = message
-      await manager.save(order)
-    }
-    await manager.save(items)
-    return message
   }
 
   private resolveNextReconcileAt(
@@ -516,12 +485,19 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
     item: PaymentBatchItemEntity,
     order: PaymentOrderEntity,
   ): Promise<void> {
-    if (!this.isFinalItem(item.status)) item.status = PaymentBatchItemStatus.PROCESSING
-    if (!this.isActivePayment(order.status) || order.status === PaymentOrderStatus.PROCESSING)
+    if (!this.isFinalItem(item.status)) {
+      item.status = PaymentBatchItemStatus.PROCESSING
+      item.errorCode = null
+      item.errorMessage = null
+    }
+    if (!this.isActivePayment(order.status)) return
+    order.lastError = null
+    if (order.status === PaymentOrderStatus.PROCESSING) {
+      await manager.save(order)
       return
+    }
     const previous = order.status
     order.status = PaymentOrderStatus.PROCESSING
-    order.lastError = null
     await manager.save(order)
     await this.paymentHistory(manager, order, previous, order.status)
   }

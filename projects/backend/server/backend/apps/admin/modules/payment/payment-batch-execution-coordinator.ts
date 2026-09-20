@@ -402,8 +402,7 @@ export class PaymentBatchExecutionCoordinator {
   }
 
   private isReconciliationDue(batch: ExecutablePaymentBatch): boolean {
-    if (batch.status === PaymentBatchStatus.SUBMITTING && batch.nextReconcileAt === null)
-      return true
+    if (batch.nextReconcileAt === null) return true
     return batch.nextReconcileAt !== null && batch.nextReconcileAt.getTime() <= Date.now()
   }
 

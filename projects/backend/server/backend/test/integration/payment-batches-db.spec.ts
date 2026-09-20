@@ -455,13 +455,23 @@ describe('Payment batch migration database integration', () => {
     ).resolves.toEqual([{ status: 'PROCESSING' }])
   })
 
-  it('does not force unresolved items to unknown after reconciliation is exhausted', async () => {
+  it('ends fast reconciliation without writing a false manual-review error', async () => {
     const created = await service.create(tenantId, [orderId])
     const claimed = await store.claim(await store.prepare(tenantId, created.batch.id))
     const processing = await store.markSubmitted(
       claimed,
       PaymentBatchStatus.PROCESSING,
       'ALI-BAT-PENDING',
+    )
+    await dataSource.query(
+      `UPDATE payment_batch_item SET "errorMessage" = '支付批次自动回查已达到最大次数（12 次），请人工核实'
+       WHERE "batchId" = $1`,
+      [created.batch.id],
+    )
+    await dataSource.query(
+      `UPDATE payment_order SET "lastError" = '支付批次自动回查已达到最大次数（12 次），请人工核实'
+       WHERE id = $1`,
+      [orderId],
     )
 
     const outcome = await store.applyQuery(
@@ -489,13 +499,26 @@ describe('Payment batch migration database integration', () => {
 
     expect(outcome.batch.status).toBe(PaymentBatchStatus.PROCESSING)
     await expect(
-      dataSource.query(`SELECT status FROM payment_batch_item WHERE "batchId" = $1`, [
-        created.batch.id,
-      ]),
-    ).resolves.toEqual([{ status: 'PROCESSING' }])
+      dataSource.query(
+        `SELECT status, "lastError", "nextReconcileAt" FROM payment_batch WHERE id = $1`,
+        [created.batch.id],
+      ),
+    ).resolves.toEqual([
+      {
+        status: 'PROCESSING',
+        lastError: null,
+        nextReconcileAt: null,
+      },
+    ])
     await expect(
-      dataSource.query(`SELECT status FROM payment_order WHERE id = $1`, [orderId]),
-    ).resolves.toEqual([{ status: 'PROCESSING' }])
+      dataSource.query(
+        `SELECT status, "errorMessage" FROM payment_batch_item WHERE "batchId" = $1`,
+        [created.batch.id],
+      ),
+    ).resolves.toEqual([{ status: 'PROCESSING', errorMessage: null }])
+    await expect(
+      dataSource.query(`SELECT status, "lastError" FROM payment_order WHERE id = $1`, [orderId]),
+    ).resolves.toEqual([{ status: 'PROCESSING', lastError: null }])
   })
 
   it('persists a successful submission when reconciliation marked the batch unknown first', async () => {
