@@ -53,7 +53,6 @@ trap show_failure_logs EXIT
 
 require_command docker
 require_command curl
-require_command sha256sum
 docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required"
 [[ -f "$compose_file" ]] || die "Compose file not found: $compose_file"
 
@@ -90,24 +89,7 @@ if (( ${#missing_variables[@]} > 0 )); then
   die "Configure these values in ${env_file}: ${missing_variables[*]}"
 fi
 
-runtime_manifest_files=(
-  Dockerfile.runtime
-  package.json
-  pnpm-workspace.yaml
-  pnpm-lock.yaml
-  server/backend/package.json
-)
-for manifest_file in "${runtime_manifest_files[@]}"; do
-  [[ -f "${script_dir}/${manifest_file}" ]] || die "Runtime manifest not found: ${script_dir}/${manifest_file}"
-done
-runtime_dependency_hash=$(
-  cd "$script_dir"
-  sha256sum "${runtime_manifest_files[@]}" | sha256sum | cut -c1-16
-)
-runtime_image="c2c-workflow-backend-runtime:deps-${runtime_dependency_hash}"
-
 set_env_value C2C_BACKEND_IMAGE c2c-workflow-backend:local
-set_env_value C2C_RUNTIME_IMAGE "$runtime_image"
 set_env_value C2C_PULL_POLICY never
 
 mkdir -p -- \
@@ -139,17 +121,7 @@ fi
 echo "[2/6] Validating deployment configuration..."
 compose config --quiet
 
-echo "[3/6] Preparing local backend images..."
-if docker image inspect "$runtime_image" >/dev/null 2>&1; then
-  echo "Reusing unchanged dependency runtime: ${runtime_image}"
-else
-  echo "Dependencies changed or this is the first deployment; building ${runtime_image}..."
-  docker build \
-    --file "${script_dir}/Dockerfile.runtime" \
-    --tag "$runtime_image" \
-    "$script_dir"
-fi
-echo "Building application layer from precompiled output..."
+echo "[3/6] Building local backend image..."
 compose build app
 
 echo "[4/6] Starting PostgreSQL, Redis and database migration..."

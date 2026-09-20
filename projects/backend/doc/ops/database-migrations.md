@@ -17,10 +17,9 @@
 - `output/volumes/apps/admin/main.js`
 - `output/volumes/apps/migrate/main.js`
 
-本地发布包已经包含编译完成的应用、迁移 runner 和生产配置。服务器按锁文件与包清单复用版本化
-依赖运行时镜像；依赖不变时只复制这些产物，不执行 `pnpm install`，也不重复执行 Nest/Webpack
-编译。`app` 与 `migrate` 使用同一个应用镜像；本地部署统一执行 `bash ./deploy.sh`，脚本会确保依赖
-运行时存在，随后构建应用镜像并让 `migrate` 复用该镜像。
+本地发布包已经包含编译完成的应用、迁移 runner 和生产配置。服务器构建镜像时只安装生产依赖并
+复制这些产物，不再重复执行 Nest/Webpack 编译。`app` 与 `migrate` 使用同一个镜像；本地镜像部署
+只需执行 `docker compose --env-file .env build app`，随后 `up` 会让 `migrate` 复用该镜像。
 
 正式服务器部署使用 Actions 发布的同一个后端镜像，Compose 通过镜像中的两个入口执行：
 

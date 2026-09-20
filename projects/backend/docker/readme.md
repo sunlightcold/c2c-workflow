@@ -54,25 +54,20 @@ curl --fail --silent --show-error http://127.0.0.1:3000/v1/auth/captcha >/dev/nu
 
 ## 首次部署（服务器本地构建镜像）
 
-部署包包含预编译的 `admin`、`migrate`、生产配置，以及构建生产依赖所需的包清单，不包含后端
-TypeScript 源码，也不需要登录 GHCR。解压部署包后执行：
+部署包同时包含预编译的 `admin`、`migrate`、生产配置和完整的后端 Docker 构建上下文，不需要
+登录 GHCR。服务器构建只安装生产依赖并组装镜像，不再重复执行 Nest/Webpack 编译。解压部署包后执行：
 
 ```bash
 bash ./deploy.sh
 ```
 
 首次执行会生成 `.env` 并提示填写必要配置；填写后再次执行同一命令即可。后续每次更新覆盖部署包
-文件后仍只执行 `bash ./deploy.sh`。脚本会自动备份运行中的 PostgreSQL、执行迁移、启动服务并等待
-健康检查。生产依赖按 `Dockerfile.runtime`、锁文件和全部包清单计算版本；这些文件没有变化时，
-后续发布直接复用已存在的依赖运行时镜像，只重建包含预编译代码的轻量应用层，不再执行
-`pnpm install` 或安装系统包。首次使用新版部署脚本以及依赖版本变化时会完整构建一次依赖镜像。
-仅在明确不需要备份时可使用
+文件后仍只执行 `bash ./deploy.sh`。脚本会自动备份运行中的 PostgreSQL、固定本地镜像配置、构建
+镜像、执行迁移、启动服务并等待健康检查。仅在明确不需要备份时可使用
 `C2C_SKIP_BACKUP=1 bash ./deploy.sh`。
 
-首次构建依赖运行时会从 Docker Hub 下载 `node:22-bookworm-slim`；首次启动基础设施会下载
-`postgres`/`redis` 镜像，但不需要 GitHub Token。服务器需要 Docker Engine、Compose v2 和能访问
-Docker Hub 的网络。不要定期对仍在使用的镜像执行 `docker image prune -a`，否则下一次发布需要重建
-依赖运行时。
+本地构建会从 Docker Hub 下载 `node:22-bookworm-slim` 和 `postgres`/`redis` 基础镜像，
+但不需要 GitHub Token。服务器需要 Docker Engine、Compose v2 和能访问 Docker Hub 的网络。
 
 ## 更新
 
