@@ -1,10 +1,6 @@
 .git
 .github
 .artifacts
-backups
-libs
-server
-volumes
 **/node_modules
 **/dist
 !image/app/dist/
@@ -13,3 +9,5 @@ output
 output.zip
 coverage
 doc
+server/backend/logs
+server/backend/pm2logs

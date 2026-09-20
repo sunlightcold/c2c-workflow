@@ -61,8 +61,8 @@ jobs:
           test -s output/backup.sh
           test -s output/deploy.sh
           bash -n output/deploy.sh
-          test -s output/backend.package.json
-          test ! -e output/server
+          test -s output/server/backend/package.json
+          test ! -e output/server/backend/apps
           test -s output/README.md
           test -s output/.env.example
           test -s output.zip
@@ -97,7 +97,7 @@ jobs:
               package.json \
               pnpm-workspace.yaml \
               pnpm-lock.yaml \
-              backend.package.json \
+              server/backend/package.json \
               | sha256sum | cut -c1-16
           )
           echo "hash=${runtime_hash}" >> "$GITHUB_OUTPUT"
