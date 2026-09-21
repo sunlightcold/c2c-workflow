@@ -10,6 +10,7 @@ import {
   TelegramSuperAdminEntity,
   TelegramUpdateEventEntity,
   TelegramInteractionContextEntity,
+  TelegramOtcConfigEntity,
 } from '@admin/database'
 import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
@@ -36,6 +37,8 @@ import { TelegramNotificationService } from './telegram-notification.service'
 import { TelegramBotRuntimeService } from './telegram-bot-runtime.service'
 import { TelegramC2cOrderActionService } from './telegram-c2c-order-action.service'
 import { TelegramC2cAppealService } from './telegram-c2c-appeal.service'
+import { TelegramOtcMarketService } from './telegram-otc-market.service'
+import { TelegramOtcService } from './telegram-otc.service'
 
 @Module({
   imports: [
@@ -55,6 +58,7 @@ import { TelegramC2cAppealService } from './telegram-c2c-appeal.service'
       TelegramSuperAdminEntity,
       TelegramUpdateEventEntity,
       TelegramInteractionContextEntity,
+      TelegramOtcConfigEntity,
     ]),
   ],
   controllers: [TelegramController, TelegramWebhookController],
@@ -76,6 +80,8 @@ import { TelegramC2cAppealService } from './telegram-c2c-appeal.service'
     TelegramBotRuntimeService,
     TelegramC2cOrderActionService,
     TelegramC2cAppealService,
+    TelegramOtcMarketService,
+    TelegramOtcService,
   ],
   exports: [
     TelegramBotService,

@@ -40,6 +40,7 @@ describe('admin migration registry', () => {
       'C2cPaidNotificationCapability1789025000000',
       'C2cPaymentPlatformStateSeparation1789026000000',
       'C2cAutomationScanCorrectness1789027000000',
+      'C2cTelegramOtc1789028000000',
     ])
   })
 })

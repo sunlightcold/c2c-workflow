@@ -17,6 +17,7 @@ export namespace BusinessApi {
     | 'C2C_ORDER_PAYMENT'
     | 'C2C_PAID_NOTIFICATION'
     | 'ORDER_QUERY'
+    | 'OTC_CONFIG_MANAGE'
     | 'PAYMENT_BATCH_SUBMIT'
     | 'PAYMENT_STATISTICS'
     | 'RECEIPT_QUERY';

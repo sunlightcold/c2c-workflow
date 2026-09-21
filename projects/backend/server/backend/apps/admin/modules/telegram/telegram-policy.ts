@@ -11,6 +11,7 @@ export enum TelegramCapability {
   C2C_APPEAL = 'C2C_APPEAL',
   C2C_DAILY_REPORT = 'C2C_DAILY_REPORT',
   BOT_STATUS_MANAGE = 'BOT_STATUS_MANAGE',
+  OTC_CONFIG_MANAGE = 'OTC_CONFIG_MANAGE',
 }
 
 export enum TelegramGroupRole {
@@ -34,6 +35,7 @@ export const TELEGRAM_CAPABILITY_OPTIONS = [
   [TelegramCapability.C2C_APPEAL, 'C2C 订单申诉'],
   [TelegramCapability.C2C_DAILY_REPORT, 'C2C 日报'],
   [TelegramCapability.BOT_STATUS_MANAGE, '机器人状态管理'],
+  [TelegramCapability.OTC_CONFIG_MANAGE, 'OTC 查询配置管理'],
 ] as const
 
 const MEMBER_CAPABILITIES: Record<TelegramGroupRole, readonly TelegramCapability[]> = {

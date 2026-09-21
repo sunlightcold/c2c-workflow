@@ -214,6 +214,123 @@ describe('TelegramRuntimeService', () => {
     expect(telegram.sendMessage).not.toHaveBeenCalled()
   })
 
+  it('serves OTC quotes before merchant and member authorization', async () => {
+    const otc = { handlePublic: jest.fn().mockResolvedValue({ text: '公开行情' }) }
+    const runtime = new TelegramRuntimeService(
+      bots as never,
+      authorization as never,
+      telegram as never,
+      manualPayments as never,
+      batchPayments as never,
+      queries as never,
+      groups as never,
+      c2cOrderActions as never,
+      c2cAppeals as never,
+      otc as never,
+    )
+
+    await runtime.handle({
+      botId: 'bot-1',
+      tenantId: 'tenant-1',
+      payload: {
+        message: {
+          message_id: 10,
+          chat: { id: -1001, type: 'supergroup' },
+          from: { id: 99 },
+          text: 'lz',
+        },
+      },
+    })
+
+    expect(authorization.authorize).not.toHaveBeenCalled()
+    expect(otc.handlePublic).toHaveBeenCalledWith(
+      'tenant-1',
+      'bot-1',
+      '-1001',
+      expect.objectContaining({ kind: 'QUOTE' }),
+    )
+    expect(telegram.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ text: '公开行情' }))
+  })
+
+  it('requires the dedicated capability to change OTC configuration', async () => {
+    const otc = { configReply: jest.fn() }
+    authorization.authorize.mockResolvedValueOnce({
+      allowed: true,
+      capabilities: [TelegramCapability.ORDER_QUERY],
+      group: { merchantId: 'merchant-1' },
+    })
+    const runtime = new TelegramRuntimeService(
+      bots as never,
+      authorization as never,
+      telegram as never,
+      manualPayments as never,
+      batchPayments as never,
+      queries as never,
+      groups as never,
+      c2cOrderActions as never,
+      c2cAppeals as never,
+      otc as never,
+    )
+
+    await runtime.handle({
+      botId: 'bot-1',
+      tenantId: 'tenant-1',
+      payload: {
+        message: {
+          message_id: 11,
+          chat: { id: -1001, type: 'supergroup' },
+          from: { id: 99 },
+          text: '/otcconfig',
+        },
+      },
+    })
+
+    expect(authorization.authorize).toHaveBeenCalledWith(bot, '-1001', '99')
+    expect(otc.configReply).not.toHaveBeenCalled()
+    expect(telegram.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '您没有修改 OTC 查询配置的权限' }),
+    )
+  })
+
+  it('reauthorizes every OTC configuration callback', async () => {
+    const otc = {
+      applyConfigAction: jest.fn().mockResolvedValue({ text: '配置已更新' }),
+    }
+    authorization.authorize.mockResolvedValueOnce({
+      allowed: true,
+      capabilities: [TelegramCapability.OTC_CONFIG_MANAGE],
+      group: { merchantId: 'merchant-1' },
+    })
+    const runtime = new TelegramRuntimeService(
+      bots as never,
+      authorization as never,
+      telegram as never,
+      manualPayments as never,
+      batchPayments as never,
+      queries as never,
+      groups as never,
+      c2cOrderActions as never,
+      c2cAppeals as never,
+      otc as never,
+    )
+
+    await runtime.handle({
+      botId: 'bot-1',
+      tenantId: 'tenant-1',
+      payload: {
+        callback_query: {
+          id: 'otc-callback',
+          data: 'otc:rank:5',
+          from: { id: 99 },
+          message: { message_id: 12, chat: { id: -1001, type: 'supergroup' } },
+        },
+      },
+    })
+
+    expect(authorization.authorize).toHaveBeenCalledWith(bot, '-1001', '99')
+    expect(otc.applyConfigAction).toHaveBeenCalledWith('tenant-1', 'bot-1', '-1001', 'otc:rank:5')
+  })
+
   it('shows only commands enabled by final authorization', async () => {
     const runtime = new TelegramRuntimeService(
       bots as never,

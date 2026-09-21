@@ -104,6 +104,16 @@ Payment Batch Policy 中的单个提交条件。Interval 从同一批次隔离�
 
 对已经提交但仍处于提交中、处理中或结果未知状态的 Payment Order / Payment Batch 使用原业务单号回查支付平台；资金成功但币安或欧易标记失败时，只重试平台付款标记。Payment Recovery 不创建新 Payment Order，也不重新提交资金请求。
 
+## Telegram OTC Market
+
+**OTC Market Quote**:
+由公开 C2C 广告形成的 USDT/CNY 即时报价，只用于查询和换算，不参与支付订单、余额或资金状态。
+_Avoid_: Payment Result, Account Balance
+
+**OTC Quote Configuration**:
+一个机器人群组选择行情来源、支付方式、报价档位和价格微调的配置。
+_Avoid_: Payment Plan, Exchange Balance
+
 ## Object Storage Center
 
 平台维护的对象存储基础设施能力。它管理多个 S3-compatible 存储渠道，并为系统和 app 的具体存储用途提供渠道绑定；它不是文件浏览器，也不负责跨渠道迁移或自动故障切换。

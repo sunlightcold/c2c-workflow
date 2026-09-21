@@ -16,6 +16,8 @@ import {
   type TelegramPayoutCommand,
 } from './telegram-payout-command.parser'
 import type { TelegramBotReply } from './telegram-query.formatter'
+import { parseTelegramOtcCommand } from './telegram-otc-command.parser'
+import { TelegramOtcService } from './telegram-otc.service'
 
 interface TelegramUpdateInput {
   botId: string
@@ -63,6 +65,14 @@ const commandCapabilities: Array<[TelegramCapability, string, string]> = [
   ],
   [TelegramCapability.C2C_APPEAL, '/appeal C2C订单号', '发起 C2C 订单申诉（或发送：申诉 订单号）'],
   [TelegramCapability.BOT_STATUS_MANAGE, '/status', '查看机器人和群组状态'],
+  [TelegramCapability.OTC_CONFIG_MANAGE, '/otcconfig', '修改 OTC 行情查询配置'],
+]
+
+const otcPublicHelp = [
+  'L/lz/lk/lw - 查询全部/支付宝/银行卡/微信报价',
+  'z100/k100/w100 - 按人民币金额换算 USDT',
+  '/otc [binance|okx|okx_block] [all|alipay|bank|wechat] [金额] - 查询行情',
+  '直接发送四则表达式 - 使用高精度计算器',
 ]
 
 @Injectable()
@@ -78,6 +88,7 @@ export class TelegramRuntimeService {
     @Optional() private readonly groups?: TelegramGroupService,
     @Optional() private readonly c2cOrderActions?: TelegramC2cOrderActionService,
     @Optional() private readonly c2cAppeals?: TelegramC2cAppealService,
+    @Optional() private readonly otc?: TelegramOtcService,
   ) {}
 
   // The runtime remains a compatibility facade while handlers are migrated into feature modules.
@@ -103,11 +114,22 @@ export class TelegramRuntimeService {
     if (!message) return
 
     const command = message.text.split(/\s+/, 1)[0]?.split('@', 1)[0]?.toLowerCase()
+    const otcCommand = parseTelegramOtcCommand(message.text)
+    if (otcCommand.kind === 'CALCULATOR' || otcCommand.kind === 'QUOTE') {
+      await this.reply(
+        bot.tokenRef,
+        message,
+        this.otc
+          ? await this.otc.handlePublic(bot.tenantId, bot.id, message.chatId, otcCommand)
+          : 'OTC 查询服务不可用',
+      )
+      return
+    }
     // Ignore ordinary conversation and unknown slash commands. Authorization is
     // only relevant once the message has been recognized as a bot operation;
     // otherwise every chat message would receive a misleading permission error.
     const parsed = parseTelegramPayoutCommand(message.text)
-    if (parsed.kind === 'UNKNOWN') return
+    if (parsed.kind === 'UNKNOWN' && otcCommand.kind !== 'CONFIG') return
     if (command === '/myid') {
       await this.reply(bot.tokenRef, message, `您的 Telegram 用户编号：${message.userId}`)
       return
@@ -142,6 +164,14 @@ export class TelegramRuntimeService {
     }
     const authorization = await this.authorization.authorize(bot, message.chatId, message.userId)
     if (!authorization.allowed) {
+      if (command === '/help') {
+        await this.reply(
+          bot.tokenRef,
+          message,
+          ['公开命令：', '/help - 查看可用命令', ...otcPublicHelp].join('\n'),
+        )
+        return
+      }
       await this.reply(
         bot.tokenRef,
         message,
@@ -150,6 +180,18 @@ export class TelegramRuntimeService {
           : authorization.reason === 'MERCHANT_DISABLED'
             ? '当前群绑定的商家不可用或已停用，请联系管理员'
             : '您没有权限使用当前机器人',
+      )
+      return
+    }
+    if (otcCommand.kind === 'CONFIG') {
+      await this.reply(
+        bot.tokenRef,
+        message,
+        authorization.capabilities.includes(TelegramCapability.OTC_CONFIG_MANAGE)
+          ? this.otc
+            ? await this.otc.configReply(bot.tenantId, bot.id, message.chatId)
+            : 'OTC 查询服务不可用'
+          : '您没有修改 OTC 查询配置的权限',
       )
       return
     }
@@ -189,6 +231,7 @@ export class TelegramRuntimeService {
         '/help - 查看可用命令',
         '/start - 启用机器人并查看帮助',
         '/myid - 查看 Telegram 用户编号',
+        ...otcPublicHelp,
         ...lines,
       ].join('\n'),
     )
@@ -387,6 +430,34 @@ export class TelegramRuntimeService {
 
   // eslint-disable-next-line complexity
   private async handleCallback(bot: TelegramBotEntity, message: TelegramCallbackMessage) {
+    if (message.data.startsWith('otc:')) {
+      const authorization = await this.authorization.authorize(bot, message.chatId, message.userId)
+      if (
+        !authorization.allowed ||
+        !authorization.capabilities.includes(TelegramCapability.OTC_CONFIG_MANAGE)
+      ) {
+        await this.finishCallback(bot.tokenRef, message, '您没有修改 OTC 查询配置的权限', true)
+        return
+      }
+      if (!this.otc) {
+        await this.finishCallback(bot.tokenRef, message, 'OTC 查询服务不可用', true)
+        return
+      }
+      try {
+        const reply = await this.otc.applyConfigAction(
+          bot.tenantId,
+          bot.id,
+          message.chatId,
+          message.data,
+        )
+        await this.finishCallback(bot.tokenRef, message, '配置已更新', false, true)
+        await this.reply(bot.tokenRef, message, reply)
+      } catch (error) {
+        const text = error instanceof Error ? error.message : 'OTC 配置更新失败'
+        await this.finishCallback(bot.tokenRef, message, text.slice(0, 180), true)
+      }
+      return
+    }
     const appealMatch = /^appeal:reason:([0-9a-f-]{36}):(\d+)$/i.exec(message.data)
     if (appealMatch) {
       const authorization = await this.authorization.authorize(bot, message.chatId, message.userId)
