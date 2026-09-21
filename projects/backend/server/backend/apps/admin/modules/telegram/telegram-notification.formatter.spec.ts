@@ -11,6 +11,20 @@ import {
 } from './telegram-notification.formatter'
 
 describe('Telegram notification formatting policy', () => {
+  it('formats blocked payment-order creation with the platform order and reason', () => {
+    expect(
+      formatExceptionMessage(
+        'C2C_PAYMENT_ORDER_NOT_CREATED',
+        '收款方式持有人姓名为空',
+        '260921214954540',
+      ),
+    ).toBe(
+      '🔴 <b>无法创建支付订单</b>\n\n' +
+        '商家订单号：<code>260921214954540</code>\n' +
+        '原因：<code>收款方式持有人姓名为空</code>',
+    )
+  })
+
   it('matches the pfa-pay credential rejection fields and Chinese platform label', () => {
     expect(
       formatExceptionMessage('C2C_CREDENTIAL_REJECTED', 'Token expired', 'mock-hq-okx', {

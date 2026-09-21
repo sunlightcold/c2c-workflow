@@ -277,25 +277,43 @@ export class TelegramNotificationService {
       },
     })
     const reviewable = orders.filter((order) => shouldNotifyOrderDiscovered(order))
+    const paymentBlocked = orders.filter(
+      (order) => order.status === 'PENDING_PAYMENT' && !order.payable && order.lastError,
+    )
     await Promise.all(
-      reviewable.map((order) =>
-        this.sendToMerchantGroups(
-          payload.tenantId,
-          payload.merchantId,
-          TelegramNotificationEvent.ORDER_DISCOVERED,
-          formatOrderDiscoveredMessage(order),
-          order.status === 'PENDING_PAYMENT'
-            ? {
-                inline_keyboard: [
-                  [
-                    { text: '确认下单', callback_data: `c2c:confirm:${order.id}` },
-                    { text: '取消订单', callback_data: `c2c:cancel:${order.id}` },
+      reviewable
+        .map((order) =>
+          this.sendToMerchantGroups(
+            payload.tenantId,
+            payload.merchantId,
+            TelegramNotificationEvent.ORDER_DISCOVERED,
+            formatOrderDiscoveredMessage(order),
+            order.status === 'PENDING_PAYMENT'
+              ? {
+                  inline_keyboard: [
+                    [
+                      { text: '确认下单', callback_data: `c2c:confirm:${order.id}` },
+                      { text: '取消订单', callback_data: `c2c:cancel:${order.id}` },
+                    ],
                   ],
-                ],
-              }
-            : undefined,
+                }
+              : undefined,
+          ),
+        )
+        .concat(
+          paymentBlocked.map((order) =>
+            this.sendToMerchantGroups(
+              payload.tenantId,
+              payload.merchantId,
+              TelegramNotificationEvent.EXCEPTION,
+              formatExceptionMessage(
+                'C2C_PAYMENT_ORDER_NOT_CREATED',
+                order.lastError!,
+                order.platformOrderId,
+              ),
+            ),
+          ),
         ),
-      ),
     )
   }
 

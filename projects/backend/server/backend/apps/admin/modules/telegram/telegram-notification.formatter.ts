@@ -369,6 +369,13 @@ export function formatExceptionMessage(
   referenceId?: string,
   details?: { platform?: string; merchantNo?: string },
 ): string {
+  if (code === 'C2C_PAYMENT_ORDER_NOT_CREATED') {
+    return (
+      `🔴 <b>无法创建支付订单</b>\n\n` +
+      (referenceId ? `商家订单号：<code>${escapeTelegramHtml(referenceId)}</code>\n` : '') +
+      `原因：<code>${escapeTelegramHtml(compact(message, 400))}</code>`
+    )
+  }
   if (code === 'C2C_CREDENTIAL_REJECTED') {
     return (
       `<b>⚠️ C2C 凭证失效，账号已停用</b>\n\n` +

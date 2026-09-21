@@ -615,6 +615,55 @@ describe('TelegramNotificationService', () => {
     expect(telegram.sendMessage).not.toHaveBeenCalled()
   })
 
+  it('immediately notifies the bound merchant groups when a discovered order is not payable', async () => {
+    groups.find.mockResolvedValue([
+      {
+        tenantId: 'tenant-a',
+        merchantId: 'merchant-a',
+        botId: 'bot-1',
+        chatId: 'chat-a',
+        bindingState: TelegramGroupBindingState.ACTIVE,
+        notificationsEnabled: true,
+        notificationEvents: [TelegramNotificationEvent.EXCEPTION],
+      },
+    ])
+    merchantOrders.find.mockResolvedValue([
+      {
+        id: 'order-1',
+        platformOrderId: '260921214954540',
+        status: 'PENDING_PAYMENT',
+        identityMatched: false,
+        payable: false,
+        lastError: '收款方式持有人姓名为空',
+      },
+    ])
+
+    await service.notifyOrderDiscovered({
+      tenantId: 'tenant-a',
+      merchantId: 'merchant-a',
+      orderIds: ['order-1'],
+    })
+
+    expect(merchantOrders.find).toHaveBeenCalledWith({
+      where: {
+        tenantId: 'tenant-a',
+        merchantId: 'merchant-a',
+        id: expect.anything(),
+      },
+    })
+    expect(telegram.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatId: 'chat-a',
+        text: expect.stringMatching(
+          /无法创建支付订单[\s\S]*260921214954540[\s\S]*收款方式持有人姓名为空/,
+        ),
+      }),
+    )
+    expect(telegram.sendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ replyMarkup: expect.anything() }),
+    )
+  })
+
   it('does not send individual results for a batch child payment', async () => {
     const batchItems = {
       findOne: jest.fn().mockResolvedValue({ status: PaymentBatchItemStatus.SUCCESS }),
