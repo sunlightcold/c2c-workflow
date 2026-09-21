@@ -14,6 +14,7 @@ export const telegramCapabilityOptions: Array<{
   { label: 'C2C 订单申诉', value: 'C2C_APPEAL' },
   { label: 'C2C 日报', value: 'C2C_DAILY_REPORT' },
   { label: '机器人状态管理', value: 'BOT_STATUS_MANAGE' },
+  { label: 'OTC 查询配置管理', value: 'OTC_CONFIG_MANAGE' },
 ];
 
 export const telegramBotTypeOptions = [
