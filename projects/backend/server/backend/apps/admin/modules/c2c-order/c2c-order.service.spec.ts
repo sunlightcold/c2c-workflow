@@ -15,6 +15,7 @@ describe('C2cOrderService', () => {
   const historyRepository = { find: jest.fn() }
   const paymentRepository = { find: jest.fn() }
   const paymentHistoryRepository = { find: jest.fn() }
+  const dataSource = { query: jest.fn() }
   let service: C2cOrderService
 
   beforeEach(async () => {
@@ -32,7 +33,7 @@ describe('C2cOrderService', () => {
           provide: getRepositoryToken(PaymentOrderStatusHistoryEntity),
           useValue: paymentHistoryRepository,
         },
-        { provide: DataSource, useValue: {} },
+        { provide: DataSource, useValue: dataSource },
       ],
     }).compile()
     service = module.get(C2cOrderService)
@@ -136,5 +137,35 @@ describe('C2cOrderService', () => {
       },
       history: [{ id: 'merchant-history-1' }],
     })
+  })
+
+  it('returns tenant-scoped daily statistics using merchant order filters', async () => {
+    dataSource.query.mockResolvedValue([
+      {
+        todayPendingAmount: '80',
+        todayPendingCount: '2',
+        todaySuccessAmount: '120.5',
+        todaySuccessCount: '3',
+        yesterdaySuccessAmount: '60',
+        yesterdaySuccessCount: '1',
+      },
+    ])
+
+    await expect(
+      service.statistics('tenant-1', {
+        merchantId: 'merchant-1',
+        paymentMethod: 'ALIPAY',
+        platformOrderId: 'platform-1',
+      }),
+    ).resolves.toEqual({
+      todayPending: { amount: '80.00', count: 2 },
+      todaySuccess: { amount: '120.50', count: 3 },
+      yesterdaySuccess: { amount: '60.00', count: 1 },
+    })
+
+    expect(dataSource.query).toHaveBeenCalledWith(
+      expect.stringContaining('FROM merchant_order'),
+      expect.arrayContaining(['tenant-1', 'merchant-1', '%platform-1%', 'ALIPAY']),
+    )
   })
 })

@@ -1,13 +1,14 @@
-import { definePermission, Permission, User } from '@/common/decorators'
+import { ApiResult, definePermission, Permission, User } from '@/common/decorators'
 import type { AuthUser } from '@/common/interfaces'
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
-import { TenantContextDto } from '../business/business.dto'
+import { OrderStatisticsResponseDto, TenantContextDto } from '../business/business.dto'
 import { BusinessScopeService } from '../business/business-scope.service'
 import {
   MerchantOrderAppealSubmitDto,
   MerchantOrderDetailDto,
   MerchantOrderListDto,
+  MerchantOrderStatisticsDto,
 } from './c2c-order.dto'
 import { C2cOrderAppealService } from './c2c-order-appeal.service'
 import { C2cOrderService } from './c2c-order.service'
@@ -35,6 +36,14 @@ export class C2cOrderController {
   @ApiOperation({ summary: '分页查询买币商家订单' })
   list(@Query() dto: MerchantOrderListDto, @User() actor: AuthUser) {
     return this.orders.list(this.scope.resolveTenantId(actor, dto.tenantId), dto)
+  }
+
+  @Get('merchant-orders/statistics')
+  @Permission(MerchantOrderPermissions.READ)
+  @ApiOperation({ summary: '查询商家订单今日、昨日统计' })
+  @ApiResult({ type: OrderStatisticsResponseDto })
+  statistics(@Query() dto: MerchantOrderStatisticsDto, @User() actor: AuthUser) {
+    return this.orders.statistics(this.scope.resolveTenantId(actor, dto.tenantId), dto)
   }
 
   @Get('merchant-orders/:id')

@@ -3,7 +3,7 @@ import type { VbenFormProps } from '#/adapter/form';
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { BusinessApi } from '#/api';
 
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
 
@@ -16,6 +16,7 @@ import {
   getMerchantOrderApi,
   getMerchantOrderAppealReasonsApi,
   getMerchantOrdersApi,
+  getMerchantOrderStatisticsApi,
   getMerchantsApi,
   getPaymentAccountsApi,
   submitMerchantOrderAppealApi,
@@ -42,6 +43,8 @@ import {
   resolveBusinessEndTime,
   resolvePaymentRoute,
 } from '../shared/business-ui';
+import { createOrderStatisticItems } from '../shared/high-card-statistics';
+import HighCardStatistics from '../shared/HighCardStatistics.vue';
 import OrderTimeCell from '../shared/OrderTimeCell.vue';
 import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 
@@ -76,6 +79,11 @@ const detailOpen = ref(false);
 const detailLoading = ref(false);
 const detail = ref<BusinessApi.MerchantOrderDetail>();
 const actionLoading = ref('');
+const statistics = ref<BusinessApi.OrderStatistics>();
+
+const statisticItems = computed(() =>
+  createOrderStatisticItems(statistics.value),
+);
 
 const statusOptions = [
   'NEW',
@@ -236,10 +244,21 @@ const [Grid, gridApi] = useResourceGrid<
   query: async (params) => {
     selectedTenantId.value = params.tenantId ?? '';
     if (!params.tenantId) {
+      statistics.value = undefined;
       return createEmptyBusinessPage(params.pageIndex, params.pageSize);
     }
     const { createdAt: _createdAt, pageIndex, ...query } = params;
-    return getMerchantOrdersApi({ ...query, page: pageIndex });
+    const [page, nextStatistics] = await Promise.all([
+      getMerchantOrdersApi({ ...query, page: pageIndex }),
+      getMerchantOrderStatisticsApi({
+        merchantId: query.merchantId,
+        paymentMethod: query.paymentMethod,
+        platformOrderId: query.platformOrderId,
+        tenantId: query.tenantId,
+      }),
+    ]);
+    statistics.value = nextStatistics;
+    return page;
   },
 });
 const { FormModalRender, formModalClose, formModalShow } = useFormModal();
@@ -456,6 +475,9 @@ onMounted(async () => {
 <template>
   <Page auto-content-height>
     <Grid>
+      <template #top>
+        <HighCardStatistics :items="statisticItems" class="pb-2" />
+      </template>
       <template #toolbar-actions>
         <AButton
           v-access:code="['merchant:order:sync']"

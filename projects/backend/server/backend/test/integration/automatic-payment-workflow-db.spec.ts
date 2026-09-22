@@ -595,6 +595,7 @@ function createHarness(dataSource: DataSource): WorkflowHarness {
     dataSource.getRepository(MerchantOrderStatusHistoryEntity),
     dataSource.getRepository(PaymentOrderEntity),
     dataSource.getRepository(PaymentOrderStatusHistoryEntity),
+    dataSource,
   )
   const paymentPlanResolver = new PaymentPlanResolver(dataSource)
   const paymentOrderService = new PaymentOrderService(

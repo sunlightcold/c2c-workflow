@@ -31,6 +31,25 @@ export class TenantContextDto {
   tenantId?: string
 }
 
+export class OrderStatisticMetricDto {
+  @ApiProperty({ description: '订单金额，两位小数字符串', example: '1280.50' })
+  amount: string
+
+  @ApiProperty({ description: '订单数量', example: 12 })
+  count: number
+}
+
+export class OrderStatisticsResponseDto {
+  @ApiProperty({ type: OrderStatisticMetricDto })
+  todaySuccess: OrderStatisticMetricDto
+
+  @ApiProperty({ type: OrderStatisticMetricDto })
+  yesterdaySuccess: OrderStatisticMetricDto
+
+  @ApiProperty({ type: OrderStatisticMetricDto })
+  todayPending: OrderStatisticMetricDto
+}
+
 export class CreateTenantDto {
   @ApiProperty()
   @Transform(trim)

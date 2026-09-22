@@ -23,8 +23,10 @@ import {
   filterPaymentAccountsApi,
   getMerchantOrderAppealReasonsApi,
   getMerchantOrdersApi,
+  getMerchantOrderStatisticsApi,
   getPaymentBatchPoliciesApi,
   getPaymentOrdersApi,
+  getPaymentOrderStatisticsApi,
   restartTelegramBotRuntimeApi,
   rotateMerchantCredentialApi,
   setMerchantStatusApi,
@@ -94,6 +96,33 @@ describe('business api', () => {
         tenantId: 'tenant-1',
       },
     });
+  });
+
+  it('uses filtered merchant order statistics endpoint', async () => {
+    requestMocks.get.mockResolvedValue({
+      todayPending: { amount: '80.00', count: 2 },
+      todaySuccess: { amount: '120.00', count: 3 },
+      yesterdaySuccess: { amount: '60.00', count: 1 },
+    });
+
+    await getMerchantOrderStatisticsApi({
+      merchantId: 'merchant-1',
+      paymentMethod: 'ALIPAY',
+      platformOrderId: 'platform-1',
+      tenantId: 'tenant-1',
+    });
+
+    expect(requestMocks.get).toHaveBeenCalledWith(
+      '/sys/merchant-orders/statistics',
+      {
+        params: {
+          merchantId: 'merchant-1',
+          paymentMethod: 'ALIPAY',
+          platformOrderId: 'platform-1',
+          tenantId: 'tenant-1',
+        },
+      },
+    );
   });
 
   it('uses tenant-scoped batch policy endpoints and preserves parallel rules', async () => {
@@ -385,6 +414,35 @@ describe('business api', () => {
         totalPages: 2,
       },
     });
+  });
+
+  it('uses filtered payment order statistics endpoint', async () => {
+    requestMocks.get.mockResolvedValue({
+      todayPending: { amount: '88.00', count: 1 },
+      todaySuccess: { amount: '100.00', count: 2 },
+      yesterdaySuccess: { amount: '50.00', count: 1 },
+    });
+
+    await getPaymentOrderStatisticsApi({
+      executionMode: 'BATCH',
+      merchantId: 'merchant-1',
+      orderNo: 'ORDER-1',
+      sourceType: 'C2C_BUY',
+      tenantId: 'tenant-1',
+    });
+
+    expect(requestMocks.get).toHaveBeenCalledWith(
+      '/sys/payment-orders/statistics',
+      {
+        params: {
+          executionMode: 'BATCH',
+          merchantId: 'merchant-1',
+          orderNo: 'ORDER-1',
+          sourceType: 'C2C_BUY',
+          tenantId: 'tenant-1',
+        },
+      },
+    );
   });
 
   it('keeps payment amounts as strings when creating a manual order', async () => {

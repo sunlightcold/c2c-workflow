@@ -4,10 +4,12 @@ import { PaymentSourceType } from '@admin/database'
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { BusinessScopeService } from '../business/business-scope.service'
+import { OrderStatisticsResponseDto } from '../business/business.dto'
 import {
   CreateManualPaymentOrderDto,
   PaymentOrderListDto,
   PaymentOrderListResponseDto,
+  PaymentOrderStatisticsDto,
   PaymentTenantContextDto,
 } from './payment-order.dto'
 import { PaymentOrderService } from './payment-order.service'
@@ -35,6 +37,14 @@ export class PaymentOrderController {
   @ApiResult({ type: PaymentOrderListResponseDto })
   list(@Query() dto: PaymentOrderListDto, @User() actor: AuthUser) {
     return this.orders.list(this.scope.resolveTenantId(actor, dto.tenantId), dto)
+  }
+
+  @Get('statistics')
+  @Permission(PaymentOrderPermissions.READ)
+  @ApiOperation({ summary: '查询支付订单今日、昨日统计' })
+  @ApiResult({ type: OrderStatisticsResponseDto })
+  statistics(@Query() dto: PaymentOrderStatisticsDto, @User() actor: AuthUser) {
+    return this.orders.statistics(this.scope.resolveTenantId(actor, dto.tenantId), dto)
   }
 
   @Get(':id')

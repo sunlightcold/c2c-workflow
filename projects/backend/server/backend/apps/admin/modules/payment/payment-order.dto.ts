@@ -76,6 +76,32 @@ export class PaymentOrderListDto extends PaymentTenantContextDto {
   pageSize = 20
 }
 
+export class PaymentOrderStatisticsDto extends PaymentTenantContextDto {
+  @ApiPropertyOptional({
+    description: '聚合搜索支付订单号、系统订单号、平台订单号或批次号',
+  })
+  @Transform(trim)
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  orderNo?: string
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  merchantId?: string
+
+  @ApiPropertyOptional({ enum: PaymentExecutionMode })
+  @IsOptional()
+  @IsEnum(PaymentExecutionMode)
+  executionMode?: PaymentExecutionMode
+
+  @ApiPropertyOptional({ enum: PaymentSourceType })
+  @IsOptional()
+  @IsEnum(PaymentSourceType)
+  sourceType?: PaymentSourceType
+}
+
 export class PaymentOrderListItemDto {
   @ApiProperty({ format: 'uuid' }) id: string
   @ApiProperty({ format: 'uuid' }) tenantId: string

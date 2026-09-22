@@ -416,6 +416,23 @@ export namespace BusinessApi {
     status?: string;
   }
 
+  export interface OrderStatisticMetric {
+    amount: string;
+    count: number;
+  }
+
+  export interface OrderStatistics {
+    todayPending: OrderStatisticMetric;
+    todaySuccess: OrderStatisticMetric;
+    yesterdaySuccess: OrderStatisticMetric;
+  }
+
+  export interface MerchantOrderStatisticsQuery extends TenantContext {
+    merchantId?: string;
+    paymentMethod?: 'ALIPAY';
+    platformOrderId?: string;
+  }
+
   export interface CreateMerchantInput extends TenantContext {
     apiBaseUrl?: string;
     apiKey?: string;
@@ -466,6 +483,13 @@ export namespace BusinessApi {
     orderNo?: string;
     sourceType?: PaymentSourceType;
     status?: string;
+  }
+
+  export interface PaymentOrderStatisticsQuery extends TenantContext {
+    executionMode?: PaymentExecutionMode;
+    merchantId?: string;
+    orderNo?: string;
+    sourceType?: PaymentSourceType;
   }
 
   export interface PaymentBatchQuery extends PageQuery {
@@ -843,6 +867,13 @@ export async function getMerchantOrdersApi(
     }),
   );
 }
+export const getMerchantOrderStatisticsApi = (
+  params: BusinessApi.MerchantOrderStatisticsQuery,
+) =>
+  requestClient.get<BusinessApi.OrderStatistics>(
+    '/sys/merchant-orders/statistics',
+    { params },
+  );
 export const getMerchantOrderApi = (
   id: string,
   params: BusinessApi.TenantContext & { merchantId: string },
@@ -911,6 +942,13 @@ export async function getPaymentOrdersApi(
     await requestClient.get('/sys/payment-orders', { params }),
   );
 }
+export const getPaymentOrderStatisticsApi = (
+  params: BusinessApi.PaymentOrderStatisticsQuery,
+) =>
+  requestClient.get<BusinessApi.OrderStatistics>(
+    '/sys/payment-orders/statistics',
+    { params },
+  );
 export const getPaymentOrderApi = (
   id: string,
   params: BusinessApi.TenantContext,

@@ -5,7 +5,7 @@ import type { VbenFormProps } from '#/adapter/form';
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { BusinessApi } from '#/api';
 
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 
 import { Page } from '@vben/common-ui';
 
@@ -15,6 +15,7 @@ import {
   getPaymentAccountsApi,
   getPaymentOrderApi,
   getPaymentOrdersApi,
+  getPaymentOrderStatisticsApi,
   rematchPaymentOrderApi,
 } from '#/api';
 import { runResourceAction, useFormModal, useResourceGrid } from '#/hooks';
@@ -30,6 +31,8 @@ import {
   resolveBusinessEndTime,
   resolvePaymentRoute,
 } from '../shared/business-ui';
+import { createOrderStatisticItems } from '../shared/high-card-statistics';
+import HighCardStatistics from '../shared/HighCardStatistics.vue';
 import OrderTimeCell from '../shared/OrderTimeCell.vue';
 import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 import { queryPaymentOrderDetail } from './payment-order-detail';
@@ -51,6 +54,11 @@ const paymentAccounts = ref<BusinessApi.PaymentAccount[]>([]);
 const merchantOptions = reactive<Array<{ label: string; value: string }>>([]);
 const detailOpen = ref(false);
 const detail = ref<PaymentOrderDetail>();
+const statistics = ref<BusinessApi.OrderStatistics>();
+
+const statisticItems = computed(() =>
+  createOrderStatisticItems(statistics.value),
+);
 
 const sourceOptions = ['C2C_BUY', 'BOT_MANUAL'].map((value) => ({
   label: businessEnumText(value),
@@ -220,17 +228,28 @@ const [Grid, gApi] = useResourceGrid<
   }),
   query: async (params) => {
     if (!params.tenantId) {
+      statistics.value = undefined;
       return createEmptyBusinessPage(params.pageIndex, params.pageSize);
     }
-    return getPaymentOrdersApi({
-      merchantId: params.merchantId,
-      orderNo: params.orderNo,
-      page: params.pageIndex,
-      pageSize: params.pageSize,
-      sourceType: params.sourceType,
-      status: params.status,
-      tenantId: params.tenantId,
-    });
+    const [page, nextStatistics] = await Promise.all([
+      getPaymentOrdersApi({
+        merchantId: params.merchantId,
+        orderNo: params.orderNo,
+        page: params.pageIndex,
+        pageSize: params.pageSize,
+        sourceType: params.sourceType,
+        status: params.status,
+        tenantId: params.tenantId,
+      }),
+      getPaymentOrderStatisticsApi({
+        merchantId: params.merchantId,
+        orderNo: params.orderNo,
+        sourceType: params.sourceType,
+        tenantId: params.tenantId,
+      }),
+    ]);
+    statistics.value = nextStatistics;
+    return page;
   },
 });
 const { FormModalRender, formModalClose, formModalShow } = useFormModal();
@@ -330,6 +349,9 @@ onMounted(async () => {
 <template>
   <Page auto-content-height>
     <Grid>
+      <template #top>
+        <HighCardStatistics :items="statisticItems" class="pb-2" />
+      </template>
       <template #toolbar-actions>
         <AButton
           v-access:code="['payment:order:create']"

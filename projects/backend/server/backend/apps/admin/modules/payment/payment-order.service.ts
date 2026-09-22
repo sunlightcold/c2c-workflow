@@ -1,4 +1,6 @@
 import { BusinessNoPrefix, IdUtils } from '@/common/utils/id'
+import { createRelativeBusinessDayWindow } from '@/common/time'
+import { formatDecimal } from '@/common/utils/decimal'
 import {
   BusinessStatus,
   MerchantEntity,
@@ -34,7 +36,16 @@ import {
   type ResolvedPaymentPlan,
 } from './payment-plan-resolver'
 import { normalizeCnyAmount } from './payment-adapter.types'
-import type { PaymentOrderListDto } from './payment-order.dto'
+import type { PaymentOrderListDto, PaymentOrderStatisticsDto } from './payment-order.dto'
+
+interface OrderStatisticsRow {
+  todayPendingAmount: string
+  todayPendingCount: string
+  todaySuccessAmount: string
+  todaySuccessCount: string
+  yesterdaySuccessAmount: string
+  yesterdaySuccessCount: string
+}
 
 export interface CreatePaymentOrderInput {
   merchantId: string
@@ -110,6 +121,61 @@ export class PaymentOrderService {
       }),
     ])
     return { ...order, history, batchItems }
+  }
+
+  async statistics(tenantId: string, input: PaymentOrderStatisticsDto) {
+    const now = new Date()
+    const today = createRelativeBusinessDayWindow(0, { now })
+    const yesterday = createRelativeBusinessDayWindow(-1, { now })
+    const parameters: unknown[] = [
+      tenantId,
+      today.start,
+      today.endExclusive,
+      yesterday.start,
+      yesterday.endExclusive,
+    ]
+    const filters = ['payment_order."tenantId" = $1']
+    const addFilter = (sql: string, value: unknown) => {
+      parameters.push(value)
+      filters.push(sql.replaceAll('?', `$${parameters.length}`))
+    }
+    if (input.merchantId) addFilter('payment_order."merchantId" = ?', input.merchantId)
+    if (input.executionMode) addFilter('payment_order."executionMode" = ?', input.executionMode)
+    if (input.sourceType) addFilter('payment_order."sourceType" = ?', input.sourceType)
+    if (input.orderNo) {
+      addFilter(
+        `(payment_order."paymentNo" = ? OR payment_order."sourceBusinessNo" = ?
+          OR payment_order."upstreamId" = ? OR EXISTS (
+            SELECT 1 FROM payment_batch_item
+            INNER JOIN payment_batch ON payment_batch.id = payment_batch_item."batchId"
+            WHERE payment_batch_item."paymentOrderId" = payment_order.id
+              AND payment_batch_item."tenantId" = payment_order."tenantId"
+              AND payment_batch."tenantId" = payment_order."tenantId"
+              AND payment_batch."batchNo" = ?
+          ))`,
+        input.orderNo,
+      )
+    }
+
+    const [row] = (await this.dataSource.query(
+      `SELECT
+        COUNT(*) FILTER (WHERE status = 'SUCCESS'
+          AND "createdAt" >= $2 AND "createdAt" < $3)::text AS "todaySuccessCount",
+        COALESCE(SUM(amount) FILTER (WHERE status = 'SUCCESS'
+          AND "createdAt" >= $2 AND "createdAt" < $3), 0)::text AS "todaySuccessAmount",
+        COUNT(*) FILTER (WHERE status = 'SUCCESS'
+          AND "createdAt" >= $4 AND "createdAt" < $5)::text AS "yesterdaySuccessCount",
+        COALESCE(SUM(amount) FILTER (WHERE status = 'SUCCESS'
+          AND "createdAt" >= $4 AND "createdAt" < $5), 0)::text AS "yesterdaySuccessAmount",
+        COUNT(*) FILTER (WHERE status IN ('PENDING_CONFIG', 'CREATED', 'READY')
+          AND "createdAt" >= $2 AND "createdAt" < $3)::text AS "todayPendingCount",
+        COALESCE(SUM(amount) FILTER (WHERE status IN ('PENDING_CONFIG', 'CREATED', 'READY')
+          AND "createdAt" >= $2 AND "createdAt" < $3), 0)::text AS "todayPendingAmount"
+      FROM payment_order
+      WHERE ${filters.join(' AND ')}`,
+      parameters,
+    )) as OrderStatisticsRow[]
+    return mapStatistics(row)
   }
 
   async create(
@@ -337,5 +403,17 @@ export class PaymentOrderService {
       error instanceof QueryFailedError &&
       (error.driverError as { code?: string } | undefined)?.code === '23505'
     )
+  }
+}
+
+function mapStatistics(row?: OrderStatisticsRow) {
+  const metric = (amount?: string, count?: string) => ({
+    amount: formatDecimal(amount, 2),
+    count: Number(count ?? 0),
+  })
+  return {
+    todayPending: metric(row?.todayPendingAmount, row?.todayPendingCount),
+    todaySuccess: metric(row?.todaySuccessAmount, row?.todaySuccessCount),
+    yesterdaySuccess: metric(row?.yesterdaySuccessAmount, row?.yesterdaySuccessCount),
   }
 }

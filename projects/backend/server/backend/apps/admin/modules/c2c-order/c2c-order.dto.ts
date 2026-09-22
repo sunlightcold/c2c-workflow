@@ -62,6 +62,26 @@ export class MerchantOrderListDto extends TenantContextDto {
   pageSize = 20
 }
 
+export class MerchantOrderStatisticsDto extends TenantContextDto {
+  @ApiPropertyOptional()
+  @Transform(({ value }) => (value === '' ? undefined : value))
+  @IsOptional()
+  @IsUUID()
+  merchantId?: string
+
+  @ApiPropertyOptional({ description: '平台订单号，支持模糊查询' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  platformOrderId?: string
+
+  @ApiPropertyOptional({ enum: ['ALIPAY'] })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  paymentMethod?: string
+}
+
 export class MerchantOrderDetailDto extends TenantContextDto {
   @ApiProperty()
   @IsUUID()

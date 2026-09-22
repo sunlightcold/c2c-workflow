@@ -47,6 +47,7 @@ describe('PaymentOrderService', () => {
       if (entity === PaymentBatchEntity) return batches
       throw new Error('Unexpected repository')
     }),
+    query: jest.fn(),
     transaction: jest.fn((callback: (value: typeof manager) => unknown) => callback(manager)),
   }
   const merchants = { findOne: jest.fn() }
@@ -254,6 +255,43 @@ describe('PaymentOrderService', () => {
       ],
       total: 2,
     })
+  })
+
+  it('returns tenant-scoped daily statistics using aggregate order filters', async () => {
+    dataSource.query.mockResolvedValue([
+      {
+        todayPendingAmount: '88.1',
+        todayPendingCount: '2',
+        todaySuccessAmount: '300',
+        todaySuccessCount: '4',
+        yesterdaySuccessAmount: '120.25',
+        yesterdaySuccessCount: '2',
+      },
+    ])
+
+    await expect(
+      service.statistics(tenantId, {
+        executionMode: PaymentExecutionMode.BATCH,
+        merchantId,
+        orderNo: 'ORDER-1',
+        sourceType: PaymentSourceType.C2C_BUY,
+      }),
+    ).resolves.toEqual({
+      todayPending: { amount: '88.10', count: 2 },
+      todaySuccess: { amount: '300.00', count: 4 },
+      yesterdaySuccess: { amount: '120.25', count: 2 },
+    })
+
+    expect(dataSource.query).toHaveBeenCalledWith(
+      expect.stringContaining('payment_batch_item'),
+      expect.arrayContaining([
+        tenantId,
+        merchantId,
+        PaymentExecutionMode.BATCH,
+        PaymentSourceType.C2C_BUY,
+        'ORDER-1',
+      ]),
+    )
   })
 
   it('rematches only pending-config orders and locks the newly available route', async () => {
