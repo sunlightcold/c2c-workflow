@@ -867,6 +867,52 @@ describe('C2C buy-order clients', () => {
     })
   })
 
+  it('keeps OKX pending orders when the list uses a non-terminal pending status', async () => {
+    http.request.mockResolvedValue({
+      code: 0,
+      data: {
+        total: 1,
+        items: [
+          {
+            id: '260923132252452',
+            side: 'buy',
+            orderStatus: 'pending',
+            paymentStatus: 'unpaid',
+            baseAmount: '29.52',
+            baseCurrency: 'usdt',
+            quoteAmount: '196.01',
+            quoteCurrency: 'cny',
+            createdDate: 1_758_611_564_000,
+          },
+        ],
+      },
+    })
+
+    await expect(
+      okx.listOrders(
+        { cookie: 'session', authorization: 'token', timeoutMs: 5000 },
+        {
+          tradeType: 'BUY',
+          asset: 'USDT',
+          startDate: 1,
+          endDate: 2,
+          page: 1,
+          rows: 20,
+          orderStatusList: [1],
+        },
+      ),
+    ).resolves.toMatchObject({
+      items: [
+        expect.objectContaining({
+          platformOrderId: '260923132252452',
+          status: 'PENDING_PAYMENT',
+        }),
+      ],
+      total: 1,
+      hasMore: false,
+    })
+  })
+
   it('uses OKX detail-user and receipt-account fallbacks without requiring one response shape', async () => {
     const base = {
       id: 'OKX-FALLBACK-1',

@@ -313,7 +313,7 @@ function normalizeNumericStatus(value: unknown): C2cBuyOrderStatus {
 }
 
 function normalizeOkxStatus(input: Record<string, unknown>): C2cBuyOrderStatus {
-  const status = text(input.orderStatus).toLowerCase()
+  const status = text(input.orderStatus ?? input.status).toLowerCase()
   const payment = text(input.paymentStatus).toLowerCase()
   const process = text(input.orderProcessStatus)
   if (status === 'completed' || process === '4') return C2cBuyOrderStatus.COMPLETED
@@ -321,8 +321,16 @@ function normalizeOkxStatus(input: Record<string, unknown>): C2cBuyOrderStatus {
   if (status === 'expired') return C2cBuyOrderStatus.EXPIRED
   if (status.includes('appeal') || status.includes('dispute')) return C2cBuyOrderStatus.DISPUTED
   if (payment === 'paid' || payment === 'confirmed') return C2cBuyOrderStatus.PAID
-  if ((status === 'new' || !status || process === '2') && (!payment || payment === 'unpaid'))
+  if (
+    ['new', 'pending', 'processing', 'open'].includes(status) ||
+    process === '2' ||
+    (!status && (!payment || payment === 'unpaid'))
+  )
     return C2cBuyOrderStatus.PENDING_PAYMENT
+  // The OKX pending-order endpoint has returned additional non-terminal status
+  // labels over time. Its payment state is the reliable discriminator for an
+  // unpaid order, matching the pfa-pay adapter's compatibility behavior.
+  if (!payment || payment === 'unpaid') return C2cBuyOrderStatus.PENDING_PAYMENT
   return C2cBuyOrderStatus.UNKNOWN
 }
 
