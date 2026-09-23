@@ -191,31 +191,19 @@ export class C2cMerchantPaymentService {
     if (detail.paymentDeadline && new Date(detail.paymentDeadline) <= new Date()) {
       throw new BadRequestException('平台订单付款期限已过')
     }
-    if (detail.kycStatus !== 'PASS' || this.sameName(detail.payeeName, detail.identityName)) {
-      throw new BadRequestException('平台订单实名核验结果已变化')
-    }
     if (
       detail.fiatCurrency !== order.fiatCurrency ||
-      !decimal(detail.fiatAmount).eq(decimal(order.fiatAmount)) ||
-      detail.asset !== order.asset ||
-      !detail.assetAmount ||
-      !decimal(detail.assetAmount).eq(decimal(order.assetAmount))
+      !decimal(detail.fiatAmount).eq(decimal(order.fiatAmount))
     ) {
-      throw new BadRequestException('平台订单金额或资产已变化')
+      throw new BadRequestException('平台订单金额已变化')
     }
-    if (
-      detail.paymentMethod !== order.paymentMethod ||
-      detail.platformPaymentMethodId !== order.platformPaymentMethodId
-    ) {
+    if (detail.paymentMethod !== order.paymentMethod) {
       throw new BadRequestException('平台订单付款方式已变化')
     }
     if (detail.payeeIdentity !== order.payeeIdentity) {
       throw new BadRequestException('平台订单收款账号已变化')
     }
-    if (
-      !this.sameName(detail.identityName, order.identityName) ||
-      !this.sameName(detail.payeeName, order.payeeName)
-    ) {
+    if (!this.sameName(detail.identityName, order.identityName)) {
       throw new BadRequestException('平台订单收款姓名已变化')
     }
   }

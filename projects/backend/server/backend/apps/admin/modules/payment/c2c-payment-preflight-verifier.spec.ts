@@ -294,9 +294,9 @@ describe('C2cPaymentPreflightVerifier', () => {
   it.each([
     ['platform status changed', { status: C2cBuyOrderStatus.CANCELLED }, '平台订单已不可付款'],
     ['amount changed', { fiatAmount: '101.00' }, '平台订单金额已变化'],
-    ['asset changed', { asset: 'BTC' }, '平台订单资产已变化'],
     ['payee changed', { payeeIdentity: 'other@example.com' }, '平台订单收款账号已变化'],
     ['identity changed', { identityName: '李四' }, '平台订单实名已变化'],
+    ['payment method changed', { paymentMethod: 'BANK' }, '平台订单付款方式已变化'],
   ])('rejects before payment when %s', async (_case, change, message) => {
     platformClient.getOrderDetail.mockResolvedValue({ ...platformOrder, ...change })
 
@@ -308,8 +308,9 @@ describe('C2cPaymentPreflightVerifier', () => {
   it('accepts harmless name formatting and a refreshed platform payment method id', async () => {
     platformClient.getOrderDetail.mockResolvedValue({
       ...platformOrder,
+      asset: 'BTC',
       identityName: '张 三',
-      payeeName: '张 三',
+      payeeName: 'Another display name',
       platformPaymentMethodId: '902',
       paymentMethod: 'aliPay',
     })

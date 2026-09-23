@@ -268,12 +268,14 @@ export class C2cPaymentPreflightVerifier {
     this.require(current.status === C2cBuyOrderStatus.PENDING_PAYMENT, '平台订单已不可付款')
     this.require(current.payable, '平台订单当前不可付款')
     this.require(current.platformOrderId === snapshot.platformOrderId, '平台订单编号不匹配')
-    this.require(current.asset === snapshot.asset, '平台订单资产已变化')
     this.require(this.sameAmount(current.fiatAmount, context.order.amount), '平台订单金额已变化')
     this.require(current.fiatCurrency === context.order.currency, '平台订单币种已变化')
+    this.require(
+      current.paymentMethod.toUpperCase() === context.order.paymentMethod,
+      '平台订单付款方式已变化',
+    )
     this.require(current.payeeIdentity === context.order.payeeIdentity, '平台订单收款账号已变化')
     this.require(this.sameName(current.identityName, context.order.payeeName), '平台订单实名已变化')
-    this.require(this.sameName(current.payeeName, snapshot.payeeName), '平台订单收款人已变化')
   }
 
   private getPlatformOrder(

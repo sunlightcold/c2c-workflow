@@ -187,6 +187,30 @@ describe('C2cMerchantPaymentService', () => {
     )
   })
 
+  it('allows non-payment metadata changes during manual confirmation', async () => {
+    merchantOrders.detail.mockResolvedValue({ ...order, identityMatched: false })
+    platformClient.getOrderDetail.mockResolvedValueOnce({
+      platformOrderId: order.platformOrderId,
+      status: C2cBuyOrderStatus.PENDING_PAYMENT,
+      payable: true,
+      side: 'BUY',
+      asset: 'BTC',
+      assetAmount: '0.001',
+      kycStatus: undefined,
+      fiatCurrency: order.fiatCurrency,
+      fiatAmount: order.fiatAmount,
+      paymentMethod: order.paymentMethod,
+      platformPaymentMethodId: 'changed-method-id',
+      payeeIdentity: order.payeeIdentity,
+      payeeName: 'Other display name',
+      identityName: order.identityName,
+    })
+
+    await service.createAfterManualReview('tenant-1', 'merchant-1', 'order-1', 'TG:88')
+
+    expect(paymentOrders.create).toHaveBeenCalledTimes(1)
+  })
+
   it('rejects Telegram confirmation when the current platform payee differs before creating a batch payment', async () => {
     merchantOrders.detail.mockResolvedValue({ ...order, identityMatched: false })
     platformClient.getOrderDetail.mockResolvedValueOnce({
@@ -219,8 +243,9 @@ describe('C2cMerchantPaymentService', () => {
 
   it.each([
     ['platform status', { status: C2cBuyOrderStatus.PAID }, '平台订单已不可付款'],
-    ['fiat amount', { fiatAmount: '100.01' }, '平台订单金额或资产已变化'],
-    ['KYC', { kycStatus: 'FAIL' }, '平台订单实名核验结果已变化'],
+    ['fiat amount', { fiatAmount: '100.01' }, '平台订单金额已变化'],
+    ['payment method', { paymentMethod: 'BANK' }, '平台订单付款方式已变化'],
+    ['transfer name', { identityName: 'Other name' }, '平台订单收款姓名已变化'],
   ])('rejects reviewed payment when %s has changed', async (_name, change, reason) => {
     merchantOrders.detail.mockResolvedValue({ ...order, identityMatched: false })
     platformClient.getOrderDetail.mockResolvedValueOnce({
