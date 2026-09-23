@@ -299,7 +299,7 @@ export class TelegramNotificationService {
       (order) => order.status !== 'PENDING_PAYMENT' && shouldNotifyOrderDiscovered(order),
     )
     const paymentBlocked = orders.filter(
-      (order) => order.status === 'PENDING_PAYMENT' && !order.payable && order.lastError,
+      (order) => order.status === 'PENDING_PAYMENT' && !order.payable,
     )
     await Promise.all([
       ...otherNotifications.map((order) =>
@@ -317,7 +317,7 @@ export class TelegramNotificationService {
           TelegramNotificationEvent.EXCEPTION,
           formatExceptionMessage(
             'C2C_PAYMENT_ORDER_NOT_CREATED',
-            order.lastError!,
+            order.lastError || '平台订单当前不可付款',
             order.platformOrderId,
           ),
         ),

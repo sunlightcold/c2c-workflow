@@ -537,10 +537,11 @@ describe('Automatic C2C payment workflow database integration', () => {
           .findOneByOrFail({ id: merchantOrderId }),
       ),
     )
-    expect(selected).toHaveLength(4)
+    expect(selected).toHaveLength(5)
     expect(selected).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ platformOrderId: 'eligible' }),
+        expect.objectContaining({ platformOrderId: 'automation-disabled' }),
         expect.objectContaining({ platformOrderId: 'identity-mismatch' }),
         expect.objectContaining({ platformOrderId: 'deadline-missing' }),
         expect.objectContaining({ platformOrderId: 'deadline-expired' }),

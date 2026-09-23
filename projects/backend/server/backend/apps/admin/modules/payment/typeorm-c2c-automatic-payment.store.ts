@@ -48,16 +48,6 @@ export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore
           AND merchant.status = 'active'
           AND merchant_order.status = 'PENDING_PAYMENT'
           AND merchant_order.payable = true
-          AND EXISTS (
-            SELECT 1
-            FROM merchant_payment_plan plan
-            WHERE plan."tenantId" = merchant_order."tenantId"
-              AND plan."merchantId" = merchant_order."merchantId"
-              AND plan.scene = 'C2C_BUY'
-              AND plan.currency = merchant_order."fiatCurrency"
-              AND plan.status = 'active'
-              AND plan."automaticPaymentEnabled" = true
-          )
           AND failure_notice.id IS NULL
           AND (
             payment_order.id IS NULL
