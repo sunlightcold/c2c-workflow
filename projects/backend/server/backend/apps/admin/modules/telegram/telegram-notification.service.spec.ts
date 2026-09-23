@@ -34,6 +34,7 @@ describe('TelegramNotificationService', () => {
         platformOrderId: 'ORD-1',
         fiatAmount: '10.00',
         fiatCurrency: 'CNY',
+        platformPaymentMethodId: '15549410',
         status: 'PENDING_PAYMENT',
         identityMatched: false,
         payable: true,

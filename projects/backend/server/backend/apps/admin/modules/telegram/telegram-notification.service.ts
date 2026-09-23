@@ -280,6 +280,8 @@ export class TelegramNotificationService {
         platformOrderId: true,
         fiatAmount: true,
         fiatCurrency: true,
+        platformPaymentMethodId: true,
+        paymentDeadline: true,
         asset: true,
         assetAmount: true,
         status: true,

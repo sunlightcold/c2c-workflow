@@ -4,6 +4,8 @@ export interface TelegramOrderMessageInput {
   platformOrderId: string
   fiatAmount: string
   fiatCurrency: string
+  platformPaymentMethodId?: string | null
+  paymentDeadline?: Date | null
   asset: string
   assetAmount: string
   status: string
@@ -193,6 +195,9 @@ export function shouldNotifyOrderDiscovered(
     | 'payeeName'
     | 'payeeIdentity'
     | 'paymentMethod'
+    | 'platformPaymentMethodId'
+    | 'fiatCurrency'
+    | 'paymentDeadline'
   >,
 ) {
   if (order.status === MerchantOrderStatus.PENDING_PAYMENT) {
@@ -201,7 +206,10 @@ export function shouldNotifyOrderDiscovered(
       order.payable &&
       order.kycStatus === 'PASS' &&
       Boolean(order.identityName && order.payeeName && order.payeeIdentity) &&
-      order.paymentMethod === 'ALIPAY'
+      order.paymentMethod === 'ALIPAY' &&
+      Boolean(order.platformPaymentMethodId) &&
+      order.fiatCurrency === 'CNY' &&
+      (!order.paymentDeadline || order.paymentDeadline.getTime() > Date.now())
     )
   }
   return [

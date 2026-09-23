@@ -4,6 +4,7 @@ import {
   formatAutomaticBatchSubmissionMessage,
   formatC2cCreatedMessage,
   formatExceptionMessage,
+  formatOrderDiscoveredMessage,
   formatPaymentStatusMessage,
   shouldNotifyBatchStatus,
   shouldNotifyOrderDiscovered,
@@ -105,6 +106,66 @@ describe('Telegram notification formatting policy', () => {
     }
 
     expect(shouldNotifyOrderDiscovered(order)).toBe(false)
+  })
+
+  it('matches the pfa-pay identity-review message text and field order', () => {
+    expect(
+      formatOrderDiscoveredMessage({
+        platformOrderId: '260923135225452',
+        fiatAmount: '196.01',
+        fiatCurrency: 'CNY',
+        asset: 'USDT',
+        assetAmount: '29.52',
+        status: 'PENDING_PAYMENT',
+        payeeName: '秦世纪',
+        payeeIdentity: '1042926540@qq.com',
+        paymentMethod: 'ALIPAY',
+        identityName: '秦逢',
+        kycStatus: 'PASS',
+        identityMatched: false,
+        payable: true,
+      }),
+    ).toBe(
+      '🔴 <b>实名不一致，等待确认</b>\n\n' +
+        '<b>订单信息</b>\n' +
+        '商家订单号：<code>260923135225452</code>\n' +
+        '金额：<code>196.01 CNY</code>\n' +
+        '资产：<code>USDT</code>\n\n' +
+        '<b>收款信息</b>\n' +
+        '姓名：<code>秦逢</code>\n' +
+        '账号：<code>1042926540@qq.com</code>\n' +
+        '方式：<code>支付宝</code>\n\n' +
+        '<b>实名核验</b>\n' +
+        'KYC：<code>PASS</code>\n' +
+        '实名：<code>秦逢</code>\n' +
+        '持有人：<code>秦世纪</code>\n' +
+        '结果：<b>不一致</b>',
+    )
+  })
+
+  it('does not offer a confirmation button for incomplete or expired payment details', () => {
+    const order = {
+      status: 'PENDING_PAYMENT',
+      identityMatched: false,
+      payable: true,
+      kycStatus: 'PASS',
+      identityName: '秦逢',
+      payeeName: '秦世纪',
+      payeeIdentity: '1042926540@qq.com',
+      paymentMethod: 'ALIPAY',
+      fiatCurrency: 'CNY',
+      platformPaymentMethodId: '15549410',
+      paymentDeadline: new Date('2099-01-01T00:00:00.000Z'),
+    }
+    expect(shouldNotifyOrderDiscovered(order)).toBe(true)
+    expect(shouldNotifyOrderDiscovered({ ...order, platformPaymentMethodId: null })).toBe(false)
+    expect(shouldNotifyOrderDiscovered({ ...order, fiatCurrency: 'USD' })).toBe(false)
+    expect(
+      shouldNotifyOrderDiscovered({
+        ...order,
+        paymentDeadline: new Date('2000-01-01T00:00:00.000Z'),
+      }),
+    ).toBe(false)
   })
 
   it('formats one aggregate partial-success batch result with failure details', () => {
