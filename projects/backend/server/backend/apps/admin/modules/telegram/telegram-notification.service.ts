@@ -291,7 +291,6 @@ export class TelegramNotificationService {
         payable: true,
         kycStatus: true,
         lastError: true,
-        telegramReviewNotificationGroupIds: true,
       },
     })
     const reviewable = orders.filter(
@@ -449,7 +448,6 @@ export class TelegramNotificationService {
         group.merchantId === payload.merchantId &&
         group.capabilities?.includes(TelegramCapability.C2C_ORDER_PAYMENT),
     )
-    const deliveredGroupIds = new Set(order.telegramReviewNotificationGroupIds ?? [])
     const replyMarkup = {
       inline_keyboard: [
         [
@@ -459,7 +457,6 @@ export class TelegramNotificationService {
       ],
     }
     for (const group of groups) {
-      if (deliveredGroupIds.has(group.id)) continue
       const deliveries = await this.sendGroups(
         [group],
         formatOrderDiscoveredMessage(order),
@@ -474,14 +471,6 @@ export class TelegramNotificationService {
         )
         continue
       }
-      await this.merchantOrders.query(
-        `UPDATE merchant_order
-         SET "telegramReviewNotificationGroupIds" = array_append("telegramReviewNotificationGroupIds", $4::uuid)
-         WHERE id = $1 AND "tenantId" = $2 AND "merchantId" = $3
-           AND NOT ($4::uuid = ANY("telegramReviewNotificationGroupIds"))`,
-        [order.id, payload.tenantId, payload.merchantId, group.id],
-      )
-      deliveredGroupIds.add(group.id)
       this.logger.log(
         `Telegram C2C 待审核订单已送达: order=${order.platformOrderId}, group=${group.id}, tenant=${payload.tenantId}, merchant=${payload.merchantId}`,
       )

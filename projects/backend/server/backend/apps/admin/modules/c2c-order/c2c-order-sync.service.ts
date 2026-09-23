@@ -109,13 +109,7 @@ export class C2cOrderSyncService {
     merchantId: string,
     createdOrderIds: string[],
   ): Promise<void> {
-    // Review notices retry until each eligible group has received the order.
-    const orderIds = [
-      ...new Set([
-        ...createdOrderIds,
-        ...(await this.store.findPendingReviewOrderIds(tenantId, merchantId)),
-      ]),
-    ]
+    const orderIds = [...new Set(createdOrderIds)]
     if (!orderIds.length) return
     try {
       await this.eventEmitter?.emitAsync(EVENT_KEYS.TELEGRAM_ORDER_DISCOVERED, {

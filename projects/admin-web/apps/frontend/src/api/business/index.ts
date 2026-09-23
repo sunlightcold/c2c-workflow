@@ -290,6 +290,8 @@ export namespace BusinessApi {
 
   export interface MerchantOrderDetail extends MerchantOrder {
     history: StatusHistory[];
+    identityName: null | string;
+    kycStatus: null | string;
     paymentOrder: null | (PaymentOrder & { history: StatusHistory[] });
   }
 

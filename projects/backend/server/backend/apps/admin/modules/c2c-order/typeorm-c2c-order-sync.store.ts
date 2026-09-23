@@ -15,7 +15,7 @@ import type { C2cOrderSyncStore } from './c2c-order-sync.types'
 export class TypeOrmC2cOrderSyncStore implements C2cOrderSyncStore {
   constructor(
     @Inject(DataSource)
-    private readonly dataSource: Pick<DataSource, 'transaction' | 'getRepository' | 'query'>,
+    private readonly dataSource: Pick<DataSource, 'transaction' | 'getRepository'>,
   ) {}
 
   claimDue(
@@ -82,49 +82,6 @@ export class TypeOrmC2cOrderSyncStore implements C2cOrderSyncStore {
         select: { lastSuccessAt: true },
       })
     return checkpoint?.lastSuccessAt ?? null
-  }
-
-  async findPendingReviewOrderIds(tenantId: string, merchantId: string): Promise<string[]> {
-    const rows = (await this.dataSource.query(
-      `SELECT merchant_order.id
-       FROM merchant_order
-       WHERE merchant_order."tenantId" = $1
-         AND merchant_order."merchantId" = $2
-         AND merchant_order.status = 'PENDING_PAYMENT'
-         AND merchant_order."identityMatched" = false
-         AND merchant_order.payable = true
-         AND merchant_order."kycStatus" = 'PASS'
-         AND merchant_order."paymentMethod" = 'ALIPAY'
-         AND merchant_order."identityName" IS NOT NULL
-         AND merchant_order."payeeName" IS NOT NULL
-         AND merchant_order."payeeIdentity" IS NOT NULL
-         AND (merchant_order."paymentDeadline" IS NULL OR merchant_order."paymentDeadline" > now())
-         AND NOT EXISTS (
-           SELECT 1 FROM payment_order
-           WHERE payment_order."tenantId" = merchant_order."tenantId"
-             AND payment_order."merchantId" = merchant_order."merchantId"
-             AND payment_order."sourceType" = 'C2C_BUY'
-             AND payment_order."sourceBusinessNo" = merchant_order."platformOrderId"
-         )
-         AND EXISTS (
-           SELECT 1 FROM telegram_group AS review_group
-           INNER JOIN telegram_bot AS review_bot
-             ON review_bot.id = review_group."botId"
-            AND review_bot."tenantId" = review_group."tenantId"
-           WHERE review_group."tenantId" = merchant_order."tenantId"
-             AND review_group."merchantId" = merchant_order."merchantId"
-             AND review_group."bindingState" = 'ACTIVE'
-             AND review_group."notificationsEnabled" = true
-             AND review_group."chatId" IS NOT NULL
-             AND 'C2C_ORDER_PAYMENT' = ANY(review_group.capabilities)
-             AND NOT (review_group.id = ANY(merchant_order."telegramReviewNotificationGroupIds"))
-             AND review_bot.status = 'active'
-             AND 'C2C_ORDER_PAYMENT' = ANY(review_bot.capabilities)
-         )
-       ORDER BY merchant_order."platformCreatedAt" ASC, merchant_order.id ASC`,
-      [tenantId, merchantId],
-    )) as Array<{ id: string }>
-    return rows.map(({ id }) => id)
   }
 
   updateObservedStatus(input: {

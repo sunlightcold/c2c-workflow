@@ -10,7 +10,7 @@ import {
 describe('TelegramNotificationService', () => {
   const groups = { find: jest.fn() }
   const bots = { findOne: jest.fn() }
-  const merchantOrders = { find: jest.fn(), findOne: jest.fn(), query: jest.fn() }
+  const merchantOrders = { find: jest.fn(), findOne: jest.fn() }
   const paymentOrders = { findOne: jest.fn() }
   const paymentBatches = { findOne: jest.fn(), update: jest.fn() }
   const telegram = { sendMessage: jest.fn() } as unknown as TelegramApiClient
@@ -42,7 +42,6 @@ describe('TelegramNotificationService', () => {
         payeeName: '李四',
         payeeIdentity: 'buyer@example.com',
         paymentMethod: 'ALIPAY',
-        telegramReviewNotificationGroupIds: [],
       },
     ])
     paymentOrders.findOne.mockResolvedValue(null)
@@ -181,57 +180,9 @@ describe('TelegramNotificationService', () => {
     expect(telegram.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ chatId: 'chat-b', replyMarkup: expect.any(Object) }),
     )
-    expect(merchantOrders.query).toHaveBeenCalledWith(expect.stringContaining('array_append'), [
-      '00000000-0000-4000-8000-000000000001',
-      'tenant-a',
-      'merchant-a',
-      'group-b',
-    ])
   })
 
-  it('does not repeat a review notice for a group that already received it', async () => {
-    merchantOrders.find.mockResolvedValueOnce([
-      {
-        id: 'order-1',
-        platformOrderId: 'ORD-1',
-        fiatAmount: '10.00',
-        fiatCurrency: 'CNY',
-        asset: 'USDT',
-        assetAmount: '1',
-        status: 'PENDING_PAYMENT',
-        identityMatched: false,
-        payable: true,
-        kycStatus: 'PASS',
-        identityName: '张三',
-        payeeName: '李四',
-        payeeIdentity: 'buyer@example.com',
-        paymentMethod: 'ALIPAY',
-        telegramReviewNotificationGroupIds: ['group-a'],
-      },
-    ])
-    groups.find.mockResolvedValueOnce([
-      {
-        id: 'group-a',
-        tenantId: 'tenant-a',
-        merchantId: 'merchant-a',
-        botId: 'bot-1',
-        chatId: 'chat-a',
-        bindingState: TelegramGroupBindingState.ACTIVE,
-        notificationsEnabled: true,
-        capabilities: [TelegramCapability.C2C_ORDER_PAYMENT],
-      },
-    ])
-
-    await service.notifyOrderDiscovered({
-      tenantId: 'tenant-a',
-      merchantId: 'merchant-a',
-      orderIds: ['order-1'],
-    })
-
-    expect(telegram.sendMessage).not.toHaveBeenCalled()
-  })
-
-  it('retries a failed group delivery on the next sync without marking it delivered', async () => {
+  it('records a failed first-send attempt without updating delivery state', async () => {
     groups.find.mockResolvedValue([
       {
         id: 'group-a',
@@ -244,24 +195,14 @@ describe('TelegramNotificationService', () => {
         capabilities: [TelegramCapability.C2C_ORDER_PAYMENT],
       },
     ])
-    ;(telegram.sendMessage as jest.Mock)
-      .mockRejectedValueOnce(new Error('Telegram unavailable'))
-      .mockResolvedValueOnce({ messageId: 12 })
+    ;(telegram.sendMessage as jest.Mock).mockRejectedValueOnce(new Error('Telegram unavailable'))
 
     await service.notifyOrderDiscovered({
       tenantId: 'tenant-a',
       merchantId: 'merchant-a',
       orderIds: ['order-1'],
     })
-    expect(merchantOrders.query).not.toHaveBeenCalled()
-
-    await service.notifyOrderDiscovered({
-      tenantId: 'tenant-a',
-      merchantId: 'merchant-a',
-      orderIds: ['order-1'],
-    })
-    expect(telegram.sendMessage).toHaveBeenCalledTimes(2)
-    expect(merchantOrders.query).toHaveBeenCalledTimes(1)
+    expect(telegram.sendMessage).toHaveBeenCalledTimes(1)
   })
 
   it('adds a receipt action only to successful payment notifications', async () => {
@@ -753,7 +694,7 @@ describe('TelegramNotificationService', () => {
         merchantId: 'merchant-a',
         id: expect.anything(),
       },
-      select: expect.objectContaining({ telegramReviewNotificationGroupIds: true }),
+      select: expect.objectContaining({ identityName: true, kycStatus: true }),
     })
     expect(telegram.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({

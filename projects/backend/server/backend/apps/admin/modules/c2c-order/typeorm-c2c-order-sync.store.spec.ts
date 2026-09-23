@@ -15,22 +15,6 @@ describe('TypeOrmC2cOrderSyncStore', () => {
     ])
   })
 
-  it('loads outstanding, actionable identity-mismatch orders within the merchant scope', async () => {
-    const dataSource = {
-      query: jest.fn().mockResolvedValue([{ id: 'order-review' }]),
-    }
-    const store = new TypeOrmC2cOrderSyncStore(dataSource as never)
-
-    await expect(store.findPendingReviewOrderIds('tenant-1', 'merchant-1')).resolves.toEqual([
-      'order-review',
-    ])
-    expect(dataSource.query).toHaveBeenCalledWith(
-      expect.stringContaining('merchant_order."identityMatched" = false'),
-      ['tenant-1', 'merchant-1'],
-    )
-    expect(dataSource.query.mock.calls[0][0]).toContain('NOT EXISTS')
-  })
-
   it('records an observed terminal platform status using the funds-exposed transition rules', async () => {
     const order = {
       id: 'order-1',

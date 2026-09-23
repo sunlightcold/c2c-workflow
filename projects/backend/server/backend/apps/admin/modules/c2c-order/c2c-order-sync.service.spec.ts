@@ -40,7 +40,6 @@ describe('C2cOrderSyncService', () => {
   const store = {
     claimDue: jest.fn(),
     getLastSuccessAt: jest.fn().mockResolvedValue(null),
-    findPendingReviewOrderIds: jest.fn().mockResolvedValue([]),
     updateObservedStatus: jest.fn(),
     persistWindow: jest.fn().mockResolvedValue({ created: 1, updated: 0 }),
     recordFailure: jest.fn().mockResolvedValue(undefined),
@@ -134,9 +133,8 @@ describe('C2cOrderSyncService', () => {
     expect(store.recordFailure).not.toHaveBeenCalled()
   })
 
-  it('re-emits old payable identity-mismatch orders so failed Telegram delivery can retry', async () => {
+  it('does not re-emit an existing order after the first notification attempt', async () => {
     store.persistWindow.mockResolvedValueOnce({ created: 0, updated: 1 })
-    store.findPendingReviewOrderIds.mockResolvedValueOnce(['order-existing'])
     platformClient.listOrders.mockResolvedValueOnce({ items: [], total: 0, hasMore: false })
     const service = new C2cOrderSyncService(
       merchantRepository as never,
@@ -150,11 +148,10 @@ describe('C2cOrderSyncService', () => {
 
     await service.sync(tenantId, merchantId, now)
 
-    expect(eventEmitter.emitAsync).toHaveBeenCalledWith('telegram.order.discovered', {
-      tenantId,
-      merchantId,
-      orderIds: ['order-existing'],
-    })
+    expect(eventEmitter.emitAsync).not.toHaveBeenCalledWith(
+      'telegram.order.discovered',
+      expect.anything(),
+    )
   })
 
   it('records a failed attempt without asking the store to advance the successful window', async () => {

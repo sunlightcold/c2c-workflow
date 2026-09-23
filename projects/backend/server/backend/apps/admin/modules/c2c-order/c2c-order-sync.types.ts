@@ -10,7 +10,6 @@ export interface C2cOrderSyncStore {
     leaseMs: number,
   ) => Promise<Array<{ tenantId: string; merchantId: string }>>
   getLastSuccessAt: (tenantId: string, merchantId: string) => Promise<Date | null>
-  findPendingReviewOrderIds: (tenantId: string, merchantId: string) => Promise<string[]>
   updateObservedStatus: (input: {
     tenantId: string
     merchantId: string
