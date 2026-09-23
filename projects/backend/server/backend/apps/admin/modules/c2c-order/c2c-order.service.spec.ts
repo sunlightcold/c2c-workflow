@@ -164,8 +164,17 @@ describe('C2cOrderService', () => {
     })
 
     expect(dataSource.query).toHaveBeenCalledWith(
-      expect.stringContaining('FROM merchant_order'),
+      expect.stringContaining('FROM merchant_order\n      LEFT JOIN payment_order'),
       expect.arrayContaining(['tenant-1', 'merchant-1', '%platform-1%', 'ALIPAY']),
     )
+    const sql = dataSource.query.mock.calls[0][0] as string
+    expect(sql).toContain('payment_order."sourceType" = \'C2C_BUY\'')
+    expect(sql).toContain('payment_order."merchantId" = merchant_order."merchantId"')
+    expect(sql).toContain('payment_order."sourceBusinessNo" = merchant_order."platformOrderId"')
+    expect(sql).toContain("payment_order.status = 'SUCCESS'")
+    expect(sql).toContain('SUM(payment_order.amount)')
+    expect(sql).toContain('payment_order."createdAt" >= $2')
+    expect(sql).toContain("payment_order.status IS DISTINCT FROM 'SUCCESS'")
+    expect(sql).not.toContain("merchant_order.status = 'COMPLETED'")
   })
 })

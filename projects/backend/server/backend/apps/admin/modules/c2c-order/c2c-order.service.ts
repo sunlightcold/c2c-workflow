@@ -123,30 +123,37 @@ export class C2cOrderService {
       yesterday.start,
       yesterday.endExclusive,
     ]
-    const filters = ['"tenantId" = $1']
+    const filters = ['merchant_order."tenantId" = $1']
     const addFilter = (sql: string, value: unknown) => {
       parameters.push(value)
       filters.push(sql.replace('?', `$${parameters.length}`))
     }
-    if (input.merchantId) addFilter('"merchantId" = ?', input.merchantId)
-    if (input.platformOrderId) addFilter('"platformOrderId" ILIKE ?', `%${input.platformOrderId}%`)
-    if (input.paymentMethod) addFilter('"paymentMethod" = ?', input.paymentMethod)
+    if (input.merchantId) addFilter('merchant_order."merchantId" = ?', input.merchantId)
+    if (input.platformOrderId)
+      addFilter('merchant_order."platformOrderId" ILIKE ?', `%${input.platformOrderId}%`)
+    if (input.paymentMethod) addFilter('merchant_order."paymentMethod" = ?', input.paymentMethod)
 
     const [row] = (await this.dataSource.query(
       `SELECT
-        COUNT(*) FILTER (WHERE status = 'COMPLETED'
-          AND "platformCreatedAt" >= $2 AND "platformCreatedAt" < $3)::text AS "todaySuccessCount",
-        COALESCE(SUM("fiatAmount") FILTER (WHERE status = 'COMPLETED'
-          AND "platformCreatedAt" >= $2 AND "platformCreatedAt" < $3), 0)::text AS "todaySuccessAmount",
-        COUNT(*) FILTER (WHERE status = 'COMPLETED'
-          AND "platformCreatedAt" >= $4 AND "platformCreatedAt" < $5)::text AS "yesterdaySuccessCount",
-        COALESCE(SUM("fiatAmount") FILTER (WHERE status = 'COMPLETED'
-          AND "platformCreatedAt" >= $4 AND "platformCreatedAt" < $5), 0)::text AS "yesterdaySuccessAmount",
-        COUNT(*) FILTER (WHERE status IN ('PENDING_PAYMENT', 'PAYMENT_PROCESSING')
-          AND "platformCreatedAt" >= $2 AND "platformCreatedAt" < $3)::text AS "todayPendingCount",
-        COALESCE(SUM("fiatAmount") FILTER (WHERE status IN ('PENDING_PAYMENT', 'PAYMENT_PROCESSING')
-          AND "platformCreatedAt" >= $2 AND "platformCreatedAt" < $3), 0)::text AS "todayPendingAmount"
+        COUNT(*) FILTER (WHERE payment_order.status = 'SUCCESS'
+          AND payment_order."createdAt" >= $2 AND payment_order."createdAt" < $3)::text AS "todaySuccessCount",
+        COALESCE(SUM(payment_order.amount) FILTER (WHERE payment_order.status = 'SUCCESS'
+          AND payment_order."createdAt" >= $2 AND payment_order."createdAt" < $3), 0)::text AS "todaySuccessAmount",
+        COUNT(*) FILTER (WHERE payment_order.status = 'SUCCESS'
+          AND payment_order."createdAt" >= $4 AND payment_order."createdAt" < $5)::text AS "yesterdaySuccessCount",
+        COALESCE(SUM(payment_order.amount) FILTER (WHERE payment_order.status = 'SUCCESS'
+          AND payment_order."createdAt" >= $4 AND payment_order."createdAt" < $5), 0)::text AS "yesterdaySuccessAmount",
+        COUNT(*) FILTER (WHERE merchant_order.status IN ('PENDING_PAYMENT', 'PAYMENT_PROCESSING')
+          AND payment_order.status IS DISTINCT FROM 'SUCCESS'
+          AND merchant_order."platformCreatedAt" >= $2 AND merchant_order."platformCreatedAt" < $3)::text AS "todayPendingCount",
+        COALESCE(SUM(merchant_order."fiatAmount") FILTER (WHERE merchant_order.status IN ('PENDING_PAYMENT', 'PAYMENT_PROCESSING')
+          AND payment_order.status IS DISTINCT FROM 'SUCCESS'
+          AND merchant_order."platformCreatedAt" >= $2 AND merchant_order."platformCreatedAt" < $3), 0)::text AS "todayPendingAmount"
       FROM merchant_order
+      LEFT JOIN payment_order ON payment_order."tenantId" = merchant_order."tenantId"
+        AND payment_order."merchantId" = merchant_order."merchantId"
+        AND payment_order."sourceType" = 'C2C_BUY'
+        AND payment_order."sourceBusinessNo" = merchant_order."platformOrderId"
       WHERE ${filters.join(' AND ')}`,
       parameters,
     )) as OrderStatisticsRow[]

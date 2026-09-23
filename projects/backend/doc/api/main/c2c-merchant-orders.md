@@ -5,6 +5,7 @@ Controller：`C2cOrderController`。基础路径：`/v1/sys`。所有接口均�
 | Method | Path                                   | 权限                          | Request                                                                                                               | data                                                                     |
 | ------ | -------------------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | GET    | `/merchant-orders`                     | `merchant:order:read`         | Query `{ tenantId?, merchantId?, platformOrderId?, status?, paymentMethod?, startTime?, endTime?, page?, pageSize? }` | 分页买币订单及关联支付单摘要；不传 `merchantId` 时查询经营单位内全部商家 |
+| GET    | `/merchant-orders/statistics`          | `merchant:order:read`         | Query `{ tenantId?, merchantId?, platformOrderId?, paymentMethod? }`                                                 | 今日、昨日支付成功金额与笔数，今日待付款金额与笔数                         |
 | GET    | `/merchant-orders/{id}`                | `merchant:order:read`         | Query `{ tenantId?, merchantId }`                                                                                     | 订单详情与状态时间线，含 `identityName`、`payeeName`、`identityMatched`、`kycStatus`；实名不一致时前端展示未自动建支付单原因 |
 | POST   | `/merchants/{id}/orders/sync`          | `merchant:order:sync`         | Query `{ tenantId? }`                                                                                                 | `{ scanned, created, updated }`                                          |
 | POST   | `/merchant-orders/{id}/payment`        | `merchant:order:pay`          | Body `{ tenantId?, merchantId }`                                                                                      | 按启用支付方案创建支付并锁定支付账号与通道                               |
@@ -16,6 +17,11 @@ Controller：`C2cOrderController`。基础路径：`/v1/sys`。所有接口均�
 每个请求先按登录人解析所属单位，再同时约束商家。平台人员需要提交当前经营的 `tenantId`；
 代理商人员只能访问 JWT 所属单位。同步仅获取 `BUY` 订单，完整时间窗口和全部分页成功后才推进检查点。
 任一平台请求或详情读取失败时记录失败原因，不推进最后成功时间。
+
+顶部统计中的今日、昨日成功只看与商家订单匹配的 `C2C_BUY` 支付订单 `SUCCESS` 状态，
+按支付订单创建日期归属统计日，金额取支付订单付款金额，不依赖平台订单是否已放币或同步完成；
+机器人手工支付不计入。今日待付款按商家订单的平台开户日期与待付款/支付处理中状态统计，
+若关联支付订单已成功则不再计入待付款。统计可按经营单位、商家、平台订单号和支付方式筛选。
 
 创建支付时，金额、收款人和支付宝账号只从商家订单读取，调用方不能覆盖。系统从商家的启用支付方案中
 选择账号和通道，并由通道确定付款模式：支付宝商家转账立即提交，支付宝批量有密等待组批。没有可用
