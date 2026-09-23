@@ -33,11 +33,9 @@ import {
   formatAutomaticBatchSubmissionMessage,
   formatC2cCreatedMessage,
   formatExceptionMessage,
-  formatOrderDiscoveredMessage,
   formatPaymentStatusMessage,
   formatPlatformConfirmationFailedMessage,
   shouldNotifyBatchStatus,
-  shouldNotifyOrderDiscovered,
   shouldNotifyPaymentStatus,
   sumMoney,
 } from './telegram-notification.formatter'
@@ -295,21 +293,10 @@ export class TelegramNotificationService {
         lastError: true,
       },
     })
-    const otherNotifications = orders.filter(
-      (order) => order.status !== 'PENDING_PAYMENT' && shouldNotifyOrderDiscovered(order),
-    )
     const paymentBlocked = orders.filter(
       (order) => order.status === 'PENDING_PAYMENT' && !order.payable,
     )
     await Promise.all([
-      ...otherNotifications.map((order) =>
-        this.sendToMerchantGroups(
-          payload.tenantId,
-          payload.merchantId,
-          TelegramNotificationEvent.ORDER_DISCOVERED,
-          formatOrderDiscoveredMessage(order),
-        ),
-      ),
       ...paymentBlocked.map((order) =>
         this.sendToMerchantGroups(
           payload.tenantId,

@@ -102,6 +102,64 @@ describe('TelegramNotificationService', () => {
     expect(telegram.sendMessage).not.toHaveBeenCalled()
   })
 
+  it('sends the automatic payment-created notice with the payment order details', async () => {
+    groups.find.mockResolvedValue([
+      {
+        tenantId: 'tenant-a',
+        merchantId: 'merchant-a',
+        botId: 'bot-1',
+        chatId: 'chat-a',
+        bindingState: TelegramGroupBindingState.ACTIVE,
+        notificationsEnabled: true,
+        notificationEvents: [TelegramNotificationEvent.PAYMENT_STATUS],
+        capabilities: [TelegramCapability.C2C_ORDER_PAYMENT],
+      },
+    ])
+    merchantOrders.findOne.mockResolvedValue({
+      id: 'order-1',
+      tenantId: 'tenant-a',
+      merchantId: 'merchant-a',
+      platformOrderId: 'PLATFORM-1',
+      fiatAmount: '50.00',
+      fiatCurrency: 'CNY',
+      asset: 'USDT',
+      assetAmount: '7.14',
+      payeeName: '收款人',
+      payeeIdentity: '收款账号',
+      paymentMethod: 'ALIPAY',
+      identityName: '平台实名',
+      identityMatched: false,
+      kycStatus: 'PASS',
+    })
+
+    await service.notifyPaymentCreated({
+      tenantId: 'tenant-a',
+      merchantId: 'merchant-a',
+      merchantOrderId: 'order-1',
+      paymentOrderId: 'payment-1',
+      paymentNo: 'PAY-1',
+      status: 'READY',
+      payeeName: '收款人',
+      payeeIdentity: '收款账号',
+      amount: '50.00',
+      currency: 'CNY',
+      paymentMethod: 'ALIPAY',
+      identityMatched: false,
+    })
+
+    expect(telegram.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chatId: 'chat-a',
+        text: expect.stringContaining('C2C订单已自动创建'),
+      }),
+    )
+    expect(telegram.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining('PAY-1'),
+      }),
+    )
+  })
+
   it('does not send a second-confirmation notice for a name mismatch', async () => {
     groups.find.mockResolvedValue([
       {
@@ -671,6 +729,25 @@ describe('TelegramNotificationService', () => {
     expect(telegram.sendMessage).not.toHaveBeenCalledWith(
       expect.objectContaining({ replyMarkup: expect.anything() }),
     )
+  })
+
+  it('keeps terminal orders silent during synchronization', async () => {
+    merchantOrders.find.mockResolvedValue([
+      {
+        id: 'order-1',
+        platformOrderId: 'CANCELLED-1',
+        status: 'CANCELLED',
+        payable: false,
+      },
+    ])
+
+    await service.notifyOrderDiscovered({
+      tenantId: 'tenant-a',
+      merchantId: 'merchant-a',
+      orderIds: ['order-1'],
+    })
+
+    expect(telegram.sendMessage).not.toHaveBeenCalled()
   })
 
   it('does not send individual results for a batch child payment', async () => {
