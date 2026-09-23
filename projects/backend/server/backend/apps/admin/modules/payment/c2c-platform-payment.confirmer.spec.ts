@@ -164,7 +164,7 @@ describe('C2cPlatformPaymentConfirmer', () => {
     )
   })
 
-  it('accepts a successful Binance mark-paid response without waiting for an immediate status refresh', async () => {
+  it('accepts a successful Binance mark-paid response after a pre-mark detail query', async () => {
     await expect(confirmer.confirmPaid(executable)).resolves.toBeUndefined()
 
     expect(platformClient.markOrderAsPaid).toHaveBeenCalledWith(
@@ -174,7 +174,7 @@ describe('C2cPlatformPaymentConfirmer', () => {
       '901',
       undefined,
     )
-    expect(platformClient.getOrderDetail).not.toHaveBeenCalled()
+    expect(platformClient.getOrderDetail).toHaveBeenCalledTimes(1)
     expect(platformChat.sendOrderPaid).toHaveBeenCalledWith(
       'tenant-1',
       'merchant-1',
@@ -189,6 +189,41 @@ describe('C2cPlatformPaymentConfirmer', () => {
       ],
       ['tenant-1', 'merchant-order-1', MerchantOrderStatus.PENDING_RELEASE, C2cBuyOrderStatus.PAID],
     ])
+  })
+
+  it('uses the current platform payment method id on first mark-paid', async () => {
+    platformClient.getOrderDetail.mockResolvedValueOnce({
+      ...pendingPlatformOrder,
+      platformPaymentMethodId: '902',
+    })
+
+    await expect(confirmer.confirmPaid(executable)).resolves.toBeUndefined()
+
+    expect(platformClient.markOrderAsPaid).toHaveBeenCalledWith(
+      MerchantPlatform.BINANCE,
+      expect.anything(),
+      'platform-order-1',
+      '902',
+      undefined,
+    )
+  })
+
+  it('does not submit mark-paid again when the platform is already paid', async () => {
+    platformClient.getOrderDetail.mockResolvedValueOnce({
+      ...pendingPlatformOrder,
+      status: C2cBuyOrderStatus.PAID,
+      payable: false,
+    })
+
+    await expect(confirmer.confirmPaid(executable)).resolves.toBeUndefined()
+
+    expect(platformClient.markOrderAsPaid).not.toHaveBeenCalled()
+    expect(store.transitionMerchantOrder).toHaveBeenLastCalledWith(
+      'tenant-1',
+      'merchant-order-1',
+      MerchantOrderStatus.PENDING_RELEASE,
+      C2cBuyOrderStatus.PAID,
+    )
   })
 
   it('logs the full merchant-order-payment relationship without credentials', async () => {
@@ -247,7 +282,7 @@ describe('C2cPlatformPaymentConfirmer', () => {
     })
     platformClient.getMarkPaidPolicy.mockReturnValue({ paymentProof: 'SKIP' })
     platformClient.getOrderDetail.mockReset()
-    platformClient.getOrderDetail.mockResolvedValue({
+    platformClient.getOrderDetail.mockResolvedValueOnce(pendingPlatformOrder).mockResolvedValue({
       ...pendingPlatformOrder,
       status: C2cBuyOrderStatus.PAID,
       payable: false,
@@ -298,7 +333,7 @@ describe('C2cPlatformPaymentConfirmer', () => {
     paymentProofs.load.mockResolvedValue([paymentProofImage])
     platformClient.getMarkPaidPolicy.mockReturnValue({ paymentProof: 'REQUIRED' })
     platformClient.getOrderDetail.mockReset()
-    platformClient.getOrderDetail.mockResolvedValue({
+    platformClient.getOrderDetail.mockResolvedValueOnce(pendingPlatformOrder).mockResolvedValue({
       ...pendingPlatformOrder,
       status: C2cBuyOrderStatus.PAID,
       payable: false,
@@ -442,7 +477,7 @@ describe('C2cPlatformPaymentConfirmer', () => {
     )
   })
 
-  it('only queries during stale-worker recovery and leaves a pending platform order for manual retry', async () => {
+  it('leaves a pending platform order for manual retry during query-only recovery', async () => {
     store.load.mockResolvedValue({
       ...context,
       merchantOrder: {

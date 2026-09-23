@@ -78,9 +78,6 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
     if (this.isFundsConflict(context.merchantOrder.status)) {
       await this.toFundsException(context, this.toPlatformStatus(context.merchantOrder.status))
     }
-    const recovering =
-      options.queryOnly ||
-      context.merchantOrder.status === MerchantOrderStatus.PAID_PENDING_PLATFORM_CONFIRM
     const previousMerchantOrderStatus = context.merchantOrder.status
     await this.store.transitionMerchantOrder(
       context.order.tenantId,
@@ -98,32 +95,29 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
       context.credential,
       secret,
     )
-    let paymentMethodId = context.merchantOrder.platformPaymentMethodId!
-    if (recovering) {
-      this.logger.log(
-        `C2C 标记付款上游查单: ${this.confirmationLogContext(context, order, options.queryOnly ? 'QUERY_ONLY' : 'PRE_MARK_QUERY')}`,
-      )
-      const current = await this.getOrder(context, credentials)
-      this.logger.log(
-        `C2C 标记付款上游查单响应: ${this.confirmationLogContext(context, order, options.queryOnly ? 'QUERY_ONLY' : 'PRE_MARK_QUERY')}, upstreamOrderStatus=${current.status}, payable=${current.payable}`,
-      )
-      this.verifyPlatformOrder(context, current)
-      if (await this.finalizeKnownStatus(context, current.status)) {
-        await this.notifyPaid(context, current.status)
-        return
-      }
-      if (current.status !== C2cBuyOrderStatus.PENDING_PAYMENT || !current.payable) {
-        throw new Error(`平台订单状态 ${current.status} 不允许确认已付款`)
-      }
-      if (options.queryOnly) throw new Error('平台订单仍待付款，请人工重试标记付款')
-      paymentMethodId = current.platformPaymentMethodId
+    this.logger.log(
+      `C2C 标记付款上游查单: ${this.confirmationLogContext(context, order, options.queryOnly ? 'QUERY_ONLY' : 'PRE_MARK_QUERY')}`,
+    )
+    const current = await this.getOrder(context, credentials)
+    this.logger.log(
+      `C2C 标记付款上游查单响应: ${this.confirmationLogContext(context, order, options.queryOnly ? 'QUERY_ONLY' : 'PRE_MARK_QUERY')}, upstreamOrderStatus=${current.status}, payable=${current.payable}`,
+    )
+    this.verifyPlatformOrder(context, current)
+    if (await this.finalizeKnownStatus(context, current.status)) {
+      await this.notifyPaid(context, current.status)
+      return
     }
+    if (current.status !== C2cBuyOrderStatus.PENDING_PAYMENT || !current.payable) {
+      throw new Error(`平台订单状态 ${current.status} 不允许确认已付款`)
+    }
+    if (options.queryOnly) throw new Error('平台订单仍待付款，请人工重试标记付款')
+    if (!current.platformPaymentMethodId) throw new Error('平台订单缺少付款方式 ID')
     this.logger.log(
       `C2C 标记付款提交上游: ${this.confirmationLogContext(context, order, 'MARK_PAID')}`,
     )
     await this.throttle.execute(
       context.merchant,
-      () => this.markPaid(context, credentials, paymentMethodId),
+      () => this.markPaid(context, credentials, current.platformPaymentMethodId),
       {
         merchantOrderId: context.merchantOrder.id,
         platformOrderId: context.merchantOrder.platformOrderId,
