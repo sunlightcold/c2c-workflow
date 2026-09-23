@@ -294,7 +294,6 @@ describe('C2cPaymentPreflightVerifier', () => {
   it.each([
     ['platform status changed', { status: C2cBuyOrderStatus.CANCELLED }, '平台订单已不可付款'],
     ['amount changed', { fiatAmount: '101.00' }, '平台订单金额已变化'],
-    ['payee changed', { payeeIdentity: 'other@example.com' }, '平台订单收款账号已变化'],
     ['payment method changed', { paymentMethod: 'BANK' }, '平台订单付款方式已变化'],
   ])('rejects before payment when %s', async (_case, change, message) => {
     platformClient.getOrderDetail.mockResolvedValue({ ...platformOrder, ...change })
@@ -304,7 +303,7 @@ describe('C2cPaymentPreflightVerifier', () => {
     )
   })
 
-  it('allows a name mismatch while retaining the payment account and money checks', async () => {
+  it('allows a name mismatch while retaining the money and payment method checks', async () => {
     store.load.mockResolvedValue({
       order: { ...order, payeeName: '收款人姓名' },
       ...configuration,
@@ -358,20 +357,75 @@ describe('C2cPaymentPreflightVerifier', () => {
     })
   })
 
-  it.each([
-    ['stored', { stored: '另一收款人', live: '收款人姓名' }, '商家订单收款人姓名已变化'],
-    ['platform', { stored: '收款人姓名', live: '另一收款人' }, '平台订单收款人姓名已变化'],
-  ])('rejects a changed %s recipient name', async (_case, names, message) => {
+  it('does not block submission when the recipient display name changes', async () => {
     store.load.mockResolvedValue({
-      order: { ...order, payeeName: '收款人姓名' },
+      order: { ...order, payeeName: '支付单收款人' },
       ...configuration,
-      merchantOrder: { ...configuration.merchantOrder, payeeName: names.stored },
+      merchantOrder: { ...configuration.merchantOrder, payeeName: '最新收款人' },
     })
-    platformClient.getOrderDetail.mockResolvedValue({ ...platformOrder, payeeName: names.live })
+    platformClient.getOrderDetail.mockResolvedValue({
+      ...platformOrder,
+      payeeName: '平台最新收款人',
+    })
 
-    await expect(verifier.verify('tenant-1', 'payment-1', now)).rejects.toEqual(
-      new PaymentNotSubmittedError(message),
-    )
+    await expect(verifier.verify('tenant-1', 'payment-1', now)).resolves.toMatchObject({
+      order: { payeeName: '支付单收款人' },
+      platformOrder: { payeeName: '平台最新收款人' },
+    })
+  })
+
+  it('does not block a batch when the merchant order recipient account changes after payment creation', async () => {
+    store.load.mockResolvedValue({
+      order: {
+        ...order,
+        status: PaymentOrderStatus.READY,
+        executionMode: PaymentExecutionMode.BATCH,
+      },
+      ...configuration,
+      merchantOrder: {
+        ...configuration.merchantOrder,
+        status: MerchantOrderStatus.PENDING_PAYMENT,
+        payeeIdentity: 'latest-payee@example.com',
+      },
+      channel: {
+        ...configuration.channel,
+        adapterCode: PaymentAdapterCode.ALIPAY_BATCH,
+        executionMode: PaymentExecutionMode.BATCH,
+      },
+    })
+
+    await expect(verifier.verifyBatch('tenant-1', 'payment-1', now)).resolves.toMatchObject({
+      order: { payeeIdentity: 'payee@example.com' },
+    })
+  })
+
+  it('does not block a batch when the platform returns a changed recipient account', async () => {
+    store.load.mockResolvedValue({
+      order: {
+        ...order,
+        status: PaymentOrderStatus.READY,
+        executionMode: PaymentExecutionMode.BATCH,
+      },
+      ...configuration,
+      merchantOrder: {
+        ...configuration.merchantOrder,
+        status: MerchantOrderStatus.PENDING_PAYMENT,
+      },
+      channel: {
+        ...configuration.channel,
+        adapterCode: PaymentAdapterCode.ALIPAY_BATCH,
+        executionMode: PaymentExecutionMode.BATCH,
+      },
+    })
+    platformClient.getOrderDetail.mockResolvedValue({
+      ...platformOrder,
+      payeeIdentity: 'latest-payee@example.com',
+    })
+
+    await expect(verifier.verifyBatch('tenant-1', 'payment-1', now)).resolves.toMatchObject({
+      order: { payeeIdentity: 'payee@example.com' },
+      platformOrder: { payeeIdentity: 'latest-payee@example.com' },
+    })
   })
 
   it('accepts a changed platform real name and refreshed payment method id', async () => {

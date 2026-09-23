@@ -258,8 +258,7 @@ export class C2cPaymentPreflightVerifier {
     this.require(this.sameAmount(order.amount, merchantOrder.fiatAmount), '商家订单金额已变化')
     this.require(order.currency === merchantOrder.fiatCurrency, '商家订单币种已变化')
     this.require(order.paymentMethod === merchantOrder.paymentMethod, '商家订单收款方式已变化')
-    this.require(order.payeeIdentity === merchantOrder.payeeIdentity, '商家订单收款账号已变化')
-    this.require(order.payeeName === merchantOrder.payeeName, '商家订单收款人姓名已变化')
+    // 收款账号和姓名在创建支付单时已固化到支付单；同步后的展示资料不影响已建支付单提交。
     this.require(Boolean(merchantOrder.platformPaymentMethodId), '商家订单缺少平台付款方式')
   }
 
@@ -274,8 +273,6 @@ export class C2cPaymentPreflightVerifier {
       current.paymentMethod.toUpperCase() === context.order.paymentMethod,
       '平台订单付款方式已变化',
     )
-    this.require(current.payeeIdentity === context.order.payeeIdentity, '平台订单收款账号已变化')
-    this.require(current.payeeName === context.order.payeeName, '平台订单收款人姓名已变化')
   }
 
   private getPlatformOrder(
