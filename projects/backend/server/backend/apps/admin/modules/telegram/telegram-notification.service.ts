@@ -275,46 +275,57 @@ export class TelegramNotificationService {
         merchantId: payload.merchantId,
         id: In(payload.orderIds),
       },
+      select: {
+        id: true,
+        platformOrderId: true,
+        fiatAmount: true,
+        fiatCurrency: true,
+        asset: true,
+        assetAmount: true,
+        status: true,
+        payeeName: true,
+        payeeIdentity: true,
+        paymentMethod: true,
+        identityName: true,
+        identityMatched: true,
+        payable: true,
+        kycStatus: true,
+        lastError: true,
+        telegramReviewNotificationGroupIds: true,
+      },
     })
-    const reviewable = orders.filter((order) => shouldNotifyOrderDiscovered(order))
+    const reviewable = orders.filter(
+      (order) => order.status === 'PENDING_PAYMENT' && shouldNotifyOrderDiscovered(order),
+    )
+    const otherNotifications = orders.filter(
+      (order) => order.status !== 'PENDING_PAYMENT' && shouldNotifyOrderDiscovered(order),
+    )
     const paymentBlocked = orders.filter(
       (order) => order.status === 'PENDING_PAYMENT' && !order.payable && order.lastError,
     )
-    await Promise.all(
-      reviewable
-        .map((order) =>
-          this.sendToMerchantGroups(
-            payload.tenantId,
-            payload.merchantId,
-            TelegramNotificationEvent.ORDER_DISCOVERED,
-            formatOrderDiscoveredMessage(order),
-            order.status === 'PENDING_PAYMENT'
-              ? {
-                  inline_keyboard: [
-                    [
-                      { text: '确认下单', callback_data: `c2c:confirm:${order.id}` },
-                      { text: '取消订单', callback_data: `c2c:cancel:${order.id}` },
-                    ],
-                  ],
-                }
-              : undefined,
-          ),
-        )
-        .concat(
-          paymentBlocked.map((order) =>
-            this.sendToMerchantGroups(
-              payload.tenantId,
-              payload.merchantId,
-              TelegramNotificationEvent.EXCEPTION,
-              formatExceptionMessage(
-                'C2C_PAYMENT_ORDER_NOT_CREATED',
-                order.lastError!,
-                order.platformOrderId,
-              ),
-            ),
+    await Promise.all([
+      ...reviewable.map((order) => this.notifyReviewableOrder(payload, order)),
+      ...otherNotifications.map((order) =>
+        this.sendToMerchantGroups(
+          payload.tenantId,
+          payload.merchantId,
+          TelegramNotificationEvent.ORDER_DISCOVERED,
+          formatOrderDiscoveredMessage(order),
+        ),
+      ),
+      ...paymentBlocked.map((order) =>
+        this.sendToMerchantGroups(
+          payload.tenantId,
+          payload.merchantId,
+          TelegramNotificationEvent.EXCEPTION,
+          formatExceptionMessage(
+            'C2C_PAYMENT_ORDER_NOT_CREATED',
+            order.lastError!,
+            order.platformOrderId,
           ),
         ),
-    )
+      ),
+    ])
   }
 
   async notifyPaymentStatus(payload: TelegramPaymentStatusPayload): Promise<void> {
@@ -426,6 +437,60 @@ export class TelegramNotificationService {
       },
     })
     await this.sendGroups(groups, text, TelegramNotificationEvent.EXCEPTION)
+  }
+
+  private async notifyReviewableOrder(
+    payload: TelegramOrderDiscoveredPayload,
+    order: MerchantOrderEntity,
+  ): Promise<void> {
+    const groups = (await this.activeMerchantGroups(payload.tenantId, payload.merchantId)).filter(
+      (group) =>
+        group.tenantId === payload.tenantId &&
+        group.merchantId === payload.merchantId &&
+        group.capabilities?.includes(TelegramCapability.C2C_ORDER_PAYMENT),
+    )
+    const deliveredGroupIds = new Set(order.telegramReviewNotificationGroupIds ?? [])
+    const replyMarkup = {
+      inline_keyboard: [
+        [
+          { text: '确认下单', callback_data: `c2c:confirm:${order.id}` },
+          { text: '取消订单', callback_data: `c2c:cancel:${order.id}` },
+        ],
+      ],
+    }
+    for (const group of groups) {
+      if (deliveredGroupIds.has(group.id)) continue
+      const deliveries = await this.sendGroups(
+        [group],
+        formatOrderDiscoveredMessage(order),
+        TelegramNotificationEvent.ORDER_DISCOVERED,
+        replyMarkup,
+        undefined,
+        true,
+      )
+      if (!deliveries.length) {
+        this.logger.warn(
+          `Telegram C2C 待审核订单未送达: order=${order.platformOrderId}, group=${group.id}, tenant=${payload.tenantId}, merchant=${payload.merchantId}`,
+        )
+        continue
+      }
+      await this.merchantOrders.query(
+        `UPDATE merchant_order
+         SET "telegramReviewNotificationGroupIds" = array_append("telegramReviewNotificationGroupIds", $4::uuid)
+         WHERE id = $1 AND "tenantId" = $2 AND "merchantId" = $3
+           AND NOT ($4::uuid = ANY("telegramReviewNotificationGroupIds"))`,
+        [order.id, payload.tenantId, payload.merchantId, group.id],
+      )
+      deliveredGroupIds.add(group.id)
+      this.logger.log(
+        `Telegram C2C 待审核订单已送达: order=${order.platformOrderId}, group=${group.id}, tenant=${payload.tenantId}, merchant=${payload.merchantId}`,
+      )
+    }
+    if (!groups.length) {
+      this.logger.warn(
+        `Telegram C2C 待审核订单未投递: order=${order.platformOrderId}, tenant=${payload.tenantId}, merchant=${payload.merchantId}, reason=没有已启用 C2C 支付能力的群组`,
+      )
+    }
   }
 
   private async sumBatchAmount(
@@ -560,11 +625,17 @@ export class TelegramNotificationService {
       .map(async (group) => {
         const bot = await this.bots.findOne({
           where: { id: group.botId, tenantId: group.tenantId, status: BusinessStatus.ACTIVE },
-          select: { id: true, tenantId: true, tokenRef: true, status: true },
+          select: { id: true, tenantId: true, tokenRef: true, status: true, capabilities: true },
         })
-        if (!bot || !group.chatId) {
+        if (
+          !bot ||
+          !group.chatId ||
+          (event === TelegramNotificationEvent.ORDER_DISCOVERED &&
+            replyMarkup &&
+            !bot.capabilities?.includes(TelegramCapability.C2C_ORDER_PAYMENT))
+        ) {
           this.logger.warn(
-            `Telegram 通知跳过: group=${group.id}, event=${event}, reason=${!bot ? '活动机器人不存在' : '群 Chat ID 为空'}, bot=${group.botId}`,
+            `Telegram 通知跳过: group=${group.id}, event=${event}, reason=${!bot ? '活动机器人不存在' : !group.chatId ? '群 Chat ID 为空' : '机器人未启用 C2C 支付能力'}, bot=${group.botId}`,
           )
           return undefined
         }

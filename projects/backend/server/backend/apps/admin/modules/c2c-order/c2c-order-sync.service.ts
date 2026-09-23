@@ -3,6 +3,7 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   Optional,
 } from '@nestjs/common'
@@ -26,6 +27,8 @@ const INITIAL_LOOKBACK_MS = 24 * 60 * 60 * 1000
 
 @Injectable()
 export class C2cOrderSyncService {
+  private readonly logger = new Logger(C2cOrderSyncService.name)
+
   constructor(
     @InjectRepository(MerchantEntity)
     private readonly merchantRepository: Repository<MerchantEntity>,
@@ -67,16 +70,7 @@ export class C2cOrderSyncService {
         merchantId,
         result.changedOrderIds ?? [],
       )
-      // "discovered" is a first-seen event. Status refreshes are persisted for
-      // reconciliation but must not spam Telegram on every polling interval.
-      const orderIds = [...new Set(result.createdOrderIds ?? [])]
-      if (orderIds.length) {
-        this.eventEmitter?.emit(EVENT_KEYS.TELEGRAM_ORDER_DISCOVERED, {
-          tenantId,
-          merchantId,
-          orderIds,
-        })
-      }
+      await this.notifyDiscoveredOrders(tenantId, merchantId, result.createdOrderIds ?? [])
       return { scanned: orders.length, created: result.created, updated: result.updated }
     } catch (error) {
       await this.store.recordFailure(tenantId, merchantId, now, this.errorMessage(error))
@@ -107,6 +101,32 @@ export class C2cOrderSyncService {
         })
       }
       throw error
+    }
+  }
+
+  private async notifyDiscoveredOrders(
+    tenantId: string,
+    merchantId: string,
+    createdOrderIds: string[],
+  ): Promise<void> {
+    // Review notices retry until each eligible group has received the order.
+    const orderIds = [
+      ...new Set([
+        ...createdOrderIds,
+        ...(await this.store.findPendingReviewOrderIds(tenantId, merchantId)),
+      ]),
+    ]
+    if (!orderIds.length) return
+    try {
+      await this.eventEmitter?.emitAsync(EVENT_KEYS.TELEGRAM_ORDER_DISCOVERED, {
+        tenantId,
+        merchantId,
+        orderIds,
+      })
+    } catch (error) {
+      this.logger.error(
+        `Telegram C2C 订单通知处理失败: tenant=${tenantId}, merchant=${merchantId}, orders=${orderIds.length}, error=${this.errorMessage(error)}`,
+      )
     }
   }
 

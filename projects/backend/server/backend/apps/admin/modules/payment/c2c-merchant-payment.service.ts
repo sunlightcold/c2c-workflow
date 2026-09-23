@@ -1,12 +1,31 @@
 import {
+  BusinessStatus,
+  MerchantEntity,
   MerchantOrderStatus,
   PaymentExecutionMode,
   PaymentOrderStatus,
   PaymentSourceType,
   PlatformConfirmationStatus,
 } from '@admin/database'
-import { BadRequestException, ConflictException, Injectable, Optional } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  Optional,
+} from '@nestjs/common'
+import { InjectRepository } from '@nestjs/typeorm'
+import { Repository } from 'typeorm'
+import { decimal } from '@/common/utils/decimal'
+import { MerchantPlatformCredentialService } from '../business/merchant-platform-credential.service'
+import {
+  C2cBuyOrderStatus,
+  C2cPlatformClient,
+  C2cPlatformCredentialFactory,
+  type C2cBuyOrderDetail,
+} from '../c2c-platform'
 import { C2cOrderService } from '../c2c-order/c2c-order.service'
+import { C2C_SECRET_RESOLVER, type C2cSecretResolver } from '../c2c-order/c2c-secret-resolver'
 import { C2cPlatformChatService } from '../c2c-order/c2c-platform-chat.service'
 import { PaymentExecutionCoordinator } from './payment-execution-coordinator'
 import { PaymentOrderService } from './payment-order.service'
@@ -19,6 +38,11 @@ export class C2cMerchantPaymentService {
     private readonly paymentOrders: PaymentOrderService,
     private readonly execution: PaymentExecutionCoordinator,
     private readonly cancellation: C2cPaymentCancellationService,
+    @InjectRepository(MerchantEntity) private readonly merchants: Repository<MerchantEntity>,
+    private readonly credentials: MerchantPlatformCredentialService,
+    @Inject(C2C_SECRET_RESOLVER) private readonly secretResolver: C2cSecretResolver,
+    private readonly credentialFactory: C2cPlatformCredentialFactory,
+    private readonly platformClient: C2cPlatformClient,
     @Optional() private readonly platformChat?: C2cPlatformChatService,
   ) {}
 
@@ -94,6 +118,7 @@ export class C2cMerchantPaymentService {
   ) {
     const merchantOrder = await this.merchantOrders.detail(tenantId, merchantId, merchantOrderId)
     this.assertPayable(merchantOrder, allowIdentityMismatch)
+    if (allowIdentityMismatch) await this.verifyManualReview(tenantId, merchantId, merchantOrder)
     const paymentInput = {
       merchantId,
       sourceType: PaymentSourceType.C2C_BUY,
@@ -123,6 +148,84 @@ export class C2cMerchantPaymentService {
       await this.execution.submit(tenantId, paymentOrder.id)
     }
     return this.paymentOrders.detail(tenantId, paymentOrder.id)
+  }
+
+  private async verifyManualReview(
+    tenantId: string,
+    merchantId: string,
+    order: Awaited<ReturnType<C2cOrderService['detail']>>,
+  ): Promise<void> {
+    if (order.identityMatched || order.kycStatus !== 'PASS' || !order.platformPaymentMethodId) {
+      throw new BadRequestException('订单不符合实名不一致人工确认条件')
+    }
+    if (order.paymentDeadline && order.paymentDeadline <= new Date()) {
+      throw new BadRequestException('商家订单付款期限已过')
+    }
+    const merchant = await this.merchants.findOne({
+      where: { id: merchantId, tenantId, status: BusinessStatus.ACTIVE },
+    })
+    if (!merchant || merchant.platform !== order.platform) {
+      throw new BadRequestException('商家平台配置已变化')
+    }
+    const reference = await this.credentials.getActiveReference(tenantId, merchantId)
+    const secret = await this.secretResolver.resolve(reference.credentialRef)
+    const credentials = this.credentialFactory.create(merchant.platform, reference, secret)
+    const detail = await this.platformClient.getOrderDetail(
+      merchant.platform,
+      credentials,
+      order.platformOrderId,
+    )
+    this.assertManualReviewDetail(order, detail)
+  }
+
+  private assertManualReviewDetail(
+    order: Awaited<ReturnType<C2cOrderService['detail']>>,
+    detail: C2cBuyOrderDetail,
+  ): void {
+    if (detail.platformOrderId !== order.platformOrderId || detail.side !== 'BUY') {
+      throw new BadRequestException('平台订单编号或交易方向已变化')
+    }
+    if (detail.status !== C2cBuyOrderStatus.PENDING_PAYMENT || !detail.payable) {
+      throw new BadRequestException('平台订单已不可付款')
+    }
+    if (detail.paymentDeadline && new Date(detail.paymentDeadline) <= new Date()) {
+      throw new BadRequestException('平台订单付款期限已过')
+    }
+    if (detail.kycStatus !== 'PASS' || this.sameName(detail.payeeName, detail.identityName)) {
+      throw new BadRequestException('平台订单实名核验结果已变化')
+    }
+    if (
+      detail.fiatCurrency !== order.fiatCurrency ||
+      !decimal(detail.fiatAmount).eq(decimal(order.fiatAmount)) ||
+      detail.asset !== order.asset ||
+      !detail.assetAmount ||
+      !decimal(detail.assetAmount).eq(decimal(order.assetAmount))
+    ) {
+      throw new BadRequestException('平台订单金额或资产已变化')
+    }
+    if (
+      detail.paymentMethod !== order.paymentMethod ||
+      detail.platformPaymentMethodId !== order.platformPaymentMethodId
+    ) {
+      throw new BadRequestException('平台订单付款方式已变化')
+    }
+    if (detail.payeeIdentity !== order.payeeIdentity) {
+      throw new BadRequestException('平台订单收款账号已变化')
+    }
+    if (
+      !this.sameName(detail.identityName, order.identityName) ||
+      !this.sameName(detail.payeeName, order.payeeName)
+    ) {
+      throw new BadRequestException('平台订单收款姓名已变化')
+    }
+  }
+
+  private sameName(left: string | null, right: string | null): boolean {
+    return Boolean(left && right) && this.normalizeName(left!) === this.normalizeName(right!)
+  }
+
+  private normalizeName(value: string): string {
+    return value.normalize('NFKD').replace(/\p{M}/gu, '').replace(/\s+/g, '').toLocaleLowerCase()
   }
 
   private assertPayable(

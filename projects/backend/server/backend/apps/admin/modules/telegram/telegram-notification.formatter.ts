@@ -11,6 +11,7 @@ export interface TelegramOrderMessageInput {
   payeeIdentity?: string | null
   paymentMethod?: string | null
   identityName?: string | null
+  kycStatus?: string | null
   identityMatched: boolean
   payable: boolean
   lastError?: string | null
@@ -182,10 +183,26 @@ export function shouldNotifyBatchStatus(status: string): boolean {
  * a human-facing notification.
  */
 export function shouldNotifyOrderDiscovered(
-  order: Pick<TelegramOrderMessageInput, 'status' | 'identityMatched' | 'payable'>,
+  order: Pick<
+    TelegramOrderMessageInput,
+    | 'status'
+    | 'identityMatched'
+    | 'payable'
+    | 'kycStatus'
+    | 'identityName'
+    | 'payeeName'
+    | 'payeeIdentity'
+    | 'paymentMethod'
+  >,
 ) {
   if (order.status === MerchantOrderStatus.PENDING_PAYMENT) {
-    return !order.identityMatched && order.payable
+    return (
+      !order.identityMatched &&
+      order.payable &&
+      order.kycStatus === 'PASS' &&
+      Boolean(order.identityName && order.payeeName && order.payeeIdentity) &&
+      order.paymentMethod === 'ALIPAY'
+    )
   }
   return [
     MerchantOrderStatus.DISPUTED,
@@ -287,7 +304,6 @@ function batchStatusMeta(status: string): { icon: string; text: string } {
 
 export function formatOrderDiscoveredMessage(order: TelegramOrderMessageInput): string {
   const meta = orderStatusMeta(order.status)
-  const kycStatus = order.lastError === '卖方 KYC 未通过' ? 'FAIL' : 'PASS'
   return (
     `🔴 <b>实名不一致，等待确认</b>\n\n` +
     `<b>订单信息</b>\n` +
@@ -299,7 +315,7 @@ export function formatOrderDiscoveredMessage(order: TelegramOrderMessageInput): 
     `账号：<code>${escapeTelegramHtml(order.payeeIdentity || '未记录')}</code>\n` +
     `方式：<code>${escapeTelegramHtml(paymentMethodLabel(order.paymentMethod))}</code>\n\n` +
     `<b>实名核验</b>\n` +
-    `KYC：<code>${escapeTelegramHtml(kycStatus)}</code>\n` +
+    `KYC：<code>${escapeTelegramHtml(order.kycStatus || '未记录')}</code>\n` +
     `实名：<code>${escapeTelegramHtml(order.identityName || '未记录')}</code>\n` +
     `持有人：<code>${escapeTelegramHtml(order.payeeName || '未记录')}</code>\n` +
     `结果：<b>${escapeTelegramHtml(meta.text)}</b>`

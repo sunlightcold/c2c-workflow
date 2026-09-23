@@ -10,6 +10,7 @@ import { migrateC2cMerchantOrders } from '@/apps/admin/database/migrations/c2c-m
 import { migrateC2cMerchantOrderAppeals } from '@/apps/admin/database/migrations/c2c-merchant-order-appeals.migration'
 import { migrateC2cMerchantAccountOperations } from '@/apps/admin/database/migrations/c2c-merchant-account-operations.migration'
 import { migrateC2cFullProviderParity } from '@/apps/admin/database/migrations/c2c-full-provider-parity.migration'
+import { migrateC2cTelegramReviewNotifications } from '@/apps/admin/database/migrations/c2c-telegram-review-notifications.migration'
 import { DataSource, type QueryRunner } from 'typeorm'
 import { TypeOrmC2cOrderSyncStore } from '@/apps/admin/modules/c2c-order/typeorm-c2c-order-sync.store'
 import { TypeOrmC2cOrderAppealStore } from '@/apps/admin/modules/c2c-order/typeorm-c2c-order-appeal.store'
@@ -57,6 +58,7 @@ describe('Merchant orders database integration', () => {
     await migrateC2cMerchantOrderAppeals(queryRunner.manager)
     await migrateC2cMerchantOrderAppeals(queryRunner.manager)
     await migrateC2cFullProviderParity(queryRunner.manager)
+    await migrateC2cTelegramReviewNotifications(queryRunner.manager)
     await queryRunner.query(`
       INSERT INTO merchant (id, "tenantId", code, name, platform, "apiBaseUrl")
       VALUES (
@@ -153,9 +155,10 @@ describe('Merchant orders database integration', () => {
           "leaseExpiresAt" = NULL`,
       [C2C_FOUNDATION_IDS.headquartersTenant, merchantId, new Date('2026-09-13T00:00:00Z')],
     )
-    const storeDataSource: Pick<DataSource, 'transaction' | 'getRepository'> = {
+    const storeDataSource: Pick<DataSource, 'transaction' | 'getRepository' | 'query'> = {
       transaction: (work) => work(queryRunner.manager),
       getRepository: dataSource.getRepository.bind(dataSource),
+      query: queryRunner.query.bind(queryRunner),
     }
     const store = new TypeOrmC2cOrderSyncStore(storeDataSource)
 
@@ -200,9 +203,10 @@ describe('Merchant orders database integration', () => {
   })
 
   it('upserts a sync window with status history and does not advance success on failure', async () => {
-    const storeDataSource: Pick<DataSource, 'transaction' | 'getRepository'> = {
+    const storeDataSource: Pick<DataSource, 'transaction' | 'getRepository' | 'query'> = {
       transaction: (work) => work(queryRunner.manager),
       getRepository: (entity) => queryRunner.manager.getRepository(entity),
+      query: queryRunner.query.bind(queryRunner),
     }
     const store = new TypeOrmC2cOrderSyncStore(storeDataSource)
     const firstAt = new Date('2026-09-10T05:00:00.000Z')

@@ -40,12 +40,13 @@ describe('C2cOrderSyncService', () => {
   const store = {
     claimDue: jest.fn(),
     getLastSuccessAt: jest.fn().mockResolvedValue(null),
+    findPendingReviewOrderIds: jest.fn().mockResolvedValue([]),
     updateObservedStatus: jest.fn(),
     persistWindow: jest.fn().mockResolvedValue({ created: 1, updated: 0 }),
     recordFailure: jest.fn().mockResolvedValue(undefined),
   }
   const platformClient = { listOrders: jest.fn(), getOrderDetail: jest.fn() }
-  const eventEmitter = { emit: jest.fn() }
+  const eventEmitter = { emit: jest.fn(), emitAsync: jest.fn().mockResolvedValue([]) }
 
   beforeEach(() => jest.clearAllMocks())
 
@@ -131,6 +132,29 @@ describe('C2cOrderSyncService', () => {
       now,
     )
     expect(store.recordFailure).not.toHaveBeenCalled()
+  })
+
+  it('re-emits old payable identity-mismatch orders so failed Telegram delivery can retry', async () => {
+    store.persistWindow.mockResolvedValueOnce({ created: 0, updated: 1 })
+    store.findPendingReviewOrderIds.mockResolvedValueOnce(['order-existing'])
+    platformClient.listOrders.mockResolvedValueOnce({ items: [], total: 0, hasMore: false })
+    const service = new C2cOrderSyncService(
+      merchantRepository as never,
+      credentials as never,
+      secretResolver,
+      credentialFactory as never,
+      platformClient as never,
+      store,
+      eventEmitter as never,
+    )
+
+    await service.sync(tenantId, merchantId, now)
+
+    expect(eventEmitter.emitAsync).toHaveBeenCalledWith('telegram.order.discovered', {
+      tenantId,
+      merchantId,
+      orderIds: ['order-existing'],
+    })
   })
 
   it('records a failed attempt without asking the store to advance the successful window', async () => {

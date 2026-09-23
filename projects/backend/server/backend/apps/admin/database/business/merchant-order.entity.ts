@@ -63,6 +63,8 @@ export class MerchantOrderEntity extends CommonUuidEntity {
   @Column({ type: 'timestamptz', nullable: true }) platformUpdatedAt: Date | null
   @Column({ type: 'timestamptz' }) lastSyncedAt: Date
   @Column({ type: 'varchar', length: 512, nullable: true }) lastError: string | null
+  @Column({ type: 'uuid', array: true, default: () => 'ARRAY[]::uuid[]', select: false })
+  telegramReviewNotificationGroupIds: string[]
   @Column({
     type: 'enum',
     enum: MerchantOrderAppealStatus,

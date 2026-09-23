@@ -1,5 +1,6 @@
 import {
   MerchantOrderStatus,
+  MerchantPlatform,
   PaymentExecutionMode,
   PaymentOrderStatus,
   PaymentSourceType,
@@ -7,6 +8,7 @@ import {
 } from '@admin/database'
 import { BadRequestException, ConflictException } from '@nestjs/common'
 import type { C2cOrderService } from '../c2c-order/c2c-order.service'
+import { C2cBuyOrderStatus } from '../c2c-platform'
 import { C2cMerchantPaymentService } from './c2c-merchant-payment.service'
 import type { C2cPaymentCancellationService } from './c2c-payment-cancellation.service'
 import type { PaymentExecutionCoordinator } from './payment-execution-coordinator'
@@ -18,6 +20,12 @@ describe('C2cMerchantPaymentService', () => {
     tenantId: 'tenant-1',
     merchantId: 'merchant-1',
     platformOrderId: 'platform-order-1',
+    platform: MerchantPlatform.OKX,
+    asset: 'USDT',
+    assetAmount: '15.000000000000000000',
+    platformPaymentMethodId: '15549410',
+    kycStatus: 'PASS',
+    paymentDeadline: new Date('2099-10-01T00:00:00.000Z'),
     status: MerchantOrderStatus.PENDING_PAYMENT,
     payable: true,
     identityMatched: true,
@@ -33,6 +41,11 @@ describe('C2cMerchantPaymentService', () => {
   const cancellation = { cancel: jest.fn() }
   const execution = { confirmPlatform: jest.fn(), submit: jest.fn() }
   const platformChat = { sendOrderCreated: jest.fn() }
+  const merchants = { findOne: jest.fn() }
+  const credentials = { getActiveReference: jest.fn() }
+  const secretResolver = { resolve: jest.fn() }
+  const credentialFactory = { create: jest.fn() }
+  const platformClient = { getOrderDetail: jest.fn() }
   let service: C2cMerchantPaymentService
 
   beforeEach(() => {
@@ -50,11 +63,41 @@ describe('C2cMerchantPaymentService', () => {
     execution.submit.mockResolvedValue({ id: 'payment-1', status: PaymentOrderStatus.COMPLETED })
     cancellation.cancel.mockResolvedValue(undefined)
     platformChat.sendOrderCreated.mockResolvedValue(undefined)
+    merchants.findOne.mockResolvedValue({
+      id: 'merchant-1',
+      tenantId: 'tenant-1',
+      platform: MerchantPlatform.OKX,
+      status: 'active',
+    })
+    credentials.getActiveReference.mockResolvedValue({ credentialRef: 'enc://merchant' })
+    secretResolver.resolve.mockResolvedValue({ cookie: 'opaque' })
+    credentialFactory.create.mockReturnValue({ cookie: 'opaque' })
+    platformClient.getOrderDetail.mockResolvedValue({
+      platformOrderId: order.platformOrderId,
+      status: C2cBuyOrderStatus.PENDING_PAYMENT,
+      payable: true,
+      kycStatus: 'PASS',
+      side: 'BUY',
+      asset: order.asset,
+      assetAmount: order.assetAmount,
+      fiatCurrency: order.fiatCurrency,
+      fiatAmount: order.fiatAmount,
+      paymentMethod: order.paymentMethod,
+      platformPaymentMethodId: order.platformPaymentMethodId,
+      payeeIdentity: order.payeeIdentity,
+      payeeName: order.payeeName,
+      identityName: order.identityName,
+    })
     service = new C2cMerchantPaymentService(
       merchantOrders as unknown as C2cOrderService,
       paymentOrders as unknown as PaymentOrderService,
       execution as unknown as PaymentExecutionCoordinator,
       cancellation as unknown as C2cPaymentCancellationService,
+      merchants as never,
+      credentials as never,
+      secretResolver as never,
+      credentialFactory as never,
+      platformClient as never,
       platformChat as never,
     )
   })
@@ -142,6 +185,66 @@ describe('C2cMerchantPaymentService', () => {
         source: 'TELEGRAM_C2C_REVIEW',
       },
     )
+  })
+
+  it('rejects Telegram confirmation when the current platform payee differs before creating a batch payment', async () => {
+    merchantOrders.detail.mockResolvedValue({ ...order, identityMatched: false })
+    platformClient.getOrderDetail.mockResolvedValueOnce({
+      platformOrderId: order.platformOrderId,
+      status: C2cBuyOrderStatus.PENDING_PAYMENT,
+      payable: true,
+      kycStatus: 'PASS',
+      side: 'BUY',
+      asset: order.asset,
+      assetAmount: order.assetAmount,
+      fiatCurrency: order.fiatCurrency,
+      fiatAmount: order.fiatAmount,
+      paymentMethod: order.paymentMethod,
+      platformPaymentMethodId: order.platformPaymentMethodId,
+      payeeIdentity: 'another@example.com',
+      payeeName: order.payeeName,
+      identityName: order.identityName,
+    })
+    paymentOrders.create.mockResolvedValueOnce({
+      id: 'payment-1',
+      status: PaymentOrderStatus.READY,
+      executionMode: PaymentExecutionMode.BATCH,
+    })
+
+    await expect(
+      service.createAfterManualReview('tenant-1', 'merchant-1', 'order-1', 'TG:88'),
+    ).rejects.toThrow('平台订单收款账号已变化')
+    expect(paymentOrders.create).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['platform status', { status: C2cBuyOrderStatus.PAID }, '平台订单已不可付款'],
+    ['fiat amount', { fiatAmount: '100.01' }, '平台订单金额或资产已变化'],
+    ['KYC', { kycStatus: 'FAIL' }, '平台订单实名核验结果已变化'],
+  ])('rejects reviewed payment when %s has changed', async (_name, change, reason) => {
+    merchantOrders.detail.mockResolvedValue({ ...order, identityMatched: false })
+    platformClient.getOrderDetail.mockResolvedValueOnce({
+      platformOrderId: order.platformOrderId,
+      status: C2cBuyOrderStatus.PENDING_PAYMENT,
+      payable: true,
+      kycStatus: 'PASS',
+      side: 'BUY',
+      asset: order.asset,
+      assetAmount: order.assetAmount,
+      fiatCurrency: order.fiatCurrency,
+      fiatAmount: order.fiatAmount,
+      paymentMethod: order.paymentMethod,
+      platformPaymentMethodId: order.platformPaymentMethodId,
+      payeeIdentity: order.payeeIdentity,
+      payeeName: order.payeeName,
+      identityName: order.identityName,
+      ...change,
+    })
+
+    await expect(
+      service.createAfterManualReview('tenant-1', 'merchant-1', 'order-1', 'TG:88'),
+    ).rejects.toThrow(reason)
+    expect(paymentOrders.create).not.toHaveBeenCalled()
   })
 
   it('retries only platform confirmation without submitting payment again', async () => {

@@ -45,6 +45,8 @@ import { migrateC2cPaymentPlanAutomation } from '@/apps/admin/database/migration
 import { migrateC2cPaymentPlatformStateSeparation } from '@/apps/admin/database/migrations/c2c-payment-platform-state-separation.migration'
 import { migrateC2cPlatformConfirmationControl } from '@/apps/admin/database/migrations/c2c-platform-confirmation-control.migration'
 import { migrateC2cFullProviderParity } from '@/apps/admin/database/migrations/c2c-full-provider-parity.migration'
+import { migrateTelegramAdministration } from '@/apps/admin/database/migrations/c2c-telegram-administration.migration'
+import { migrateC2cTelegramReviewNotifications } from '@/apps/admin/database/migrations/c2c-telegram-review-notifications.migration'
 import { MerchantPlatformCredentialService } from '@/apps/admin/modules/business/merchant-platform-credential.service'
 import { C2cOrderService } from '@/apps/admin/modules/c2c-order/c2c-order.service'
 import { C2cOrderSyncService } from '@/apps/admin/modules/c2c-order/c2c-order-sync.service'
@@ -156,6 +158,7 @@ describe('Automatic C2C payment workflow database integration', () => {
     await dataSource.transaction(async (manager) => {
       await migrateC2cBusinessFoundation(manager)
       await migrateC2cPaymentOrders(manager)
+      await migrateTelegramAdministration(manager)
       await migrateC2cPaymentRouting(manager)
       await migrateC2cMerchantPlatformCredentials(manager)
       await migrateC2cMerchantOrders(manager)
@@ -170,6 +173,7 @@ describe('Automatic C2C payment workflow database integration', () => {
       await migrateC2cPlatformConfirmationControl({ query: manager.query.bind(manager) })
       await migrateC2cFullProviderParity(manager)
       await migrateC2cPaymentPlatformStateSeparation({ query: manager.query.bind(manager) })
+      await migrateC2cTelegramReviewNotifications(manager)
     })
     harness = createHarness(dataSource)
   })
@@ -652,6 +656,11 @@ function createHarness(dataSource: DataSource): WorkflowHarness {
     paymentOrderService,
     paymentCoordinator,
     new C2cPaymentCancellationService(dataSource),
+    dataSource.getRepository(MerchantEntity),
+    credentialService,
+    secretResolver,
+    credentialFactory,
+    platformClient,
   )
   const automaticPayments = new C2cAutomaticPaymentService(
     new TypeOrmC2cAutomaticPaymentStore(dataSource),
