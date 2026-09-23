@@ -21,6 +21,15 @@ export const C2C_AUTOMATIC_PAYMENT_STORE = Symbol('C2C_AUTOMATIC_PAYMENT_STORE')
 const AUTOMATION_LIMIT = 100
 const AUTOMATION_CONCURRENCY = 8
 
+class PaymentOrderCreationError extends Error {
+  readonly notificationCode = 'C2C_PAYMENT_ORDER_NOT_CREATED'
+
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause))
+    this.name = 'PaymentOrderCreationError'
+  }
+}
+
 @Injectable()
 export class C2cAutomaticPaymentService {
   private readonly logger = new Logger(C2cAutomaticPaymentService.name)
@@ -185,12 +194,17 @@ export class C2cAutomaticPaymentService {
 
   private async processCandidate(candidate: AutomaticPaymentCandidate) {
     if (!candidate.paymentOrderId) {
-      const payment = await this.merchantPayments.create(
-        candidate.tenantId,
-        candidate.merchantId,
-        candidate.merchantOrderId,
-        true,
-      )
+      let payment
+      try {
+        payment = await this.merchantPayments.create(
+          candidate.tenantId,
+          candidate.merchantId,
+          candidate.merchantOrderId,
+          true,
+        )
+      } catch (error) {
+        throw new PaymentOrderCreationError(error)
+      }
       await this.eventEmitter?.emitAsync(EVENT_KEYS.TELEGRAM_PAYMENT_CREATED, {
         tenantId: candidate.tenantId,
         merchantId: candidate.merchantId,
@@ -217,6 +231,9 @@ export class C2cAutomaticPaymentService {
     }
     if (payment.status === PaymentOrderStatus.PENDING_CONFIG) {
       payment = await this.paymentOrders.rematch(candidate.tenantId, payment.id, true)
+      if (payment.status === PaymentOrderStatus.PENDING_CONFIG) {
+        throw new PaymentOrderCreationError('没有可用的自动支付方案')
+      }
     }
     if (
       payment.status === PaymentOrderStatus.READY &&
@@ -247,6 +264,7 @@ export class C2cAutomaticPaymentService {
             merchantId: string
             id: string
             merchantOrderId: string
+            sourceBusinessNo: string
             paymentOrderId: string
             batchNo: string
             paymentOrderIds: string[]
@@ -264,11 +282,19 @@ export class C2cAutomaticPaymentService {
             ].join(' '),
           )
           const referenceId =
-            scoped.merchantOrderId ?? scoped.batchNo ?? scoped.id ?? scoped.paymentOrderIds?.[0]
+            scoped.sourceBusinessNo ??
+            scoped.merchantOrderId ??
+            scoped.batchNo ??
+            scoped.id ??
+            scoped.paymentOrderIds?.[0]
           if (this.eventEmitter && scoped.tenantId && scoped.merchantId && referenceId) {
+            const notificationCode =
+              error instanceof PaymentOrderCreationError
+                ? error.notificationCode
+                : 'AUTOMATIC_PAYMENT_FAILED'
             const claimed = await this.store.claimFailureNotification({
               tenantId: scoped.tenantId,
-              code: 'AUTOMATIC_PAYMENT_FAILED',
+              code: notificationCode,
               merchantId: scoped.merchantId,
               message,
               referenceId,
@@ -277,7 +303,7 @@ export class C2cAutomaticPaymentService {
               await this.eventEmitter.emitAsync(EVENT_KEYS.TELEGRAM_EXCEPTION, {
                 tenantId: scoped.tenantId,
                 merchantId: scoped.merchantId,
-                code: 'AUTOMATIC_PAYMENT_FAILED',
+                code: notificationCode,
                 message,
                 referenceId,
               })

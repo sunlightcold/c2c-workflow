@@ -15,6 +15,7 @@ describe('C2cAutomaticPaymentService', () => {
     tenantId: 'tenant-1',
     merchantId: 'merchant-1',
     merchantOrderId: 'merchant-order-1',
+    sourceBusinessNo: 'PLATFORM-ORDER-1',
     paymentOrderId: null,
     paymentOrderStatus: null,
     paymentOrderExecutionMode: null,
@@ -115,7 +116,7 @@ describe('C2cAutomaticPaymentService', () => {
     )
   })
 
-  it('notifies only once when the same automatic payment keeps failing', async () => {
+  it('notifies only once when an automatic payment order cannot be created', async () => {
     const errorLog = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined)
     store.findCandidates.mockResolvedValue([candidate])
     merchantPayments.create.mockRejectedValue(new Error('Request failed with status code 404'))
@@ -129,9 +130,9 @@ describe('C2cAutomaticPaymentService', () => {
     expect(eventEmitter.emitAsync).toHaveBeenCalledWith(EVENT_KEYS.TELEGRAM_EXCEPTION, {
       tenantId: 'tenant-1',
       merchantId: 'merchant-1',
-      code: 'AUTOMATIC_PAYMENT_FAILED',
+      code: 'C2C_PAYMENT_ORDER_NOT_CREATED',
       message: 'Request failed with status code 404',
-      referenceId: 'merchant-order-1',
+      referenceId: 'PLATFORM-ORDER-1',
     })
     expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('tenantId=tenant-1'))
     expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('merchantId=merchant-1'))

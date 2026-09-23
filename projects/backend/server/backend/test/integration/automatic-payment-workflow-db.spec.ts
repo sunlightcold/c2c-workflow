@@ -458,7 +458,7 @@ describe('Automatic C2C payment workflow database integration', () => {
     ])
   })
 
-  it('selects only active-tenant, enabled, identity-matched orders regardless of deadline metadata', async () => {
+  it('selects only active-tenant, enabled orders regardless of identity or deadline metadata', async () => {
     const now = new Date('2026-09-13T04:00:00.000Z')
     const disabledTenantId = '35000000-0000-4000-8000-000000000001'
     await harness.dataSource.query(
@@ -537,10 +537,11 @@ describe('Automatic C2C payment workflow database integration', () => {
           .findOneByOrFail({ id: merchantOrderId }),
       ),
     )
-    expect(selected).toHaveLength(3)
+    expect(selected).toHaveLength(4)
     expect(selected).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ platformOrderId: 'eligible' }),
+        expect.objectContaining({ platformOrderId: 'identity-mismatch' }),
         expect.objectContaining({ platformOrderId: 'deadline-missing' }),
         expect.objectContaining({ platformOrderId: 'deadline-expired' }),
       ]),
