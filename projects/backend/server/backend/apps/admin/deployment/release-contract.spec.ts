@@ -10,6 +10,10 @@ describe('backend release contract', () => {
   it('packages precompiled applications and verifies the image before replacement', () => {
     expect(dockerfile).toContain('COPY --chown=node:node volumes/apps ./dist/apps')
     expect(releaseBuilder).toContain('requiredReleaseFiles')
+    expect(releaseBuilder).toContain("localBin('nest')")
+    expect(releaseBuilder).toContain("localBin('tsc')")
+    expect(releaseBuilder).not.toContain('npx nest')
+    expect(releaseBuilder).not.toContain('npx tsc')
     expect(deployScript).toContain('verify_image_bundle admin "$admin_bundle_hash"')
     expect(deployScript).toContain('verify_image_bundle migrate "$migrate_bundle_hash"')
     expect(deployScript).toContain('compose up -d --no-deps --remove-orphans --force-recreate app')

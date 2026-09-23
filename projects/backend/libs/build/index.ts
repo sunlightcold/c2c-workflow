@@ -38,6 +38,15 @@ async function handler() {
   const initJsonSourcePath = join(backendRootPath, 'initJson')
   const initJsonPath = join(volumesPath, 'initJson')
   const appsPath = join(volumesPath, 'apps')
+  const localBin = (name: string) =>
+    join(
+      backendRootPath,
+      'node_modules',
+      '.bin',
+      process.platform === 'win32' ? `${name}.cmd` : name,
+    )
+  const nestBin = localBin('nest')
+  const tscBin = localBin('tsc')
 
   // Build backend app with a custom webpack config so we can raise
   // ForkTsChecker memory limits for large local workspaces.
@@ -57,14 +66,14 @@ async function handler() {
   // 创建输出目录
   Shell.mkdir(outPath, volumesPath, appConfigPath, logsPath, appsPath)
 
-  runBuild('npx nest build --builder webpack --webpackPath webpack.build.config.js admin')
+  runBuild(`"${nestBin}" build --builder webpack --webpackPath webpack.build.config.js admin`)
   Shell.cp('-R', join(distPath, 'apps/admin'), appsPath)
 
-  runBuild('npx nest build --builder webpack --webpackPath webpack.build.config.js migrate')
+  runBuild(`"${nestBin}" build --builder webpack --webpackPath webpack.build.config.js migrate`)
   Shell.cp('-R', join(distPath, 'apps/migrate'), appsPath)
 
   runBuild(
-    'npx tsc config/production.ts --target ES2022 --module CommonJS --moduleResolution Node --esModuleInterop --skipLibCheck --outDir dist/config',
+    `"${tscBin}" config/production.ts --target ES2022 --module CommonJS --moduleResolution Node --esModuleInterop --skipLibCheck --outDir dist/config`,
   )
 
   // 复制配置文件
