@@ -42,7 +42,6 @@ export class TypeOrmC2cAutomaticPaymentStore implements C2cAutomaticPaymentStore
           AND merchant.status = 'active'
           AND merchant_order.status = 'PENDING_PAYMENT'
           AND merchant_order.payable = true
-          AND merchant_order."identityMatched" = true
           AND merchant_order."paymentMethod" = 'ALIPAY'
           AND merchant_order."fiatCurrency" = 'CNY'
           AND merchant_order."payeeIdentity" IS NOT NULL

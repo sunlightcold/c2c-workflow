@@ -179,11 +179,7 @@ export function shouldNotifyBatchStatus(status: string): boolean {
   return BATCH_TERMINAL_STATUSES.has(status)
 }
 
-/**
- * A payable, identity-matched C2C order is handled by the automatic payment
- * worker. It must stay silent at discovery time; only a reviewable order needs
- * a human-facing notification.
- */
+/** Discovery notifications are reserved for terminal or exceptional orders. */
 export function shouldNotifyOrderDiscovered(
   order: Pick<
     TelegramOrderMessageInput,
@@ -200,18 +196,7 @@ export function shouldNotifyOrderDiscovered(
     | 'paymentDeadline'
   >,
 ) {
-  if (order.status === MerchantOrderStatus.PENDING_PAYMENT) {
-    return (
-      !order.identityMatched &&
-      order.payable &&
-      order.kycStatus === 'PASS' &&
-      Boolean(order.identityName && order.payeeName && order.payeeIdentity) &&
-      order.paymentMethod === 'ALIPAY' &&
-      Boolean(order.platformPaymentMethodId) &&
-      order.fiatCurrency === 'CNY' &&
-      (!order.paymentDeadline || order.paymentDeadline.getTime() > Date.now())
-    )
-  }
+  if (order.status === MerchantOrderStatus.PENDING_PAYMENT) return false
   return [
     MerchantOrderStatus.DISPUTED,
     MerchantOrderStatus.EXCEPTION,
@@ -313,7 +298,7 @@ function batchStatusMeta(status: string): { icon: string; text: string } {
 export function formatOrderDiscoveredMessage(order: TelegramOrderMessageInput): string {
   const meta = orderStatusMeta(order.status)
   return (
-    `🔴 <b>实名不一致，等待确认</b>\n\n` +
+    `${meta.icon} <b>C2C订单状态更新</b>\n\n` +
     `<b>订单信息</b>\n` +
     `商家订单号：<code>${escapeTelegramHtml(order.platformOrderId)}</code>\n` +
     `金额：<code>${escapeTelegramHtml(money(order.fiatAmount))} ${escapeTelegramHtml(order.fiatCurrency)}</code>\n` +
@@ -331,9 +316,9 @@ export function formatOrderDiscoveredMessage(order: TelegramOrderMessageInput): 
 }
 
 export function formatC2cCreatedMessage(order: TelegramC2cCreatedMessageInput): string {
-  const title = order.identityMatched ? 'C2C订单已自动创建' : '实名不一致，等待确认'
-  const icon = order.identityMatched ? '🟢' : '🔴'
-  const result = order.identityMatched ? '一致，已自动下单' : '不一致，等待人工确认'
+  const title = 'C2C订单已自动创建'
+  const icon = '🟢'
+  const result = order.identityMatched ? '一致，已自动下单' : '不一致，已自动下单'
   return (
     `${icon} <b>${title}</b>\n\n` +
     `<b>订单信息</b>\n` +

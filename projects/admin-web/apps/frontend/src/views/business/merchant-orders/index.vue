@@ -45,7 +45,6 @@ import {
 } from '../shared/business-ui';
 import { createOrderStatisticItems } from '../shared/high-card-statistics';
 import HighCardStatistics from '../shared/HighCardStatistics.vue';
-import { merchantOrderReviewReason } from '../shared/merchant-order-review';
 import OrderTimeCell from '../shared/OrderTimeCell.vue';
 import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 
@@ -423,7 +422,6 @@ function canPay(order: BusinessApi.MerchantOrder) {
   return (
     order.status === 'PENDING_PAYMENT' &&
     order.payable &&
-    order.identityMatched &&
     order.paymentMethod === 'ALIPAY' &&
     !order.paymentOrder
   );
@@ -600,14 +598,6 @@ onMounted(async () => {
     >
       <ASpin :spinning="detailLoading">
         <template v-if="detail">
-          <AAlert
-            v-if="merchantOrderReviewReason(detail)"
-            class="mb-4"
-            show-icon
-            type="warning"
-            message="未自动创建支付订单"
-            :description="merchantOrderReviewReason(detail)"
-          />
           <ADescriptions bordered :column="1" size="small">
             <ADescriptionsItem label="平台订单号">
               {{ detail.platformOrderId }}

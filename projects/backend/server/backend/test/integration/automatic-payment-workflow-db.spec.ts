@@ -654,11 +654,6 @@ function createHarness(dataSource: DataSource): WorkflowHarness {
     paymentOrderService,
     paymentCoordinator,
     new C2cPaymentCancellationService(dataSource),
-    dataSource.getRepository(MerchantEntity),
-    credentialService,
-    secretResolver,
-    credentialFactory,
-    platformClient,
   )
   const automaticPayments = new C2cAutomaticPaymentService(
     new TypeOrmC2cAutomaticPaymentStore(dataSource),

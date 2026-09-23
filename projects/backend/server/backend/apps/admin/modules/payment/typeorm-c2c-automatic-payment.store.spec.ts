@@ -12,7 +12,7 @@ describe('TypeOrmC2cAutomaticPaymentStore', () => {
     const [sql, parameters] = dataSource.query.mock.calls[0]
     expect(sql).toContain("tenant.status = 'active'")
     expect(sql).toContain('plan."automaticPaymentEnabled" = true')
-    expect(sql).toContain('merchant_order."identityMatched" = true')
+    expect(sql).not.toContain('merchant_order."identityMatched" = true')
     expect(sql).toContain(`merchant_order."paymentMethod" = 'ALIPAY'`)
     expect(sql).toContain(`merchant_order."fiatCurrency" = 'CNY'`)
     expect(sql).not.toContain('merchant_order."paymentDeadline"')

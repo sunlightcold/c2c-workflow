@@ -58,7 +58,7 @@ describe('TelegramNotificationService', () => {
     })
   })
 
-  it('sends an order notification only to active groups bound to the same tenant and merchant', async () => {
+  it('does not send a review message for a payable name-mismatch order', async () => {
     groups.find.mockResolvedValue([
       {
         id: 'group-a',
@@ -99,42 +99,10 @@ describe('TelegramNotificationService', () => {
       orderIds: ['order-1'],
     })
 
-    expect(groups.find).toHaveBeenCalledWith({
-      where: {
-        tenantId: 'tenant-a',
-        merchantId: 'merchant-a',
-        bindingState: TelegramGroupBindingState.ACTIVE,
-        notificationsEnabled: true,
-      },
-    })
-    expect(bots.findOne).toHaveBeenCalledWith({
-      where: { id: 'bot-1', tenantId: 'tenant-a', status: BusinessStatus.ACTIVE },
-      select: { id: true, tenantId: true, tokenRef: true, status: true, capabilities: true },
-    })
-    expect(telegram.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        chatId: 'chat-a',
-        tokenRef: 'env://TG',
-        replyMarkup: {
-          inline_keyboard: [
-            [
-              {
-                text: '确认下单',
-                callback_data: 'c2c:confirm:00000000-0000-4000-8000-000000000001',
-              },
-              {
-                text: '取消订单',
-                callback_data: 'c2c:cancel:00000000-0000-4000-8000-000000000001',
-              },
-            ],
-          ],
-        },
-      }),
-    )
-    expect(telegram.sendMessage).toHaveBeenCalledTimes(1)
+    expect(telegram.sendMessage).not.toHaveBeenCalled()
   })
 
-  it('sends review notices regardless of event filter only to groups with C2C payment capability', async () => {
+  it('does not send a second-confirmation notice for a name mismatch', async () => {
     groups.find.mockResolvedValue([
       {
         id: 'group-a',
@@ -177,13 +145,10 @@ describe('TelegramNotificationService', () => {
       orderIds: ['order-1'],
     })
 
-    expect(telegram.sendMessage).toHaveBeenCalledTimes(1)
-    expect(telegram.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ chatId: 'chat-b', replyMarkup: expect.any(Object) }),
-    )
+    expect(telegram.sendMessage).not.toHaveBeenCalled()
   })
 
-  it('records a failed first-send attempt without updating delivery state', async () => {
+  it('does not try to send a name-mismatch review after a Telegram error', async () => {
     groups.find.mockResolvedValue([
       {
         id: 'group-a',
@@ -196,14 +161,12 @@ describe('TelegramNotificationService', () => {
         capabilities: [TelegramCapability.C2C_ORDER_PAYMENT],
       },
     ])
-    ;(telegram.sendMessage as jest.Mock).mockRejectedValueOnce(new Error('Telegram unavailable'))
-
     await service.notifyOrderDiscovered({
       tenantId: 'tenant-a',
       merchantId: 'merchant-a',
       orderIds: ['order-1'],
     })
-    expect(telegram.sendMessage).toHaveBeenCalledTimes(1)
+    expect(telegram.sendMessage).not.toHaveBeenCalled()
   })
 
   it('adds a receipt action only to successful payment notifications', async () => {

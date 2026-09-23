@@ -108,7 +108,7 @@ describe('Telegram notification formatting policy', () => {
     expect(shouldNotifyOrderDiscovered(order)).toBe(false)
   })
 
-  it('matches the pfa-pay identity-review message text and field order', () => {
+  it('keeps the identity fields available in the legacy discovery formatter', () => {
     expect(
       formatOrderDiscoveredMessage({
         platformOrderId: '260923135225452',
@@ -126,7 +126,7 @@ describe('Telegram notification formatting policy', () => {
         payable: true,
       }),
     ).toBe(
-      '🔴 <b>实名不一致，等待确认</b>\n\n' +
+      '🔴 <b>C2C订单状态更新</b>\n\n' +
         '<b>订单信息</b>\n' +
         '商家订单号：<code>260923135225452</code>\n' +
         '金额：<code>196.01 CNY</code>\n' +
@@ -143,7 +143,7 @@ describe('Telegram notification formatting policy', () => {
     )
   })
 
-  it('does not offer a confirmation button for incomplete or expired payment details', () => {
+  it('does not schedule a second confirmation for a name-mismatch order', () => {
     const order = {
       status: 'PENDING_PAYMENT',
       identityMatched: false,
@@ -157,7 +157,7 @@ describe('Telegram notification formatting policy', () => {
       platformPaymentMethodId: '15549410',
       paymentDeadline: new Date('2099-01-01T00:00:00.000Z'),
     }
-    expect(shouldNotifyOrderDiscovered(order)).toBe(true)
+    expect(shouldNotifyOrderDiscovered(order)).toBe(false)
     expect(shouldNotifyOrderDiscovered({ ...order, platformPaymentMethodId: null })).toBe(false)
     expect(shouldNotifyOrderDiscovered({ ...order, fiatCurrency: 'USD' })).toBe(false)
     expect(
