@@ -104,7 +104,7 @@ export class C2cMerchantPaymentService {
       currency: merchantOrder.fiatCurrency,
       paymentMethod: merchantOrder.paymentMethod!,
       payeeIdentity: merchantOrder.payeeIdentity!,
-      payeeName: merchantOrder.identityName!,
+      payeeName: merchantOrder.payeeName!,
     }
     const paymentOrder = await this.paymentOrders.create(tenantId, paymentInput, {
       automaticOnly,

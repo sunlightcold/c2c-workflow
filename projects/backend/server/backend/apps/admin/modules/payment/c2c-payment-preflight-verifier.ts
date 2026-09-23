@@ -259,7 +259,7 @@ export class C2cPaymentPreflightVerifier {
     this.require(order.currency === merchantOrder.fiatCurrency, '商家订单币种已变化')
     this.require(order.paymentMethod === merchantOrder.paymentMethod, '商家订单收款方式已变化')
     this.require(order.payeeIdentity === merchantOrder.payeeIdentity, '商家订单收款账号已变化')
-    this.require(this.sameName(order.payeeName, merchantOrder.identityName), '商家订单实名已变化')
+    this.require(order.payeeName === merchantOrder.payeeName, '商家订单收款人姓名已变化')
     this.require(Boolean(merchantOrder.platformPaymentMethodId), '商家订单缺少平台付款方式')
   }
 
@@ -275,7 +275,7 @@ export class C2cPaymentPreflightVerifier {
       '平台订单付款方式已变化',
     )
     this.require(current.payeeIdentity === context.order.payeeIdentity, '平台订单收款账号已变化')
-    this.require(this.sameName(current.identityName, context.order.payeeName), '平台订单实名已变化')
+    this.require(current.payeeName === context.order.payeeName, '平台订单收款人姓名已变化')
   }
 
   private getPlatformOrder(
@@ -295,15 +295,6 @@ export class C2cPaymentPreflightVerifier {
     } catch {
       return false
     }
-  }
-
-  private sameName(left: string | null, right: string | null): boolean {
-    if (!left || !right) return false
-    return this.normalizeName(left) === this.normalizeName(right)
-  }
-
-  private normalizeName(value: string): string {
-    return value.normalize('NFKD').replace(/\p{M}/gu, '').replace(/\s+/g, '').toLocaleLowerCase()
   }
 
   private require(condition: boolean, message: string): asserts condition {

@@ -295,7 +295,6 @@ describe('C2cPaymentPreflightVerifier', () => {
     ['platform status changed', { status: C2cBuyOrderStatus.CANCELLED }, '平台订单已不可付款'],
     ['amount changed', { fiatAmount: '101.00' }, '平台订单金额已变化'],
     ['payee changed', { payeeIdentity: 'other@example.com' }, '平台订单收款账号已变化'],
-    ['identity changed', { identityName: '李四' }, '平台订单实名已变化'],
     ['payment method changed', { paymentMethod: 'BANK' }, '平台订单付款方式已变化'],
   ])('rejects before payment when %s', async (_case, change, message) => {
     platformClient.getOrderDetail.mockResolvedValue({ ...platformOrder, ...change })
@@ -305,12 +304,81 @@ describe('C2cPaymentPreflightVerifier', () => {
     )
   })
 
-  it('accepts harmless name formatting and a refreshed platform payment method id', async () => {
+  it('allows a name mismatch while retaining the payment account and money checks', async () => {
+    store.load.mockResolvedValue({
+      order: { ...order, payeeName: '收款人姓名' },
+      ...configuration,
+      merchantOrder: {
+        ...configuration.merchantOrder,
+        payeeName: '收款人姓名',
+        identityName: '平台实名',
+      },
+    })
+    platformClient.getOrderDetail.mockResolvedValue({
+      ...platformOrder,
+      payeeName: '收款人姓名',
+      identityName: '平台实名',
+    })
+
+    await expect(verifier.verify('tenant-1', 'payment-1', now)).resolves.toMatchObject({
+      order: { payeeName: '收款人姓名' },
+      platformOrder: { identityName: '平台实名' },
+    })
+  })
+
+  it('allows a name mismatch for the batch payment channel', async () => {
+    store.load.mockResolvedValue({
+      order: {
+        ...order,
+        status: PaymentOrderStatus.READY,
+        executionMode: PaymentExecutionMode.BATCH,
+        payeeName: '收款人姓名',
+      },
+      ...configuration,
+      merchantOrder: {
+        ...configuration.merchantOrder,
+        status: MerchantOrderStatus.PENDING_PAYMENT,
+        payeeName: '收款人姓名',
+        identityName: '平台实名',
+      },
+      channel: {
+        ...configuration.channel,
+        adapterCode: PaymentAdapterCode.ALIPAY_BATCH,
+        executionMode: PaymentExecutionMode.BATCH,
+      },
+    })
+    platformClient.getOrderDetail.mockResolvedValue({
+      ...platformOrder,
+      payeeName: '收款人姓名',
+      identityName: '平台实名',
+    })
+
+    await expect(verifier.verifyBatch('tenant-1', 'payment-1', now)).resolves.toMatchObject({
+      order: { payeeName: '收款人姓名' },
+    })
+  })
+
+  it.each([
+    ['stored', { stored: '另一收款人', live: '收款人姓名' }, '商家订单收款人姓名已变化'],
+    ['platform', { stored: '收款人姓名', live: '另一收款人' }, '平台订单收款人姓名已变化'],
+  ])('rejects a changed %s recipient name', async (_case, names, message) => {
+    store.load.mockResolvedValue({
+      order: { ...order, payeeName: '收款人姓名' },
+      ...configuration,
+      merchantOrder: { ...configuration.merchantOrder, payeeName: names.stored },
+    })
+    platformClient.getOrderDetail.mockResolvedValue({ ...platformOrder, payeeName: names.live })
+
+    await expect(verifier.verify('tenant-1', 'payment-1', now)).rejects.toEqual(
+      new PaymentNotSubmittedError(message),
+    )
+  })
+
+  it('accepts a changed platform real name and refreshed payment method id', async () => {
     platformClient.getOrderDetail.mockResolvedValue({
       ...platformOrder,
       asset: 'BTC',
       identityName: '张 三',
-      payeeName: 'Another display name',
       platformPaymentMethodId: '902',
       paymentMethod: 'aliPay',
     })

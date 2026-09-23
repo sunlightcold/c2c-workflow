@@ -82,7 +82,7 @@ describe('C2cMerchantPaymentService', () => {
         currency: 'CNY',
         paymentMethod: 'ALIPAY',
         payeeIdentity: 'payee@example.com',
-        payeeName: 'Verified Payee',
+        payeeName: 'Payee',
       },
       {
         automaticOnly: false,
@@ -129,7 +129,14 @@ describe('C2cMerchantPaymentService', () => {
     })
 
     await expect(service.create('tenant-1', 'merchant-1', 'order-1')).resolves.toBeDefined()
-    expect(paymentOrders.create).toHaveBeenCalledTimes(1)
+    expect(paymentOrders.create).toHaveBeenCalledWith(
+      'tenant-1',
+      expect.objectContaining({
+        payeeIdentity: 'payee@example.com',
+        payeeName: '收款人姓名',
+      }),
+      { automaticOnly: false, requireRoute: true },
+    )
   })
 
   it('rejects creating another payment when the merchant order already has a failed payment', async () => {
