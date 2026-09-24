@@ -35,8 +35,11 @@ export interface AlipayPayee {
 }
 
 export function normalizeCnyAmount(value: string): string {
-  const match = /^(0|[1-9]\d*)(?:\.(\d{1,2}))?$/.exec(value)
-  if (!match) throw new Error('金额必须是最多两位小数的非负字符串')
+  const match = /^(0|[1-9]\d*)(?:\.(\d+))?$/.exec(value)
+  if (!match) throw new Error('金额必须是非负数字，最多两位有效小数')
+  if (/[1-9]/.test(match[2]?.slice(2) ?? '')) {
+    throw new Error('金额必须是非负数字，最多两位有效小数')
+  }
   return decimal(value).toFixed(2)
 }
 

@@ -23,6 +23,7 @@ import {
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value)
 const upper = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim().toUpperCase() : value
+const nonNegativeCnyAmountPattern = /^(?:0(?:\.\d{1,2}0*)?|[1-9]\d{0,17}(?:\.\d{1,2}0*)?)$/
 
 export class TenantContextDto {
   @ApiPropertyOptional({ description: '平台人员当前经营的所属单位；代理商人员忽略此字段' })
@@ -587,24 +588,24 @@ export class OpenPaymentAccountChannelDto extends TenantContextDto {
 
   @ApiPropertyOptional({ example: '1.00' })
   @IsOptional()
-  @Matches(/^(0|[1-9]\d{0,17})(\.\d{1,2})?$/)
+  @Matches(nonNegativeCnyAmountPattern)
   minimumAmount?: string
 
   @ApiPropertyOptional({ example: '50000.00' })
   @IsOptional()
-  @Matches(/^(0|[1-9]\d{0,17})(\.\d{1,2})?$/)
+  @Matches(nonNegativeCnyAmountPattern)
   maximumAmount?: string
 }
 
 export class UpdatePaymentAccountChannelDto extends TenantContextDto {
   @ApiPropertyOptional({ example: '1.00', nullable: true })
   @IsOptional()
-  @Matches(/^(0|[1-9]\d{0,17})(\.\d{1,2})?$/)
+  @Matches(nonNegativeCnyAmountPattern)
   minimumAmount?: string | null
 
   @ApiPropertyOptional({ example: '50000.00', nullable: true })
   @IsOptional()
-  @Matches(/^(0|[1-9]\d{0,17})(\.\d{1,2})?$/)
+  @Matches(nonNegativeCnyAmountPattern)
   maximumAmount?: string | null
 }
 

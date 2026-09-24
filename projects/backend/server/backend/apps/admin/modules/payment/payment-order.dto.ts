@@ -23,6 +23,7 @@ import {
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value)
 const upper = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim().toUpperCase() : value
+const positiveCnyAmountPattern = /^(?:0\.(?:0[1-9]|[1-9]\d?)(?:0*)?|[1-9]\d*(?:\.\d{1,2}0*)?)$/
 
 export class PaymentTenantContextDto {
   @ApiPropertyOptional({ description: '平台人员当前经营的所属单位；代理商人员忽略此字段' })
@@ -149,9 +150,9 @@ export class CreateManualPaymentOrderDto extends PaymentTenantContextDto {
   @MaxLength(128)
   sourceBusinessNo: string
 
-  @ApiProperty({ example: '100.00', description: '大于零、最多两位小数的金额字符串' })
+  @ApiProperty({ example: '100.00', description: '大于零、最多两位有效小数，末尾零可补充' })
   @IsString()
-  @Matches(/^(?:0\.(?:0[1-9]|[1-9]\d?)|[1-9]\d*(?:\.\d{1,2})?)$/)
+  @Matches(positiveCnyAmountPattern)
   amount: unknown
 
   @ApiProperty({ example: 'CNY' })

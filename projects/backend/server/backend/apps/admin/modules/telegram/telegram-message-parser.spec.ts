@@ -15,7 +15,23 @@ describe('parseTelegramManualPayments', () => {
           sourceBusinessNo: 'ORDER-1',
         },
       },
-      { index: 2, error: '金额必须是大于 0 且最多两位小数的数字' },
+      { index: 2, error: '金额必须是大于 0 且最多两位有效小数的数字' },
+    ])
+  })
+
+  it('accepts trailing zero precision in CNY amounts', () => {
+    expect(
+      parseTelegramManualPayments(['ORDER-1', '100.10000', '张三', '13800138000'].join('\n')),
+    ).toEqual([
+      {
+        index: 1,
+        input: {
+          amount: '100.10000',
+          payeeIdentity: '13800138000',
+          payeeName: '张三',
+          sourceBusinessNo: 'ORDER-1',
+        },
+      },
     ])
   })
 

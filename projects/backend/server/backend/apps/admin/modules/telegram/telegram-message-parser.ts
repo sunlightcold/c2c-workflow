@@ -13,7 +13,7 @@ export interface ParsedTelegramPaymentLine {
   error?: string
 }
 
-const amountPattern = /^(0|[1-9]\d{0,17})(\.\d{1,2})?$/
+const amountPattern = /^(?:0\.(?:0[1-9]|[1-9]\d?)(?:0*)?|[1-9]\d*(?:\.\d{1,2}0*)?)$/
 
 export function parseTelegramManualPayments(text: string): ParsedTelegramPaymentLine[] {
   const lines = text
@@ -37,7 +37,7 @@ export function parseTelegramManualPayments(text: string): ParsedTelegramPayment
       continue
     }
     if (!amountPattern.test(amount) || !isPositiveDecimal(amount)) {
-      results.push({ index: index + 1, error: '金额必须是大于 0 且最多两位小数的数字' })
+      results.push({ index: index + 1, error: '金额必须是大于 0 且最多两位有效小数的数字' })
       continue
     }
     if (!payeeName || payeeName.length > 100) {

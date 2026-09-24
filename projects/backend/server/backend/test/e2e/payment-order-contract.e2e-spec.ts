@@ -153,6 +153,29 @@ describe('Payment order API contract (e2e)', () => {
     expect(orders.create).not.toHaveBeenCalled()
   })
 
+  it('accepts a CNY amount with trailing zeros and preserves it for service normalization', async () => {
+    orders.create.mockResolvedValue({ id: 'order-1', status: 'READY' })
+    await request(app.getHttpServer())
+      .post('/v1/sys/payment-orders')
+      .send({
+        tenantId: '00000000-0000-4000-8000-000000000010',
+        merchantId: '00000000-0000-4000-8000-000000000020',
+        sourceBusinessNo: 'manual-trailing-zero',
+        amount: '100.10000',
+        currency: 'CNY',
+        paymentMethod: 'ALIPAY',
+        executionMode: 'BATCH',
+        payeeIdentity: 'payee@example.com',
+        payeeName: 'Payee',
+      })
+      .expect(201)
+
+    expect(orders.create).toHaveBeenCalledWith(
+      'tenant-1',
+      expect.objectContaining({ amount: '100.10000' }),
+    )
+  })
+
   it('rematches a pending-config order in the resolved tenant', async () => {
     orders.rematch.mockResolvedValue({
       id: '00000000-0000-4000-8000-000000000030',
