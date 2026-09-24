@@ -40,7 +40,8 @@ export function normalizeCnyAmount(value: string): string {
   if (/[1-9]/.test(match[2]?.slice(2) ?? '')) {
     throw new Error('金额必须是非负数字，最多两位有效小数')
   }
-  return decimal(value).toFixed(2)
+  const fraction = (match[2] ?? '').padEnd(2, '0').slice(0, 2)
+  return `${match[1]}.${fraction}`
 }
 
 /** Compare money by numeric value; upstream APIs may return extra trailing zeros. */

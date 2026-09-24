@@ -9,6 +9,10 @@ describe('payment amount helpers', () => {
     expect(normalizeCnyAmount(value)).toBe(expected)
   })
 
+  it('never rounds a meaningful third decimal place into a payable amount', () => {
+    expect(() => normalizeCnyAmount('100.10500')).toThrow()
+  })
+
   it('rejects meaningful precision beyond two decimal places instead of rounding', () => {
     expect(() => normalizeCnyAmount('100.10100')).toThrow('金额必须是非负数字，最多两位有效小数')
   })
