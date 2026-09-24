@@ -8,7 +8,6 @@ import {
   PaymentSourceType,
 } from '@admin/database'
 import { Inject, Injectable } from '@nestjs/common'
-import { decimal } from '@/common/utils/decimal'
 import {
   C2cPlatformClient,
   type C2cPlatformCredentials,
@@ -17,7 +16,7 @@ import {
   type C2cBuyOrderDetail,
 } from '../c2c-platform'
 import { C2C_SECRET_RESOLVER, type C2cSecretResolver } from '../c2c-order/c2c-secret-resolver'
-import { normalizeCnyAmount } from './payment-adapter.types'
+import { sameCnyAmount } from './payment-adapter.types'
 import { PaymentNotSubmittedError } from './payment-execution-coordinator'
 
 export interface PaymentPreflightConfiguration {
@@ -287,11 +286,7 @@ export class C2cPaymentPreflightVerifier {
   }
 
   private sameAmount(left: string, right: string): boolean {
-    try {
-      return decimal(left).eq(decimal(normalizeCnyAmount(right)))
-    } catch {
-      return false
-    }
+    return sameCnyAmount(left, right)
   }
 
   private require(condition: boolean, message: string): asserts condition {

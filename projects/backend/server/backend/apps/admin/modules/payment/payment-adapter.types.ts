@@ -40,6 +40,15 @@ export function normalizeCnyAmount(value: string): string {
   return decimal(value).toFixed(2)
 }
 
+/** Compare money by numeric value; upstream APIs may return extra trailing zeros. */
+export function sameCnyAmount(left: string, right: string): boolean {
+  try {
+    return decimal(left).eq(decimal(right))
+  } catch {
+    return false
+  }
+}
+
 export function sumCnyAmounts(values: string[]): string {
   return sumDecimalStrings(values.map(normalizeCnyAmount), 2)
 }

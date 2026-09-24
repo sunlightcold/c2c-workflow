@@ -24,7 +24,7 @@ import {
 import { ConflictException, Injectable } from '@nestjs/common'
 import { DataSource, EntityManager, In, Not } from 'typeorm'
 import type { AlipayBatchDetail, AlipayBatchResponse } from './alipay-batch.adapter'
-import { normalizeCnyAmount, PaymentExecutionStatus } from './payment-adapter.types'
+import { normalizeCnyAmount, PaymentExecutionStatus, sameCnyAmount } from './payment-adapter.types'
 import type {
   ExecutablePaymentBatch,
   ExecutablePaymentBatchItem,
@@ -85,7 +85,7 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
           order.paymentAccountId !== batch.paymentAccountId ||
           order.paymentAccountChannelId !== batch.paymentAccountChannelId ||
           order.currency !== batch.currency ||
-          normalizeCnyAmount(order.amount) !== normalizeCnyAmount(item.amount)
+          !sameCnyAmount(order.amount, item.amount)
         )
       })
     ) {
@@ -313,7 +313,7 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
         if (!item) throw new ConflictException('支付宝批次包含未知支付明细')
         if (seen.has(detail.outBizNo)) throw new ConflictException('支付宝批次返回重复支付明细')
         seen.add(detail.outBizNo)
-        if (normalizeCnyAmount(detail.transAmount) !== normalizeCnyAmount(item.amount))
+        if (!sameCnyAmount(detail.transAmount, item.amount))
           throw new ConflictException('支付宝批次明细金额不匹配')
       }
       if (result.status === PaymentExecutionStatus.SUCCESS && seen.size !== items.length)

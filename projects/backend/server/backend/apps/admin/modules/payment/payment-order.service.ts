@@ -35,7 +35,7 @@ import {
   type PaymentPlanResolverPort,
   type ResolvedPaymentPlan,
 } from './payment-plan-resolver'
-import { normalizeCnyAmount } from './payment-adapter.types'
+import { normalizeCnyAmount, sameCnyAmount } from './payment-adapter.types'
 import type { PaymentOrderListDto, PaymentOrderStatisticsDto } from './payment-order.dto'
 
 interface OrderStatisticsRow {
@@ -388,7 +388,7 @@ export class PaymentOrderService {
     input: CreatePaymentOrderInput,
   ): PaymentOrderEntity {
     const unchanged =
-      existing.amount === input.amount &&
+      sameCnyAmount(existing.amount, input.amount) &&
       existing.currency === input.currency &&
       existing.paymentMethod === input.paymentMethod &&
       (input.executionMode === undefined || existing.executionMode === input.executionMode) &&

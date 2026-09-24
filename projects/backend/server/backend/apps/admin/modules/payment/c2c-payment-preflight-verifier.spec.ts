@@ -170,6 +170,18 @@ describe('C2cPaymentPreflightVerifier', () => {
     })
   })
 
+  it('accepts a synced merchant amount with trailing zeros', async () => {
+    store.load.mockResolvedValue({
+      order,
+      ...configuration,
+      merchantOrder: { ...configuration.merchantOrder, fiatAmount: '100.00000000' },
+    })
+
+    await expect(verifier.verify('tenant-1', 'payment-1', now)).resolves.toMatchObject({
+      order,
+    })
+  })
+
   it('accepts an unchanged payable platform order before an Alipay password-protected batch claim', async () => {
     const batchOrder = {
       ...order,

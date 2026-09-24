@@ -152,6 +152,18 @@ describe('PaymentOrderService', () => {
     })
   })
 
+  it('recognizes a stored amount with extra trailing zeros as the same payment intent', async () => {
+    orders.findOne.mockResolvedValue({
+      id: 'existing',
+      status: PaymentOrderStatus.READY,
+      ...input,
+      amount: '100.00000000',
+    })
+
+    await expect(service.create(tenantId, input)).resolves.toMatchObject({ id: 'existing' })
+    expect(manager.save).not.toHaveBeenCalled()
+  })
+
   it('rejects reuse of a source business number with different payment details', async () => {
     orders.findOne.mockResolvedValue({
       id: 'existing',
