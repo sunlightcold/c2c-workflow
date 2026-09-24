@@ -191,6 +191,16 @@ describe('C2cPlatformPaymentConfirmer', () => {
     ])
   })
 
+  it('does not block mark-paid when the platform amount changes after payment', async () => {
+    platformClient.getOrderDetail.mockResolvedValueOnce({
+      ...pendingPlatformOrder,
+      fiatAmount: '100.01',
+    })
+
+    await expect(confirmer.confirmPaid(executable)).resolves.toBeUndefined()
+    expect(platformClient.markOrderAsPaid).toHaveBeenCalledTimes(1)
+  })
+
   it('uses the current platform payment method id on first mark-paid', async () => {
     platformClient.getOrderDetail.mockResolvedValueOnce({
       ...pendingPlatformOrder,

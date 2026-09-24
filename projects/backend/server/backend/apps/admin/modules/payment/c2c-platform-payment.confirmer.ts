@@ -20,7 +20,6 @@ import {
   type PaymentPreflightStore,
 } from './c2c-payment-preflight-verifier'
 import { PlatformFundsExceptionError } from './payment-execution.errors'
-import { normalizeCnyAmount } from './payment-adapter.types'
 import { C2cPaymentProofService } from './c2c-payment-proof.service'
 import { C2cPlatformChatService } from '../c2c-order/c2c-platform-chat.service'
 import { C2cPaidConfirmationThrottleService } from './c2c-paid-confirmation-throttle.service'
@@ -217,8 +216,6 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
   ): void {
     const snapshot = context.merchantOrder
     if (current.platformOrderId !== snapshot.platformOrderId) throw new Error('平台订单编号不匹配')
-    if (!this.sameAmount(current.fiatAmount, context.order.amount))
-      throw new Error('平台订单金额已变化')
   }
 
   private getOrder(context: PaymentPreflightConfiguration, credentials: C2cPlatformCredentials) {
@@ -288,14 +285,6 @@ export class C2cPlatformPaymentConfirmer implements PlatformPaymentConfirmer {
       [MerchantOrderStatus.DISPUTED]: C2cBuyOrderStatus.DISPUTED,
     }
     return values[status] ?? C2cBuyOrderStatus.UNKNOWN
-  }
-
-  private sameAmount(left: string, right: string): boolean {
-    try {
-      return normalizeCnyAmount(left) === normalizeCnyAmount(right)
-    } catch {
-      return false
-    }
   }
 
   private confirmationLogContext(
