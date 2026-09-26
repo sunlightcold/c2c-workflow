@@ -6,6 +6,7 @@ import {
   ArrayMinSize,
   ArrayUnique,
   IsArray,
+  IsDateString,
   IsEnum,
   IsInt,
   IsOptional,
@@ -44,16 +45,26 @@ export class PaymentBatchListDto extends PaymentTenantContextDto {
   @IsEnum(PaymentBatchStatus)
   status?: PaymentBatchStatus
 
+  @ApiPropertyOptional({ description: '支付批次创建开始时间，ISO 8601' })
+  @IsOptional()
+  @IsDateString()
+  startTime?: string
+
+  @ApiPropertyOptional({ description: '支付批次创建结束时间，ISO 8601' })
+  @IsOptional()
+  @IsDateString()
+  endTime?: string
+
   @ApiPropertyOptional({ default: 1 })
   @Type(() => Number)
   @IsInt()
   @Min(1)
   page = 1
 
-  @ApiPropertyOptional({ default: 20, maximum: 100 })
+  @ApiPropertyOptional({ default: 20, maximum: 1000 })
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(100)
+  @Max(1000)
   pageSize = 20
 }

@@ -1,7 +1,54 @@
-import { PaymentExecutionMode, PaymentOrderStatus, PaymentSourceType } from '@admin/database'
+import {
+  PaymentBatchStatus,
+  PaymentExecutionMode,
+  PaymentOrderStatus,
+  PaymentSourceType,
+} from '@admin/database'
+import { Between } from 'typeorm'
+import type { PaymentBatchListDto } from './payment-batch.dto'
 import { PaymentBatchService } from './payment-batch.service'
 
 describe('PaymentBatchService ready groups', () => {
+  it('filters payment batches by creation time range and supports 1000 records per page', async () => {
+    const findAndCount = jest.fn().mockResolvedValue([[], 0])
+    const dataSource = {
+      getRepository: jest.fn().mockReturnValue({ findAndCount }),
+    }
+    const service = new PaymentBatchService(dataSource as never)
+    const input: PaymentBatchListDto = {
+      endTime: '2026-09-27T12:00:00.000Z',
+      merchantId: 'merchant-1',
+      page: 1,
+      pageSize: 1000,
+      paymentAccountId: 'account-1',
+      startTime: '2026-09-27T00:00:00.000Z',
+      status: PaymentBatchStatus.READY,
+      tenantId: 'tenant-1',
+    }
+
+    await expect(service.list('tenant-1', input)).resolves.toEqual({
+      items: [],
+      page: 1,
+      pageSize: 1000,
+      total: 0,
+    })
+    expect(findAndCount).toHaveBeenCalledWith({
+      order: { createdAt: 'DESC' },
+      skip: 0,
+      take: 1000,
+      where: {
+        createdAt: Between(
+          new Date('2026-09-27T00:00:00.000Z'),
+          new Date('2026-09-27T12:00:00.000Z'),
+        ),
+        merchantId: 'merchant-1',
+        paymentAccountId: 'account-1',
+        status: PaymentBatchStatus.READY,
+        tenantId: 'tenant-1',
+      },
+    })
+  })
+
   it('returns payment and recipient information with batch detail items', async () => {
     const batch = { id: 'batch-1', tenantId: 'tenant-1', merchantId: 'merchant-1' }
     const item = {

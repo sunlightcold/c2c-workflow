@@ -44,8 +44,11 @@ type BatchDetail = {
   upstream?: BusinessApi.PaymentBatchUpstreamQueryResult['upstream'];
 };
 type SearchValues = {
+  createdAt?: unknown;
+  endTime?: string;
   merchantId?: string;
   paymentAccountId?: string;
+  startTime?: string;
   status?: string;
   tenantId?: string;
 };
@@ -77,6 +80,9 @@ const statusOptions = [
 
 const formOptions: VbenFormProps = {
   commonConfig: { labelWidth: 86 },
+  fieldMappingTime: [
+    ['createdAt', ['startTime', 'endTime'], 'YYYY-MM-DDTHH:mm:ssZ'],
+  ],
   schema: [
     {
       component: 'Select',
@@ -122,15 +128,27 @@ const formOptions: VbenFormProps = {
       fieldName: 'status',
       label: '状态',
     },
+    {
+      component: 'RangePicker',
+      componentProps: { showTime: true },
+      fieldName: 'createdAt',
+      label: '批次时间',
+    },
   ],
-  wrapperClass: '2xl:grid-cols-4 xl:grid-cols-3 lg:grid-cols-2 md:grid-cols-1',
+  wrapperClass: '2xl:grid-cols-5 xl:grid-cols-4 lg:grid-cols-2 md:grid-cols-1',
 };
 
 const gridOptions: VxeTableGridOptions<BusinessApi.PaymentBatch> = {
   cellConfig: { height: 75 },
+  pagerConfig: { pageSizes: [10, 20, 30, 50, 100, 200, 500, 1000] },
   columns: [
     { type: 'seq', width: 70 },
-    { field: 'batchNo', title: '批次号', minWidth: 200 },
+    {
+      field: 'batchNo',
+      title: '批次号',
+      minWidth: 240,
+      slots: { default: 'batchNo' },
+    },
     {
       field: 'paymentAccountId',
       title: '转账账号 / 通道',
@@ -189,10 +207,12 @@ const [Grid, gApi] = useResourceGrid<
       return createEmptyBusinessPage(params.pageIndex, params.pageSize);
     }
     return getPaymentBatchesApi({
+      endTime: params.endTime,
       merchantId: params.merchantId,
       page: params.pageIndex,
       pageSize: params.pageSize,
       paymentAccountId: params.paymentAccountId,
+      startTime: params.startTime,
       status: params.status,
       tenantId: params.tenantId,
     });
@@ -363,6 +383,20 @@ onMounted(async () => {
         >
           创建支付批次
         </AButton>
+      </template>
+      <template #batchNo="{ row }">
+        <div
+          class="grid min-h-[60px] grid-cols-[48px_minmax(0,1fr)] content-center items-center gap-x-2 gap-y-1 text-left"
+        >
+          <ATag class="m-0 text-center" color="green">支付</ATag>
+          <span class="truncate" :title="row.upstreamId || '-'">
+            {{ row.upstreamId || '-' }}
+          </span>
+          <ATag class="m-0 text-center" color="blue">系统</ATag>
+          <span class="truncate" :title="row.batchNo">
+            {{ row.batchNo }}
+          </span>
+        </div>
       </template>
       <template #total="{ row }">
         {{ row.totalCount }} 笔 · {{ row.totalAmount }}

@@ -23,7 +23,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common'
-import { DataSource, EntityManager, In, QueryFailedError } from 'typeorm'
+import {
+  Between,
+  DataSource,
+  EntityManager,
+  In,
+  LessThanOrEqual,
+  MoreThanOrEqual,
+  QueryFailedError,
+} from 'typeorm'
 import { sumCnyAmounts } from './payment-adapter.types'
 import type { PaymentBatchListDto } from './payment-batch.dto'
 
@@ -129,6 +137,7 @@ export class PaymentBatchService {
         ...(input.merchantId ? { merchantId: input.merchantId } : {}),
         ...(input.paymentAccountId ? { paymentAccountId: input.paymentAccountId } : {}),
         ...(input.status ? { status: input.status } : {}),
+        ...this.timeFilter(input.startTime, input.endTime),
       },
       order: { createdAt: 'DESC' },
       skip: (input.page - 1) * input.pageSize,
@@ -361,6 +370,15 @@ export class PaymentBatchService {
       throw new BadRequestException('支付批次必须包含 1 至 500 笔订单')
     if (new Set(paymentOrderIds).size !== paymentOrderIds.length)
       throw new BadRequestException('支付批次不能包含重复订单')
+  }
+
+  private timeFilter(startTime?: string, endTime?: string) {
+    if (startTime && endTime) {
+      return { createdAt: Between(new Date(startTime), new Date(endTime)) }
+    }
+    if (startTime) return { createdAt: MoreThanOrEqual(new Date(startTime)) }
+    if (endTime) return { createdAt: LessThanOrEqual(new Date(endTime)) }
+    return {}
   }
 
   private isUniqueViolation(error: unknown): boolean {

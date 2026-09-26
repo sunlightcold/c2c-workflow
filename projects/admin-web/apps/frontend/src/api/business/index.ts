@@ -507,9 +507,11 @@ export namespace BusinessApi {
   }
 
   export interface PaymentBatchQuery extends PageQuery {
+    endTime?: string;
     merchantId?: string;
     paymentAccountId?: string;
     status?: string;
+    startTime?: string;
   }
 
   export interface ManualPaymentOrderInput extends TenantContext {
