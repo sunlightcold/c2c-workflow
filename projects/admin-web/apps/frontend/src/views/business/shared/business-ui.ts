@@ -26,6 +26,12 @@ export function merchantPlatformText(platform: BusinessApi.MerchantPlatform) {
   return platform === 'BINANCE' ? '币安' : '欧易';
 }
 
+export function createMerchantNameMap(
+  merchants: readonly Pick<BusinessApi.Merchant, 'id' | 'name'>[],
+) {
+  return new Map(merchants.map((merchant) => [merchant.id, merchant.name]));
+}
+
 export function merchantPlatformApiBaseUrl(
   platform?: BusinessApi.MerchantPlatform,
 ) {

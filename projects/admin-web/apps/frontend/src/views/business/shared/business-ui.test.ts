@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   businessEnumText,
+  createMerchantNameMap,
   formatBusinessTime,
   matchesPaymentRoute,
   merchantPlatformApiBaseUrl,
@@ -61,6 +62,18 @@ describe('merchant platform options', () => {
     );
     expect(merchantPlatformApiBaseUrl('OKX')).toBe('https://www.okx.com');
     expect(merchantPlatformApiBaseUrl()).toBe('');
+  });
+});
+
+describe('merchant display lookup', () => {
+  it('resolves merchant names from the already loaded tenant list', () => {
+    const merchantNameById = createMerchantNameMap([
+      { id: 'merchant-1', name: '币安主账号' },
+      { id: 'merchant-2', name: '欧易备用账号' },
+    ]);
+
+    expect(merchantNameById.get('merchant-1')).toBe('币安主账号');
+    expect(merchantNameById.get('unknown')).toBeUndefined();
   });
 });
 

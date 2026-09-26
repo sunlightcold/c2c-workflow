@@ -25,6 +25,7 @@ import { createEmptyBusinessPage } from '../shared/business-grid';
 import {
   businessEnumText,
   businessStateColor,
+  createMerchantNameMap,
   formatBusinessTime,
   merchantPlatformText,
   platformConfirmationText,
@@ -59,6 +60,7 @@ const statistics = ref<BusinessApi.OrderStatistics>();
 const statisticItems = computed(() =>
   createOrderStatisticItems(statistics.value),
 );
+const merchantNameById = computed(() => createMerchantNameMap(merchants.value));
 
 const sourceOptions = ['C2C_BUY', 'BOT_MANUAL'].map((value) => ({
   label: businessEnumText(value),
@@ -174,7 +176,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.PaymentOrderListItem> = {
     },
     {
       field: 'paymentRoute',
-      title: '转账账号 / 通道',
+      title: '支付配置',
       minWidth: 230,
       slots: { default: 'paymentRoute' },
     },
@@ -329,6 +331,10 @@ function paymentRoute(order: BusinessApi.PaymentOrder) {
   );
 }
 
+function merchantName(merchantId: string) {
+  return merchantNameById.value.get(merchantId) ?? '-';
+}
+
 async function runOrderAction(order: BusinessApi.PaymentOrder) {
   await runResourceAction({
     action: () =>
@@ -399,12 +405,20 @@ onMounted(async () => {
       </template>
       <template #paymentRoute="{ row }">
         <div
-          class="grid min-h-[68px] grid-cols-[48px_minmax(0,1fr)] content-center items-center gap-x-2 gap-y-1 text-left"
+          class="grid min-h-[84px] grid-cols-[48px_minmax(0,1fr)] content-center items-center gap-x-2 gap-y-1 text-left"
         >
+          <ATag class="m-0 text-center" color="purple">商家</ATag>
+          <span class="truncate" :title="merchantName(row.merchantId)">
+            {{ merchantName(row.merchantId) }}
+          </span>
           <ATag class="m-0 text-center" color="blue">账号</ATag>
-          <span class="truncate">{{ paymentRoute(row).accountName }}</span>
+          <span class="truncate" :title="paymentRoute(row).accountName">
+            {{ paymentRoute(row).accountName }}
+          </span>
           <ATag class="m-0 text-center" color="green">通道</ATag>
-          <span class="truncate">{{ paymentRoute(row).channelName }}</span>
+          <span class="truncate" :title="paymentRoute(row).channelName">
+            {{ paymentRoute(row).channelName }}
+          </span>
         </div>
       </template>
       <template #status="{ row }">
@@ -479,9 +493,17 @@ onMounted(async () => {
             {{ detail.payeeName }} ·
             {{ detail.payeeIdentity }}
           </ADescriptionsItem>
-          <ADescriptionsItem label="转账账号 / 通道">
-            {{ paymentRoute(detail).accountName }} ·
-            {{ paymentRoute(detail).channelName }}
+          <ADescriptionsItem label="支付配置">
+            <div
+              class="grid grid-cols-[48px_minmax(0,1fr)] items-center gap-x-2 gap-y-1 text-left"
+            >
+              <ATag class="m-0 text-center" color="purple">商家</ATag>
+              <span>{{ merchantName(detail.merchantId) }}</span>
+              <ATag class="m-0 text-center" color="blue">账号</ATag>
+              <span>{{ paymentRoute(detail).accountName }}</span>
+              <ATag class="m-0 text-center" color="green">通道</ATag>
+              <span>{{ paymentRoute(detail).channelName }}</span>
+            </div>
           </ADescriptionsItem>
           <ADescriptionsItem label="执行方式">
             {{ businessEnumText(detail.executionMode) }}

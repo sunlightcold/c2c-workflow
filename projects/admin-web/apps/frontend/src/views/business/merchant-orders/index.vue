@@ -37,6 +37,7 @@ import { createEmptyBusinessPage } from '../shared/business-grid';
 import {
   businessEnumText,
   businessStateColor,
+  createMerchantNameMap,
   formatBusinessTime,
   merchantPlatformText,
   platformConfirmationText,
@@ -84,6 +85,7 @@ const statistics = ref<BusinessApi.OrderStatistics>();
 const statisticItems = computed(() =>
   createOrderStatisticItems(statistics.value),
 );
+const merchantNameById = computed(() => createMerchantNameMap(merchants.value));
 
 const statusOptions = [
   'NEW',
@@ -174,10 +176,9 @@ const gridOptions: VxeTableGridOptions<BusinessApi.MerchantOrder> = {
     { field: 'platformOrderId', minWidth: 190, title: '平台订单号' },
     {
       field: 'platform',
-      formatter: ({ cellValue }) =>
-        merchantPlatformText(cellValue as BusinessApi.MerchantPlatform),
-      title: '平台',
-      width: 90,
+      minWidth: 190,
+      slots: { default: 'platform' },
+      title: '商家 / 平台',
     },
     {
       align: 'right',
@@ -463,6 +464,10 @@ function paymentRoute(order: BusinessApi.MerchantOrder) {
   );
 }
 
+function merchantName(merchantId: string) {
+  return merchantNameById.value.get(merchantId) ?? '-';
+}
+
 onMounted(async () => {
   selectedTenantId.value = await loadTenantOptions();
   if (!selectedTenantId.value) return;
@@ -492,6 +497,18 @@ onMounted(async () => {
       <template #amount="{ row }">
         <span class="tabular-nums">{{ row.fiatAmount }}</span>
         {{ row.fiatCurrency }}
+      </template>
+      <template #platform="{ row }">
+        <div
+          class="grid min-h-[52px] grid-cols-[48px_minmax(0,1fr)] content-center items-center gap-x-2 gap-y-1 text-left"
+        >
+          <ATag class="m-0 text-center" color="purple">商家</ATag>
+          <span class="truncate" :title="merchantName(row.merchantId)">
+            {{ merchantName(row.merchantId) }}
+          </span>
+          <ATag class="m-0 text-center" color="blue">平台</ATag>
+          <span class="truncate">{{ merchantPlatformText(row.platform) }}</span>
+        </div>
       </template>
       <template #payee="{ row }">
         <div
