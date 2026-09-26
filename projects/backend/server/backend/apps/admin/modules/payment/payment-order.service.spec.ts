@@ -10,7 +10,7 @@ import {
 import { BadRequestException, ConflictException } from '@nestjs/common'
 import { getRepositoryToken } from '@nestjs/typeorm'
 import { Test } from '@nestjs/testing'
-import { DataSource } from 'typeorm'
+import { Between, DataSource } from 'typeorm'
 import { PAYMENT_PLAN_RESOLVER } from './payment-plan-resolver'
 import type { PaymentOrderListDto } from './payment-order.dto'
 import { PaymentOrderService } from './payment-order.service'
@@ -203,6 +203,31 @@ describe('PaymentOrderService', () => {
         where: {
           tenantId,
           executionMode: PaymentExecutionMode.BATCH,
+        },
+      }),
+    )
+  })
+
+  it('filters payment orders by creation time and amount range', async () => {
+    orders.findAndCount.mockResolvedValue([[], 0])
+    const startTime = '2026-09-01T00:00:00.000Z'
+    const endTime = '2026-09-30T23:59:59.999Z'
+
+    await service.list(tenantId, {
+      endTime,
+      maxAmount: '200.00',
+      minAmount: '100.00',
+      page: 1,
+      pageSize: 1000,
+      startTime,
+    })
+
+    expect(orders.findAndCount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          amount: Between('100.00', '200.00'),
+          createdAt: Between(new Date(startTime), new Date(endTime)),
+          tenantId,
         },
       }),
     )

@@ -7,7 +7,7 @@ import {
 } from '@admin/database'
 import { getRepositoryToken } from '@nestjs/typeorm'
 import { Test } from '@nestjs/testing'
-import { DataSource, In } from 'typeorm'
+import { Between, DataSource, In } from 'typeorm'
 import { C2cOrderService } from './c2c-order.service'
 
 describe('C2cOrderService', () => {
@@ -117,6 +117,31 @@ describe('C2cOrderService', () => {
         tenantId: 'tenant-1',
       },
     })
+  })
+
+  it('filters merchant orders by platform time and fiat amount range', async () => {
+    orderRepository.findAndCount.mockResolvedValue([[], 0])
+    const startTime = '2026-09-01T00:00:00.000Z'
+    const endTime = '2026-09-30T23:59:59.999Z'
+
+    await service.list('tenant-1', {
+      endTime,
+      maxAmount: '200.00',
+      minAmount: '100.00',
+      page: 1,
+      pageSize: 1000,
+      startTime,
+    })
+
+    expect(orderRepository.findAndCount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          fiatAmount: Between('100.00', '200.00'),
+          platformCreatedAt: Between(new Date(startTime), new Date(endTime)),
+          tenantId: 'tenant-1',
+        },
+      }),
+    )
   })
 
   it('returns merchant and payment histories in the order detail', async () => {

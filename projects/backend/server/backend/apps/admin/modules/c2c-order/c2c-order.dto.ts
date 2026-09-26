@@ -8,11 +8,19 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
 } from 'class-validator'
 import { TenantContextDto } from '../business/business.dto'
+
+const emptyToUndefined = ({ value }: { value: unknown }) => {
+  if (typeof value !== 'string') return value
+  const trimmed = value.trim()
+  return trimmed === '' ? undefined : trimmed
+}
+const nonNegativeCnyAmountPattern = /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/
 
 export class MerchantOrderListDto extends TenantContextDto {
   @ApiPropertyOptional()
@@ -48,17 +56,31 @@ export class MerchantOrderListDto extends TenantContextDto {
   @IsDateString()
   endTime?: string
 
+  @ApiPropertyOptional({ description: '订单金额下限（含）', example: '10.00' })
+  @Transform(emptyToUndefined)
+  @IsOptional()
+  @IsString()
+  @Matches(nonNegativeCnyAmountPattern)
+  minAmount?: string
+
+  @ApiPropertyOptional({ description: '订单金额上限（含）', example: '1000.00' })
+  @Transform(emptyToUndefined)
+  @IsOptional()
+  @IsString()
+  @Matches(nonNegativeCnyAmountPattern)
+  maxAmount?: string
+
   @ApiPropertyOptional({ default: 1 })
   @Type(() => Number)
   @IsInt()
   @Min(1)
   page = 1
 
-  @ApiPropertyOptional({ default: 20, maximum: 100 })
+  @ApiPropertyOptional({ default: 20, maximum: 1000 })
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(100)
+  @Max(1000)
   pageSize = 20
 }
 
@@ -80,6 +102,20 @@ export class MerchantOrderStatisticsDto extends TenantContextDto {
   @IsString()
   @MaxLength(32)
   paymentMethod?: string
+
+  @ApiPropertyOptional({ description: '订单金额下限（含）', example: '10.00' })
+  @Transform(emptyToUndefined)
+  @IsOptional()
+  @IsString()
+  @Matches(nonNegativeCnyAmountPattern)
+  minAmount?: string
+
+  @ApiPropertyOptional({ description: '订单金额上限（含）', example: '1000.00' })
+  @Transform(emptyToUndefined)
+  @IsOptional()
+  @IsString()
+  @Matches(nonNegativeCnyAmountPattern)
+  maxAmount?: string
 }
 
 export class MerchantOrderDetailDto extends TenantContextDto {

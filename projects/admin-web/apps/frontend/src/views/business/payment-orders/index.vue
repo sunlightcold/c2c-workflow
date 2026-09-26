@@ -39,9 +39,14 @@ import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 import { queryPaymentOrderDetail } from './payment-order-detail';
 
 type SearchValues = {
+  createdAt?: unknown;
+  endTime?: string;
+  maxAmount?: string;
   merchantId?: string;
+  minAmount?: string;
   orderNo?: string;
   sourceType?: BusinessApi.PaymentSourceType;
+  startTime?: string;
   status?: string;
   tenantId?: string;
 };
@@ -80,6 +85,9 @@ const statusOptions = [
 
 const formOptions: VbenFormProps = {
   commonConfig: { labelWidth: 86 },
+  fieldMappingTime: [
+    ['createdAt', ['startTime', 'endTime'], 'YYYY-MM-DDTHH:mm:ssZ'],
+  ],
   schema: [
     {
       component: 'Input',
@@ -136,12 +144,41 @@ const formOptions: VbenFormProps = {
       fieldName: 'status',
       label: '状态',
     },
+    {
+      component: 'Input',
+      componentProps: {
+        allowClear: true,
+        inputmode: 'decimal',
+        maxlength: 32,
+        placeholder: '最小金额',
+      },
+      fieldName: 'minAmount',
+      label: '金额下限',
+    },
+    {
+      component: 'Input',
+      componentProps: {
+        allowClear: true,
+        inputmode: 'decimal',
+        maxlength: 32,
+        placeholder: '最大金额',
+      },
+      fieldName: 'maxAmount',
+      label: '金额上限',
+    },
+    {
+      component: 'RangePicker',
+      componentProps: { showTime: true },
+      fieldName: 'createdAt',
+      label: '订单时间',
+    },
   ],
-  wrapperClass: '2xl:grid-cols-5 xl:grid-cols-3 lg:grid-cols-2 md:grid-cols-1',
+  wrapperClass: '2xl:grid-cols-5 xl:grid-cols-4 lg:grid-cols-2 md:grid-cols-1',
 };
 
 const gridOptions: VxeTableGridOptions<BusinessApi.PaymentOrderListItem> = {
   cellConfig: { height: 96 },
+  pagerConfig: { pageSizes: [10, 20, 30, 50, 100, 200, 500, 1000] },
   columns: [
     { type: 'seq', width: 70 },
     {
@@ -235,17 +272,25 @@ const [Grid, gApi] = useResourceGrid<
     }
     const [page, nextStatistics] = await Promise.all([
       getPaymentOrdersApi({
+        endTime: params.endTime,
         merchantId: params.merchantId,
+        maxAmount: params.maxAmount,
+        minAmount: params.minAmount,
         orderNo: params.orderNo,
         page: params.pageIndex,
         pageSize: params.pageSize,
+        startTime: params.startTime,
         sourceType: params.sourceType,
         status: params.status,
         tenantId: params.tenantId,
       }),
       getPaymentOrderStatisticsApi({
+        endTime: params.endTime,
         merchantId: params.merchantId,
+        maxAmount: params.maxAmount,
+        minAmount: params.minAmount,
         orderNo: params.orderNo,
+        startTime: params.startTime,
         sourceType: params.sourceType,
         tenantId: params.tenantId,
       }),

@@ -51,6 +51,7 @@ export class C2cOrderService {
         ...(input.status ? { status: input.status } : {}),
         ...(input.platformOrderId ? { platformOrderId: ILike(`%${input.platformOrderId}%`) } : {}),
         ...(input.paymentMethod ? { paymentMethod: input.paymentMethod } : {}),
+        ...this.amountFilter(input.minAmount, input.maxAmount),
         ...this.timeFilter(input.startTime, input.endTime),
       },
       order: { platformCreatedAt: 'DESC' },
@@ -132,6 +133,8 @@ export class C2cOrderService {
     if (input.platformOrderId)
       addFilter('merchant_order."platformOrderId" ILIKE ?', `%${input.platformOrderId}%`)
     if (input.paymentMethod) addFilter('merchant_order."paymentMethod" = ?', input.paymentMethod)
+    if (input.minAmount) addFilter('merchant_order."fiatAmount" >= ?', input.minAmount)
+    if (input.maxAmount) addFilter('merchant_order."fiatAmount" <= ?', input.maxAmount)
 
     const [row] = (await this.dataSource.query(
       `SELECT
@@ -165,6 +168,13 @@ export class C2cOrderService {
       return { platformCreatedAt: Between(new Date(startTime), new Date(endTime)) }
     if (startTime) return { platformCreatedAt: MoreThanOrEqual(new Date(startTime)) }
     if (endTime) return { platformCreatedAt: LessThanOrEqual(new Date(endTime)) }
+    return {}
+  }
+
+  private amountFilter(minAmount?: string, maxAmount?: string) {
+    if (minAmount && maxAmount) return { fiatAmount: Between(minAmount, maxAmount) }
+    if (minAmount) return { fiatAmount: MoreThanOrEqual(minAmount) }
+    if (maxAmount) return { fiatAmount: LessThanOrEqual(maxAmount) }
     return {}
   }
 }

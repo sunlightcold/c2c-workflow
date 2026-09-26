@@ -411,7 +411,9 @@ export namespace BusinessApi {
 
   export interface MerchantOrderQuery extends PageQuery {
     endTime?: string;
+    maxAmount?: string;
     merchantId?: string;
+    minAmount?: string;
     paymentMethod?: 'ALIPAY';
     platformOrderId?: string;
     startTime?: string;
@@ -431,6 +433,8 @@ export namespace BusinessApi {
 
   export interface MerchantOrderStatisticsQuery extends TenantContext {
     merchantId?: string;
+    maxAmount?: string;
+    minAmount?: string;
     paymentMethod?: 'ALIPAY';
     platformOrderId?: string;
   }
@@ -480,17 +484,25 @@ export namespace BusinessApi {
     TenantContext & { telegramGroupId?: null | string };
 
   export interface PaymentOrderQuery extends PageQuery {
+    endTime?: string;
     executionMode?: PaymentExecutionMode;
+    maxAmount?: string;
     merchantId?: string;
+    minAmount?: string;
     orderNo?: string;
+    startTime?: string;
     sourceType?: PaymentSourceType;
     status?: string;
   }
 
   export interface PaymentOrderStatisticsQuery extends TenantContext {
+    endTime?: string;
     executionMode?: PaymentExecutionMode;
+    maxAmount?: string;
     merchantId?: string;
+    minAmount?: string;
     orderNo?: string;
+    startTime?: string;
     sourceType?: PaymentSourceType;
   }
 

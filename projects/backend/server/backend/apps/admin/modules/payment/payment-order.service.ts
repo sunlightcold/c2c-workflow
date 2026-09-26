@@ -26,7 +26,10 @@ import {
   DataSource,
   type EntityManager,
   type FindOptionsWhere,
+  Between,
   In,
+  LessThanOrEqual,
+  MoreThanOrEqual,
   QueryFailedError,
   Repository,
 } from 'typeorm'
@@ -85,6 +88,8 @@ export class PaymentOrderService {
       ...(input.executionMode ? { executionMode: input.executionMode } : {}),
       ...(input.sourceType ? { sourceType: input.sourceType } : {}),
       ...(input.status ? { status: input.status } : {}),
+      ...this.amountFilter(input.minAmount, input.maxAmount),
+      ...this.timeFilter(input.startTime, input.endTime),
     }
     const where = input.orderNo
       ? await this.buildOrderNumberWhere(tenantId, input.orderNo, baseWhere)
@@ -142,6 +147,10 @@ export class PaymentOrderService {
     if (input.merchantId) addFilter('payment_order."merchantId" = ?', input.merchantId)
     if (input.executionMode) addFilter('payment_order."executionMode" = ?', input.executionMode)
     if (input.sourceType) addFilter('payment_order."sourceType" = ?', input.sourceType)
+    if (input.startTime) addFilter('payment_order."createdAt" >= ?', input.startTime)
+    if (input.endTime) addFilter('payment_order."createdAt" <= ?', input.endTime)
+    if (input.minAmount) addFilter('payment_order.amount >= ?', input.minAmount)
+    if (input.maxAmount) addFilter('payment_order.amount <= ?', input.maxAmount)
     if (input.orderNo) {
       addFilter(
         `(payment_order."paymentNo" = ? OR payment_order."sourceBusinessNo" = ?
@@ -260,6 +269,22 @@ export class PaymentOrderService {
       })
       return saved
     })
+  }
+
+  private timeFilter(startTime?: string, endTime?: string) {
+    if (startTime && endTime) {
+      return { createdAt: Between(new Date(startTime), new Date(endTime)) }
+    }
+    if (startTime) return { createdAt: MoreThanOrEqual(new Date(startTime)) }
+    if (endTime) return { createdAt: LessThanOrEqual(new Date(endTime)) }
+    return {}
+  }
+
+  private amountFilter(minAmount?: string, maxAmount?: string) {
+    if (minAmount && maxAmount) return { amount: Between(minAmount, maxAmount) }
+    if (minAmount) return { amount: MoreThanOrEqual(minAmount) }
+    if (maxAmount) return { amount: LessThanOrEqual(maxAmount) }
+    return {}
   }
 
   private async buildOrderNumberWhere(

@@ -52,7 +52,9 @@ import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 type SearchValues = {
   createdAt?: unknown;
   endTime?: string;
+  maxAmount?: string;
   merchantId?: string;
+  minAmount?: string;
   paymentMethod?: 'ALIPAY';
   platformOrderId?: string;
   startTime?: string;
@@ -159,6 +161,28 @@ const formOptions: VbenFormProps = {
       label: '支付方式',
     },
     {
+      component: 'Input',
+      componentProps: {
+        allowClear: true,
+        inputmode: 'decimal',
+        maxlength: 32,
+        placeholder: '最小金额',
+      },
+      fieldName: 'minAmount',
+      label: '金额下限',
+    },
+    {
+      component: 'Input',
+      componentProps: {
+        allowClear: true,
+        inputmode: 'decimal',
+        maxlength: 32,
+        placeholder: '最大金额',
+      },
+      fieldName: 'maxAmount',
+      label: '金额上限',
+    },
+    {
       component: 'RangePicker',
       componentProps: { showTime: true },
       fieldName: 'createdAt',
@@ -171,6 +195,7 @@ const formOptions: VbenFormProps = {
 const gridOptions: VxeTableGridOptions<BusinessApi.MerchantOrder> = {
   cellConfig: { height: 75 },
   columnConfig: { resizable: true },
+  pagerConfig: { pageSizes: [10, 20, 30, 50, 100, 200, 500, 1000] },
   columns: [
     { type: 'seq', width: 60 },
     { field: 'platformOrderId', minWidth: 190, title: '平台订单号' },
@@ -252,7 +277,9 @@ const [Grid, gridApi] = useResourceGrid<
     const [page, nextStatistics] = await Promise.all([
       getMerchantOrdersApi({ ...query, page: pageIndex }),
       getMerchantOrderStatisticsApi({
+        maxAmount: query.maxAmount,
         merchantId: query.merchantId,
+        minAmount: query.minAmount,
         paymentMethod: query.paymentMethod,
         platformOrderId: query.platformOrderId,
         tenantId: query.tenantId,

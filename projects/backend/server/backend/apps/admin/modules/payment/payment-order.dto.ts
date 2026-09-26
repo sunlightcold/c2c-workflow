@@ -9,6 +9,7 @@ import { Transform } from 'class-transformer'
 import { Type } from 'class-transformer'
 import {
   IsEnum,
+  IsDateString,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -21,9 +22,15 @@ import {
 } from 'class-validator'
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value)
+const emptyToUndefined = ({ value }: { value: unknown }) => {
+  if (typeof value !== 'string') return value
+  const trimmed = value.trim()
+  return trimmed === '' ? undefined : trimmed
+}
 const upper = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim().toUpperCase() : value
 const positiveCnyAmountPattern = /^(?:0\.(?:0[1-9]|[1-9]\d?)(?:0*)?|[1-9]\d*(?:\.\d{1,2}0*)?)$/
+const nonNegativeCnyAmountPattern = /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/
 
 export class PaymentTenantContextDto {
   @ApiPropertyOptional({ description: '平台人员当前经营的所属单位；代理商人员忽略此字段' })
@@ -42,6 +49,30 @@ export class PaymentOrderListDto extends PaymentTenantContextDto {
   @IsString()
   @MaxLength(128)
   orderNo?: string
+
+  @ApiPropertyOptional({ description: '支付订单创建开始时间，ISO 8601' })
+  @IsOptional()
+  @IsDateString()
+  startTime?: string
+
+  @ApiPropertyOptional({ description: '支付订单创建结束时间，ISO 8601' })
+  @IsOptional()
+  @IsDateString()
+  endTime?: string
+
+  @ApiPropertyOptional({ description: '支付金额下限（含）', example: '10.00' })
+  @Transform(emptyToUndefined)
+  @IsOptional()
+  @IsString()
+  @Matches(nonNegativeCnyAmountPattern)
+  minAmount?: string
+
+  @ApiPropertyOptional({ description: '支付金额上限（含）', example: '1000.00' })
+  @Transform(emptyToUndefined)
+  @IsOptional()
+  @IsString()
+  @Matches(nonNegativeCnyAmountPattern)
+  maxAmount?: string
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -69,11 +100,11 @@ export class PaymentOrderListDto extends PaymentTenantContextDto {
   @Min(1)
   page = 1
 
-  @ApiPropertyOptional({ default: 20, maximum: 100 })
+  @ApiPropertyOptional({ default: 20, maximum: 1000 })
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(100)
+  @Max(1000)
   pageSize = 20
 }
 
@@ -86,6 +117,30 @@ export class PaymentOrderStatisticsDto extends PaymentTenantContextDto {
   @IsString()
   @MaxLength(128)
   orderNo?: string
+
+  @ApiPropertyOptional({ description: '支付订单创建开始时间，ISO 8601' })
+  @IsOptional()
+  @IsDateString()
+  startTime?: string
+
+  @ApiPropertyOptional({ description: '支付订单创建结束时间，ISO 8601' })
+  @IsOptional()
+  @IsDateString()
+  endTime?: string
+
+  @ApiPropertyOptional({ description: '支付金额下限（含）', example: '10.00' })
+  @Transform(emptyToUndefined)
+  @IsOptional()
+  @IsString()
+  @Matches(nonNegativeCnyAmountPattern)
+  minAmount?: string
+
+  @ApiPropertyOptional({ description: '支付金额上限（含）', example: '1000.00' })
+  @Transform(emptyToUndefined)
+  @IsOptional()
+  @IsString()
+  @Matches(nonNegativeCnyAmountPattern)
+  maxAmount?: string
 
   @ApiPropertyOptional()
   @IsOptional()
