@@ -3,6 +3,8 @@ import {
   MerchantOrderEntity,
   MerchantOrderStatus,
   MerchantOrderStatusHistoryEntity,
+  MerchantPlatform,
+  MerchantOrderSyncCheckpointEntity,
 } from '@admin/database'
 import { DataSource } from 'typeorm'
 import { C2cBuyOrderStatus } from '../c2c-platform'
@@ -69,6 +71,43 @@ describe('TypeOrmC2cOrderSyncStore', () => {
         fromStatus: MerchantOrderStatus.PENDING_RELEASE,
         toStatus: MerchantOrderStatus.FUNDS_EXCEPTION,
         source: 'COMPLETION_REPLY_SCAN',
+      }),
+    )
+  })
+
+  it('lets the scheduler interval control the next successful sync', async () => {
+    const checkpoint = {
+      create: jest.fn((value) => value),
+      findOne: jest.fn().mockResolvedValue({ id: 'checkpoint-1' }),
+      save: jest.fn(async (value) => value),
+    }
+    const manager = {
+      getRepository: jest.fn((entity) => {
+        if (entity === MerchantOrderSyncCheckpointEntity) return checkpoint
+        throw new Error(`Unexpected repository: ${String(entity)}`)
+      }),
+      query: jest.fn().mockResolvedValue(undefined),
+    }
+    const dataSource = {
+      transaction: jest.fn((work) => work(manager)),
+    }
+    const store = new TypeOrmC2cOrderSyncStore(dataSource as never)
+    const completedAt = new Date('2026-09-26T07:00:00.000Z')
+
+    await store.persistWindow(
+      {
+        tenantId: 'tenant-1',
+        merchantId: 'merchant-1',
+        platform: MerchantPlatform.BINANCE,
+      },
+      [],
+      completedAt,
+    )
+
+    expect(checkpoint.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        lastSuccessAt: completedAt,
+        nextSyncAt: completedAt,
       }),
     )
   })

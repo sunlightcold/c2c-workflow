@@ -284,7 +284,9 @@ export class TypeOrmC2cOrderSyncStore implements C2cOrderSyncStore {
         windowEndAt: completedAt,
         lastAttemptAt: completedAt,
         lastSuccessAt: completedAt,
-        nextSyncAt: new Date(completedAt.getTime() + 30_000),
+        // The scheduler's repeat interval controls the next successful scan.
+        // Do not add a second success delay here.
+        nextSyncAt: completedAt,
         consecutiveFailures: 0,
         lastError: null,
         leaseOwner: null,
