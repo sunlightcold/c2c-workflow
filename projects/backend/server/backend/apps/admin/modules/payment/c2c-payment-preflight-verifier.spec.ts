@@ -189,7 +189,11 @@ describe('C2cPaymentPreflightVerifier', () => {
     MerchantOrderStatus.COMPLETED,
   ])('treats merchant status %s as unavailable for a new batch payment', async (status) => {
     store.load.mockResolvedValue({
-      order: { ...order, status: PaymentOrderStatus.READY, executionMode: PaymentExecutionMode.BATCH },
+      order: {
+        ...order,
+        status: PaymentOrderStatus.READY,
+        executionMode: PaymentExecutionMode.BATCH,
+      },
       ...configuration,
       merchantOrder: { ...configuration.merchantOrder, status, payable: true },
       channel: {

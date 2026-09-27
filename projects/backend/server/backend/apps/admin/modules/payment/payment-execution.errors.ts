@@ -1,5 +1,8 @@
 export class PaymentNotSubmittedError extends Error {
-  constructor(message: string, readonly terminalOrder = false) {
+  constructor(
+    message: string,
+    readonly terminalOrder = false,
+  ) {
     super(message)
     this.name = 'PaymentNotSubmittedError'
   }
