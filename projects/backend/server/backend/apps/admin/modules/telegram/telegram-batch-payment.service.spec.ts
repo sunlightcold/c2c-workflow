@@ -110,6 +110,29 @@ describe('TelegramBatchPaymentService', () => {
     )
   })
 
+  it('reports skipped terminal orders while submitting the remaining orders', async () => {
+    interactions.acquire.mockResolvedValue({
+      id: 'interaction-1',
+      groupId: 'group-1',
+      payload: {
+        groups: [{ paymentOrderIds: ['order-1', 'order-2'], totalAmount: '30.00' }],
+      },
+    })
+    batches.create.mockResolvedValue({ batch: { id: 'batch-1', batchNo: 'BAT001' } })
+    execution.submit.mockResolvedValue({
+      batchNo: 'BAT001',
+      status: PaymentBatchStatus.PROCESSING,
+      preflightSkippedCount: 1,
+      preflightSkippedReasons: ['商家订单状态不允许执行当前支付方式'],
+    })
+
+    const confirmContext = { ...context, interactionId: 'interaction-1' }
+    const result = await service.confirm(confirmContext as never)
+    expect(result.text).toContain('剔除异常订单：<code>1</code> 笔')
+    expect(result.text).toContain('已提交批次：<code>1</code>')
+    expect(result.text).toContain('商家订单状态不允许执行当前支付方式')
+  })
+
   it('does not cancel a batch interaction after submit permission is revoked', async () => {
     const revokedAuthorization = {
       ...context.authorization,

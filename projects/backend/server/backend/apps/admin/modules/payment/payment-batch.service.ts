@@ -1,6 +1,7 @@
 import { BusinessNoPrefix, IdUtils } from '@/common/utils/id'
 import {
   BusinessStatus,
+  MerchantOrderStatus,
   MerchantPaymentPlanEntity,
   PaymentAccountChannelEntity,
   PaymentAccountEntity,
@@ -16,6 +17,7 @@ import {
   PaymentOrderEntity,
   PaymentOrderStatus,
   PaymentPlatformEntity,
+  PaymentSourceType,
 } from '@admin/database'
 import {
   BadRequestException,
@@ -81,6 +83,24 @@ export class PaymentBatchService {
       .andWhere('payment_order."paymentAccountId" IS NOT NULL')
       .andWhere('payment_order."paymentAccountChannelId" IS NOT NULL')
       .andWhere('payment_order."batchPolicyId" IS NOT NULL')
+      .andWhere(
+        `(
+          payment_order."sourceType" <> :c2cSourceType
+          OR EXISTS (
+            SELECT 1
+            FROM merchant_order merchant_order
+            WHERE merchant_order."tenantId" = payment_order."tenantId"
+              AND merchant_order."merchantId" = payment_order."merchantId"
+              AND merchant_order."platformOrderId" = payment_order."sourceBusinessNo"
+              AND merchant_order.status = :merchantOrderStatus
+              AND merchant_order.payable = TRUE
+          )
+        )`,
+        {
+          c2cSourceType: PaymentSourceType.C2C_BUY,
+          merchantOrderStatus: MerchantOrderStatus.PENDING_PAYMENT,
+        },
+      )
       .andWhere(batchPolicyId ? 'payment_order."batchPolicyId" = :batchPolicyId' : 'TRUE', {
         ...(batchPolicyId ? { batchPolicyId } : {}),
       })

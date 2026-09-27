@@ -72,6 +72,8 @@ export interface TelegramBatchSubmittedMessageInput {
   groups: number
   submitted: number
   failed: number
+  skipped?: number
+  skippedReasons?: string[]
   errors?: string[]
 }
 
@@ -85,9 +87,13 @@ export function formatAutomaticBatchSubmissionMessage(
     `发现批次组：<code>${escapeTelegramHtml(batch.groups)}</code>\n` +
     `已提交批次：<code>${escapeTelegramHtml(batch.submitted)}</code>\n` +
     `失败批次：<code>${escapeTelegramHtml(batch.failed)}</code>`
-  return batch.errors?.length
-    ? `${message}\n失败原因：\n${batch.errors.map((error) => `- ${escapeTelegramHtml(error)}`).join('\n')}`
-    : message
+  const skipped = batch.skipped
+    ? `\n剔除异常订单：<code>${escapeTelegramHtml(batch.skipped)}</code> 笔\n剔除原因：\n${(batch.skippedReasons ?? []).map((reason) => `- ${escapeTelegramHtml(reason)}`).join('\n')}`
+    : ''
+  const errors = batch.errors?.length
+    ? `\n失败原因：\n${batch.errors.map((error) => `- ${escapeTelegramHtml(error)}`).join('\n')}`
+    : ''
+  return `${message}${skipped}${errors}`
 }
 
 export interface TelegramManualConfirmationInput {

@@ -124,11 +124,19 @@ export class TelegramBatchPaymentService {
   ): Promise<TelegramBatchPaymentReply> {
     const results: string[] = []
     const errors: string[] = []
+    const skippedReasons: string[] = []
     for (const [index, group] of groups.entries()) {
       try {
         const { batch } = await this.batches.create(context.bot.tenantId, group.paymentOrderIds)
         const submitted = await this.execution.submit(context.bot.tenantId, batch.id)
-        results.push(`${submitted.batchNo}：${this.batchStatus(submitted.status)}`)
+        if (submitted.preflightSkippedCount) {
+          skippedReasons.push(...(submitted.preflightSkippedReasons ?? []))
+        }
+        if (submitted.status === PaymentBatchStatus.CANCELLED) {
+          errors.push(`${submitted.batchNo}：批次内订单均已无法支付`)
+        } else {
+          results.push(`${submitted.batchNo}：${this.batchStatus(submitted.status)}`)
+        }
       } catch (error) {
         errors.push(`第 ${index + 1} 组：${error instanceof Error ? error.message : '提交失败'}`)
       }
@@ -152,6 +160,13 @@ export class TelegramBatchPaymentService {
         `发现批次组：<code>${groups.length}</code>`,
         `已提交批次：<code>${results.length}</code>`,
         `失败批次：<code>${errors.length}</code>`,
+        ...(skippedReasons.length
+          ? [
+              `剔除异常订单：<code>${skippedReasons.length}</code> 笔`,
+              `剔除原因：`,
+              ...skippedReasons.map((reason) => `- ${escapeTelegramHtml(reason)}`),
+            ]
+          : []),
         ...(errors.length
           ? [`失败原因：`, ...errors.map((item) => `- ${escapeTelegramHtml(item)}`)]
           : []),

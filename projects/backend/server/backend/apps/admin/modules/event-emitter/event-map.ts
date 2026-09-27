@@ -78,6 +78,8 @@ export interface TelegramBatchSubmittedPayload {
   groups: number
   submitted: number
   failed: number
+  skipped?: number
+  skippedReasons?: string[]
   errors?: string[]
   batchIds?: string[]
 }

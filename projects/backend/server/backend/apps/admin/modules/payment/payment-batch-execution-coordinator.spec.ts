@@ -1,11 +1,13 @@
 import { PaymentSourceType } from '@admin/database'
 import { PaymentExecutionStatus } from './payment-adapter.types'
+import { PaymentPreflightRejectionError } from './c2c-payment-preflight-verifier'
 import {
   PaymentBatchExecutionCoordinator,
   type ExecutablePaymentBatch,
 } from './payment-batch-execution-coordinator'
 import { PaymentBatchStatus } from '@admin/database'
 import { PaymentNotSubmittedError } from './payment-execution.errors'
+import { PaymentBatchClaimRejectionError } from './payment-execution.errors'
 import { Logger } from '@nestjs/common'
 
 describe('PaymentBatchExecutionCoordinator', () => {
@@ -34,6 +36,7 @@ describe('PaymentBatchExecutionCoordinator', () => {
   const store = {
     prepare: jest.fn(),
     claim: jest.fn(),
+    pruneReadyItems: jest.fn(),
     markSubmitted: jest.fn(),
     markUnknown: jest.fn(),
     recordReconciliationPending: jest.fn(),
@@ -59,8 +62,12 @@ describe('PaymentBatchExecutionCoordinator', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     store.prepare.mockResolvedValue(batch)
-    store.claim.mockResolvedValue({ ...batch, status: PaymentBatchStatus.SUBMITTING })
-    store.markSubmitted.mockImplementation(async (_batch, status) => ({ ...batch, status }))
+    store.claim.mockImplementation(async (input) => ({
+      ...input,
+      status: PaymentBatchStatus.SUBMITTING,
+    }))
+    store.pruneReadyItems.mockImplementation(async (input) => input)
+    store.markSubmitted.mockImplementation(async (input, status) => ({ ...input, status }))
     store.markUnknown.mockResolvedValue({ ...batch, status: PaymentBatchStatus.UNKNOWN })
     store.recordReconciliationPending.mockImplementation(async (current, _message, schedule) => ({
       ...current,
@@ -103,6 +110,176 @@ describe('PaymentBatchExecutionCoordinator', () => {
     )
     expect(executor.query).not.toHaveBeenCalled()
     expect(payments.confirmPlatform).not.toHaveBeenCalled()
+  })
+
+  it('removes a terminally cancelled order and still submits the valid batch items', async () => {
+    const mixedBatch: ExecutablePaymentBatch = {
+      ...batch,
+      items: [
+        ...batch.items,
+        {
+          id: 'item-2',
+          paymentOrderId: 'order-2',
+          paymentNo: 'PAY-2',
+          sourceBusinessNo: 'platform-order-2',
+          sourceType: PaymentSourceType.C2C_BUY,
+          amount: '20.00',
+          payeeIdentity: 'second@example.com',
+          payeeName: 'Second',
+        },
+      ],
+    }
+    store.prepare.mockResolvedValue(mixedBatch)
+    store.pruneReadyItems.mockResolvedValue({
+      ...mixedBatch,
+      items: [mixedBatch.items[1]],
+    })
+    preflight.verifyBatch
+      .mockRejectedValueOnce(
+        new PaymentPreflightRejectionError('商家订单状态不允许执行当前支付方式', true),
+      )
+      .mockResolvedValueOnce(undefined)
+    executor.submit.mockResolvedValue({ status: PaymentExecutionStatus.PROCESSING, raw: {} })
+
+    await expect(coordinator.submit('tenant-1', 'batch-1')).resolves.toMatchObject({
+      status: PaymentBatchStatus.PROCESSING,
+      preflightSkippedCount: 1,
+    })
+    expect(store.pruneReadyItems).toHaveBeenCalledWith(mixedBatch, [
+      {
+        paymentOrderId: 'order-1',
+        reason: '商家订单状态不允许执行当前支付方式',
+      },
+    ])
+    expect(store.claim).toHaveBeenCalledWith(
+      expect.objectContaining({
+        items: [expect.objectContaining({ paymentOrderId: 'order-2' })],
+        preflightSkippedCount: 1,
+      }),
+    )
+    expect(executor.submit).toHaveBeenCalledTimes(1)
+  })
+
+  it('recovers when an order is cancelled after preflight but before claim', async () => {
+    const mixedBatch: ExecutablePaymentBatch = {
+      ...batch,
+      items: [
+        ...batch.items,
+        {
+          id: 'item-2',
+          paymentOrderId: 'order-2',
+          paymentNo: 'PAY-2',
+          sourceBusinessNo: 'platform-order-2',
+          sourceType: PaymentSourceType.C2C_BUY,
+          amount: '20.00',
+          payeeIdentity: 'second@example.com',
+          payeeName: 'Second',
+        },
+      ],
+    }
+    store.prepare.mockReset()
+    store.prepare.mockResolvedValueOnce(mixedBatch).mockResolvedValueOnce(mixedBatch)
+    store.claim
+      .mockRejectedValueOnce(
+        new PaymentBatchClaimRejectionError('商家订单已不可进入批量支付处理', 'order-1'),
+      )
+      .mockImplementationOnce(async (input) => ({
+        ...input,
+        status: PaymentBatchStatus.SUBMITTING,
+      }))
+    store.pruneReadyItems.mockResolvedValueOnce({
+      ...mixedBatch,
+      items: [mixedBatch.items[1]],
+    })
+    preflight.verifyBatch
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(
+        new PaymentPreflightRejectionError('商家订单状态不允许执行当前支付方式', true),
+      )
+      .mockResolvedValueOnce(undefined)
+    executor.submit.mockResolvedValue({ status: PaymentExecutionStatus.PROCESSING, raw: {} })
+
+    await expect(coordinator.submit('tenant-1', 'batch-1')).resolves.toMatchObject({
+      status: PaymentBatchStatus.PROCESSING,
+      preflightSkippedCount: 1,
+    })
+    expect(store.pruneReadyItems).toHaveBeenCalledWith(mixedBatch, [
+      {
+        paymentOrderId: 'order-1',
+        reason: '商家订单状态不允许执行当前支付方式',
+      },
+    ])
+    expect(store.claim).toHaveBeenCalledTimes(2)
+    expect(executor.submit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        items: [expect.objectContaining({ paymentOrderId: 'order-2' })],
+      }),
+    )
+  })
+
+  it('continues when cancellation already removed the rejected item before pruning', async () => {
+    const mixedBatch: ExecutablePaymentBatch = {
+      ...batch,
+      items: [
+        ...batch.items,
+        {
+          id: 'item-2',
+          paymentOrderId: 'order-2',
+          paymentNo: 'PAY-2',
+          sourceBusinessNo: 'platform-order-2',
+          sourceType: PaymentSourceType.C2C_BUY,
+          amount: '20.00',
+          payeeIdentity: 'second@example.com',
+          payeeName: 'Second',
+        },
+      ],
+    }
+    const remainingBatch: ExecutablePaymentBatch = {
+      ...mixedBatch,
+      items: [mixedBatch.items[1]],
+    }
+    store.prepare.mockReset()
+    store.prepare.mockResolvedValueOnce(mixedBatch).mockResolvedValueOnce(remainingBatch)
+    store.claim
+      .mockRejectedValueOnce(
+        new PaymentBatchClaimRejectionError('商家订单已不可进入批量支付处理', 'order-1'),
+      )
+      .mockImplementationOnce(async (input) => ({
+        ...input,
+        status: PaymentBatchStatus.SUBMITTING,
+      }))
+    preflight.verifyBatch.mockResolvedValue(undefined)
+    executor.submit.mockResolvedValue({ status: PaymentExecutionStatus.PROCESSING, raw: {} })
+
+    await expect(coordinator.submit('tenant-1', 'batch-1')).resolves.toMatchObject({
+      status: PaymentBatchStatus.PROCESSING,
+    })
+
+    expect(store.pruneReadyItems).not.toHaveBeenCalled()
+    expect(store.claim).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        items: [expect.objectContaining({ paymentOrderId: 'order-2' })],
+      }),
+    )
+    expect(executor.submit).toHaveBeenCalledTimes(1)
+  })
+
+  it('prunes a terminal PaymentNotSubmittedError returned by preflight loading', async () => {
+    preflight.verifyBatch.mockRejectedValue(
+      new PaymentNotSubmittedError('支付订单关联的商家订单不存在', true),
+    )
+    executor.submit.mockResolvedValue({ status: PaymentExecutionStatus.PROCESSING, raw: {} })
+
+    await expect(coordinator.submit('tenant-1', 'batch-1')).resolves.toMatchObject({
+      status: PaymentBatchStatus.PROCESSING,
+      preflightSkippedCount: 1,
+    })
+
+    expect(store.pruneReadyItems).toHaveBeenCalledWith(batch, [
+      { paymentOrderId: 'order-1', reason: '支付订单关联的商家订单不存在' },
+    ])
+    expect(executor.submit).toHaveBeenCalledTimes(1)
   })
 
   it('logs the batch and all item relationship identifiers', async () => {

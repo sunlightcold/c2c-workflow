@@ -137,6 +137,13 @@ describe('PaymentBatchService ready groups', () => {
     expect(query.andWhere).toHaveBeenCalledWith(expect.stringContaining('NOT EXISTS'), {
       activeItemStatuses: ['QUEUED', 'SUBMITTING', 'PROCESSING', 'UNKNOWN'],
     })
+    expect(query.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('merchant_order.status = :merchantOrderStatus'),
+      {
+        c2cSourceType: PaymentSourceType.C2C_BUY,
+        merchantOrderStatus: 'PENDING_PAYMENT',
+      },
+    )
     expect(query.andWhere).not.toHaveBeenCalledWith(
       'payment_order."sourceType" = :sourceType',
       expect.anything(),

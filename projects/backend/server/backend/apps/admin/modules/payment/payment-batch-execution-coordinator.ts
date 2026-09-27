@@ -4,7 +4,10 @@ import type { AlipayBatchResponse } from './alipay-batch.adapter'
 import { PaymentExecutionStatus, type PaymentExecutionResult } from './payment-adapter.types'
 import type { ExecutablePaymentOrder } from './payment-execution-coordinator'
 import { PaymentExecutionCoordinator } from './payment-execution-coordinator'
-import { PaymentNotSubmittedError } from './payment-execution.errors'
+import {
+  PaymentBatchClaimRejectionError,
+  PaymentNotSubmittedError,
+} from './payment-execution.errors'
 import { EVENT_KEYS, EventEmitterService } from '../event-emitter'
 import type { PaymentReconciliationPolicy } from './payment-adapter.types'
 
@@ -31,6 +34,13 @@ export interface ExecutablePaymentBatch {
   reconciliationAttempts: number
   nextReconcileAt: Date | null
   items: ExecutablePaymentBatchItem[]
+  preflightSkippedCount?: number
+  preflightSkippedReasons?: string[]
+}
+
+export interface PaymentBatchPreflightRejection {
+  paymentOrderId: string
+  reason: string
 }
 
 export interface PaymentBatchReconciliationSchedule {
@@ -44,8 +54,16 @@ export interface PaymentBatchApplyOutcome {
 }
 
 export interface PaymentBatchStore {
-  prepare: (tenantId: string, batchId: string) => Promise<ExecutablePaymentBatch>
+  prepare: (
+    tenantId: string,
+    batchId: string,
+    options?: { allowTerminal?: boolean },
+  ) => Promise<ExecutablePaymentBatch>
   claim: (batch: ExecutablePaymentBatch) => Promise<ExecutablePaymentBatch>
+  pruneReadyItems: (
+    batch: ExecutablePaymentBatch,
+    rejections: PaymentBatchPreflightRejection[],
+  ) => Promise<ExecutablePaymentBatch>
   markSubmitted: (
     batch: ExecutablePaymentBatch,
     status: PaymentBatchStatus.PROCESSING,
@@ -134,12 +152,45 @@ export class PaymentBatchExecutionCoordinator {
     if (prepared.status !== PaymentBatchStatus.READY)
       throw new ConflictException('只有待提交支付批次可以提交')
     const policy = this.executor.getReconciliationPolicy(prepared)
+    const rejections: PaymentBatchPreflightRejection[] = []
     for (const item of prepared.items) {
       if (item.sourceType === PaymentSourceType.C2C_BUY) {
-        await this.preflight.verifyBatch(tenantId, item.paymentOrderId)
+        try {
+          await this.preflight.verifyBatch(tenantId, item.paymentOrderId)
+        } catch (error) {
+          if (!this.isTerminalPaymentError(error)) throw error
+          rejections.push({
+            paymentOrderId: item.paymentOrderId,
+            reason: this.errorMessage(error),
+          })
+        }
       }
     }
-    const claimed = await this.store.claim(prepared)
+    let ready = prepared
+    if (rejections.length) {
+      ready = {
+        ...(await this.store.pruneReadyItems(prepared, rejections)),
+        preflightSkippedCount: rejections.length,
+        preflightSkippedReasons: rejections.map(({ reason }) => reason),
+      }
+      this.logger.warn(
+        `支付批次提交前剔除不可支付订单: ${this.batchLogContext(ready, 'PREFLIGHT_REJECTED')}, rejected=${rejections.map(({ paymentOrderId, reason }) => `${paymentOrderId}:${reason}`).join('|')}`,
+      )
+      if (ready.status !== PaymentBatchStatus.READY) {
+        this.emitStatus(ready, rejections.map(({ reason }) => reason).join('; '))
+        return ready
+      }
+    }
+    const claimed = await this.claimWithTerminalRecovery(tenantId, ready)
+    if (claimed.status !== PaymentBatchStatus.SUBMITTING) {
+      this.emitStatus(
+        claimed,
+        claimed.status === PaymentBatchStatus.CANCELLED
+          ? claimed.preflightSkippedReasons?.join('; ')
+          : undefined,
+      )
+      return claimed
+    }
     this.logger.log(`支付批次提交开始: ${this.batchLogContext(claimed, 'SUBMIT')}`)
     this.emitStatus(claimed)
     let result: PaymentExecutionResult<AlipayBatchResponse>
@@ -185,6 +236,102 @@ export class PaymentBatchExecutionCoordinator {
     )
     this.emitStatus(submitted)
     return submitted
+  }
+
+  /**
+   * A platform sync can cancel a merchant order after the external preflight
+   * read but before the claim transaction locks it. The claim transaction is
+   * intentionally rolled back in that case; refresh and prune the terminal
+   * item, then claim the remaining items. This is bounded by the original
+   * item count, so a continuously changing batch never loops forever.
+   */
+  private async claimWithTerminalRecovery(
+    tenantId: string,
+    input: ExecutablePaymentBatch,
+  ): Promise<ExecutablePaymentBatch> {
+    let current = input
+    let skippedCount = input.preflightSkippedCount ?? 0
+    const skippedReasons = [...(input.preflightSkippedReasons ?? [])]
+    const maxAttempts = Math.max(1, input.items.length + 1)
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        const claimed = await this.store.claim(current)
+        return {
+          ...claimed,
+          preflightSkippedCount: skippedCount || undefined,
+          preflightSkippedReasons: skippedReasons.length ? skippedReasons : undefined,
+        }
+      } catch (error) {
+        if (!(error instanceof PaymentBatchClaimRejectionError)) throw error
+
+        const refreshed = await this.store.prepare(tenantId, input.id, { allowTerminal: true })
+        if (refreshed.status !== PaymentBatchStatus.READY) {
+          return this.withPreflightMetadata(refreshed, skippedCount, skippedReasons)
+        }
+        const rejections = await this.findTerminalPreflightRejections(tenantId, refreshed)
+        if (!rejections.length) {
+          // Cancellation can commit between the failed claim and the refresh.
+          // If the rejected item is gone, it has already been handled and must
+          // not prevent the remaining queued items from being submitted.
+          const rejectedItemStillActive = refreshed.items.some(
+            ({ paymentOrderId }) => paymentOrderId === error.paymentOrderId,
+          )
+          if (!rejectedItemStillActive) {
+            current = this.withPreflightMetadata(refreshed, skippedCount, skippedReasons)
+            continue
+          }
+          throw error
+        }
+
+        current = await this.store.pruneReadyItems(refreshed, rejections)
+        skippedCount += rejections.length
+        skippedReasons.push(...rejections.map(({ reason }) => reason))
+        current = this.withPreflightMetadata(current, skippedCount, skippedReasons)
+        this.logger.warn(
+          `支付批次锁定前剔除已终止订单: ${this.batchLogContext(current, 'CLAIM_REJECTED')}, rejected=${rejections.map(({ paymentOrderId, reason }) => `${paymentOrderId}:${reason}`).join('|')}`,
+        )
+        if (current.status !== PaymentBatchStatus.READY) return current
+      }
+    }
+
+    throw new ConflictException('支付批次提交前订单状态持续变化，请稍后重试')
+  }
+
+  private async findTerminalPreflightRejections(
+    tenantId: string,
+    batch: ExecutablePaymentBatch,
+  ): Promise<PaymentBatchPreflightRejection[]> {
+    const rejections: PaymentBatchPreflightRejection[] = []
+    for (const item of batch.items) {
+      if (item.sourceType !== PaymentSourceType.C2C_BUY) continue
+      try {
+        await this.preflight.verifyBatch(tenantId, item.paymentOrderId)
+      } catch (error) {
+        if (!this.isTerminalPaymentError(error)) throw error
+        rejections.push({
+          paymentOrderId: item.paymentOrderId,
+          reason: this.errorMessage(error),
+        })
+      }
+    }
+    return rejections
+  }
+
+  private isTerminalPaymentError(error: unknown): error is PaymentNotSubmittedError {
+    return error instanceof PaymentNotSubmittedError && error.terminalOrder
+  }
+
+  private withPreflightMetadata(
+    batch: ExecutablePaymentBatch,
+    skippedCount: number,
+    skippedReasons: string[],
+  ): ExecutablePaymentBatch {
+    return {
+      ...batch,
+      preflightSkippedCount: skippedCount || undefined,
+      preflightSkippedReasons: skippedReasons.length ? skippedReasons : undefined,
+    }
   }
 
   private async reconcileUnlocked(

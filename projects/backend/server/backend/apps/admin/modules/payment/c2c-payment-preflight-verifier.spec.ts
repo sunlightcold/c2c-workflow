@@ -12,6 +12,7 @@ import {
   C2cPaymentPreflightVerifier,
   type PaymentPreflightStore,
 } from './c2c-payment-preflight-verifier'
+import type { PaymentPreflightRejectionError } from './c2c-payment-preflight-verifier'
 import { PaymentNotSubmittedError } from './payment-execution-coordinator'
 
 describe('C2cPaymentPreflightVerifier', () => {
@@ -157,6 +158,52 @@ describe('C2cPaymentPreflightVerifier', () => {
       expect.any(Object),
       'platform-order-1',
     )
+  })
+
+  it('keeps an exception merchant order recoverable for a later synchronization', async () => {
+    store.load.mockResolvedValue({
+      order: {
+        ...order,
+        status: PaymentOrderStatus.READY,
+        executionMode: PaymentExecutionMode.BATCH,
+      },
+      ...configuration,
+      merchantOrder: {
+        ...configuration.merchantOrder,
+        status: MerchantOrderStatus.EXCEPTION,
+        payable: false,
+      },
+    })
+
+    await expect(verifier.verifyBatch('tenant-1', 'payment-1', now)).rejects.toMatchObject({
+      message: '商家订单状态不允许执行当前支付方式',
+      terminalOrder: false,
+    } satisfies Partial<PaymentPreflightRejectionError>)
+    expect(platformClient.getOrderDetail).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    MerchantOrderStatus.PAYMENT_PROCESSING,
+    MerchantOrderStatus.PAID_PENDING_PLATFORM_CONFIRM,
+    MerchantOrderStatus.PENDING_RELEASE,
+    MerchantOrderStatus.COMPLETED,
+  ])('treats merchant status %s as unavailable for a new batch payment', async (status) => {
+    store.load.mockResolvedValue({
+      order: { ...order, status: PaymentOrderStatus.READY, executionMode: PaymentExecutionMode.BATCH },
+      ...configuration,
+      merchantOrder: { ...configuration.merchantOrder, status, payable: true },
+      channel: {
+        ...configuration.channel,
+        adapterCode: PaymentAdapterCode.ALIPAY_BATCH,
+        executionMode: PaymentExecutionMode.BATCH,
+      },
+    })
+
+    await expect(verifier.verifyBatch('tenant-1', 'payment-1', now)).rejects.toMatchObject({
+      message: '商家订单状态不允许执行当前支付方式',
+      terminalOrder: true,
+    } satisfies Partial<PaymentPreflightRejectionError>)
+    expect(platformClient.getOrderDetail).not.toHaveBeenCalled()
   })
 
   it('accepts an unchanged instant amount with trailing upstream zeros', async () => {
@@ -305,14 +352,21 @@ describe('C2cPaymentPreflightVerifier', () => {
 
   it.each([
     ['platform status changed', { status: C2cBuyOrderStatus.CANCELLED }, '平台订单已不可付款'],
+    ['platform order was already paid', { status: C2cBuyOrderStatus.PAID }, '平台订单已不可付款'],
+    [
+      'platform order was already completed',
+      { status: C2cBuyOrderStatus.COMPLETED },
+      '平台订单已不可付款',
+    ],
     ['amount changed', { fiatAmount: '101.00' }, '平台订单金额已变化'],
     ['payment method changed', { paymentMethod: 'BANK' }, '平台订单付款方式已变化'],
   ])('rejects before payment when %s', async (_case, change, message) => {
     platformClient.getOrderDetail.mockResolvedValue({ ...platformOrder, ...change })
 
-    await expect(verifier.verify('tenant-1', 'payment-1', now)).rejects.toEqual(
-      new PaymentNotSubmittedError(message),
-    )
+    await expect(verifier.verify('tenant-1', 'payment-1', now)).rejects.toMatchObject({
+      message,
+      terminalOrder: ['平台订单已不可付款'].includes(message),
+    })
   })
 
   it('allows a name mismatch while retaining the money and payment method checks', async () => {

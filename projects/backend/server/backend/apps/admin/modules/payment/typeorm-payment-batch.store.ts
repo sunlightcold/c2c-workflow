@@ -24,14 +24,22 @@ import {
 import { ConflictException, Injectable } from '@nestjs/common'
 import { DataSource, EntityManager, In, Not } from 'typeorm'
 import type { AlipayBatchDetail, AlipayBatchResponse } from './alipay-batch.adapter'
-import { normalizeCnyAmount, PaymentExecutionStatus, sameCnyAmount } from './payment-adapter.types'
+import {
+  normalizeCnyAmount,
+  PaymentExecutionStatus,
+  sameCnyAmount,
+  sumCnyAmounts,
+} from './payment-adapter.types'
 import type {
   ExecutablePaymentBatch,
   ExecutablePaymentBatchItem,
   PaymentBatchApplyOutcome,
   PaymentBatchReconciliationSchedule,
+  PaymentBatchPreflightRejection,
   PaymentBatchStore,
 } from './payment-batch-execution-coordinator'
+import { PaymentBatchClaimRejectionError } from './payment-execution.errors'
+import { isMerchantOrderUnavailableForPayment } from './payment-merchant-order-state'
 
 @Injectable()
 export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
@@ -148,6 +156,77 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
         credentialRef: account.credentialRef,
       }
     })
+  }
+
+  async pruneReadyItems(
+    input: ExecutablePaymentBatch,
+    rejections: PaymentBatchPreflightRejection[],
+  ): Promise<ExecutablePaymentBatch> {
+    const result = await this.dataSource.transaction(async (manager) => {
+      const batch = await this.lockBatch(manager, input, [PaymentBatchStatus.READY])
+      const { items, orders } = await this.lockItemsAndOrders(manager, batch)
+      const itemByPaymentOrderId = new Map(items.map((item) => [item.paymentOrderId, item]))
+      const orderById = new Map(orders.map((order) => [order.id, order]))
+      const reasonByPaymentOrderId = new Map(
+        rejections.map(({ paymentOrderId, reason }) => [paymentOrderId, reason]),
+      )
+      for (const paymentOrderId of reasonByPaymentOrderId.keys()) {
+        const item = itemByPaymentOrderId.get(paymentOrderId)
+        const order = orderById.get(paymentOrderId)
+        // The merchant-order cancellation transaction may have committed
+        // after preflight and before this transaction acquired the batch lock.
+        // Its item is already cancelled and excluded from the active-item
+        // query, so treating it as handled keeps the remaining items moving.
+        if (!item) continue
+        if (
+          !order ||
+          item.status !== PaymentBatchItemStatus.QUEUED ||
+          (order.status !== PaymentOrderStatus.READY &&
+            order.status !== PaymentOrderStatus.CANCELLED)
+        ) {
+          throw new ConflictException('支付批次明细状态已变化，请刷新后重试')
+        }
+        const reason = reasonByPaymentOrderId.get(paymentOrderId)!
+        if (order.status === PaymentOrderStatus.CANCELLED) {
+          item.status = PaymentBatchItemStatus.CANCELLED
+          item.errorMessage = item.errorMessage ?? reason
+          continue
+        }
+        item.status = PaymentBatchItemStatus.CANCELLED
+        item.errorMessage = reason
+        const previous = order.status
+        order.status = PaymentOrderStatus.CANCELLED
+        order.lastError = reason
+        await manager.save(order)
+        await this.paymentHistory(manager, order, previous, order.status, reason)
+      }
+      await manager.save(items)
+
+      const remaining = items.filter((item) => item.status !== PaymentBatchItemStatus.CANCELLED)
+      if (!remaining.length) {
+        await this.transitionBatch(
+          manager,
+          batch,
+          PaymentBatchStatus.CANCELLED,
+          '批次内订单均已无法支付',
+        )
+        batch.totalCount = 0
+        batch.totalAmount = '0.00'
+        await manager.save(batch)
+        return { status: PaymentBatchStatus.CANCELLED as const }
+      }
+
+      batch.totalCount = remaining.length
+      batch.totalAmount = sumCnyAmounts(remaining.map(({ amount }) => amount))
+      batch.lastError = `提交前剔除 ${rejections.length} 笔不可支付订单`
+      await manager.save(batch)
+      return { status: PaymentBatchStatus.READY as const }
+    })
+
+    if (result.status === PaymentBatchStatus.CANCELLED) {
+      return { ...input, status: PaymentBatchStatus.CANCELLED, items: [] }
+    }
+    return this.prepare(input.tenantId, input.id)
   }
 
   markSubmitted(
@@ -707,8 +786,15 @@ export class TypeOrmPaymentBatchStore implements PaymentBatchStore {
       },
       lock: { mode: 'pessimistic_write' },
     })
-    if (!merchantOrder || merchantOrder.status !== MerchantOrderStatus.PENDING_PAYMENT)
+    if (!merchantOrder) {
+      throw new PaymentBatchClaimRejectionError('支付订单关联的商家订单不存在', order.id)
+    }
+    if (merchantOrder.status !== MerchantOrderStatus.PENDING_PAYMENT) {
+      if (isMerchantOrderUnavailableForPayment(merchantOrder.status)) {
+        throw new PaymentBatchClaimRejectionError('商家订单已不可进入批量支付处理', order.id)
+      }
       throw new ConflictException('商家订单已不可进入批量支付处理')
+    }
     const previous = merchantOrder.status
     merchantOrder.status = MerchantOrderStatus.PAYMENT_PROCESSING
     await manager.save(merchantOrder)

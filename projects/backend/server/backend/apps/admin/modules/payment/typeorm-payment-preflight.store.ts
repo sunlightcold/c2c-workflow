@@ -75,7 +75,8 @@ export class TypeOrmPaymentPreflightStore
             .findOne({ where: { id: order.paymentAccountChannelId } })
         : null,
     ])
-    if (!merchantOrder) throw new PaymentNotSubmittedError('支付订单关联的商家订单不存在')
+    if (!merchantOrder)
+      throw new PaymentNotSubmittedError('支付订单关联的商家订单不存在', true)
     if (!credential) throw new PaymentNotSubmittedError('商家没有生效的平台凭据')
     if (!plan || !account || !accountChannel)
       throw new PaymentNotSubmittedError('支付订单锁定的支付方案不完整')

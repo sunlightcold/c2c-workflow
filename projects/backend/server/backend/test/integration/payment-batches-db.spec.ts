@@ -40,6 +40,7 @@ import { migratePaymentAccountCredentials } from '@/apps/admin/database/migratio
 import { PaymentBatchService } from '@/apps/admin/modules/payment/payment-batch.service'
 import { TypeOrmC2cAutomaticPaymentStore } from '@/apps/admin/modules/payment/typeorm-c2c-automatic-payment.store'
 import { TypeOrmPaymentBatchStore } from '@/apps/admin/modules/payment/typeorm-payment-batch.store'
+import { PaymentBatchClaimRejectionError } from '@/apps/admin/modules/payment/payment-execution.errors'
 import { PaymentExecutionStatus } from '@/apps/admin/modules/payment/payment-adapter.types'
 import developmentConfig from '@/config/development'
 import { DataSource } from 'typeorm'
@@ -276,6 +277,22 @@ describe('Payment batch migration database integration', () => {
         totalAmount: '100.00',
       }),
     ])
+  })
+
+  it('does not offer a C2C payment order after its merchant order is cancelled', async () => {
+    await configureC2cPayment()
+    await expect(service.findReadyGroups(tenantId, merchantId)).resolves.toEqual([
+      expect.objectContaining({ paymentOrderIds: [orderId] }),
+    ])
+
+    await dataSource.query(
+      `UPDATE merchant_order
+       SET status = 'CANCELLED', payable = false
+       WHERE "tenantId" = $1 AND "merchantId" = $2 AND "platformOrderId" = 'source-1'`,
+      [tenantId, merchantId],
+    )
+
+    await expect(service.findReadyGroups(tenantId, merchantId)).resolves.toEqual([])
   })
 
   it('lists and reads only payment batches from the requested tenant', async () => {
@@ -622,6 +639,27 @@ describe('Payment batch migration database integration', () => {
     await expect(
       dataSource.query(`SELECT status, "upstreamId" FROM payment_order WHERE id = $1`, [orderId]),
     ).resolves.toEqual([{ status: 'SUCCESS', upstreamId: 'ALI-ORDER-1' }])
+  })
+
+  it('rolls back claim when a C2C merchant order is cancelled at the lock boundary', async () => {
+    await configureC2cPayment()
+    const created = await service.create(tenantId, [orderId])
+    await dataSource.query(
+      `UPDATE merchant_order
+       SET status = 'CANCELLED', payable = false
+       WHERE "tenantId" = $1 AND "merchantId" = $2 AND "platformOrderId" = 'source-1'`,
+      [tenantId, merchantId],
+    )
+
+    await expect(
+      store.claim(await store.prepare(tenantId, created.batch.id)),
+    ).rejects.toBeInstanceOf(PaymentBatchClaimRejectionError)
+    await expect(
+      dataSource.query(`SELECT status FROM payment_batch WHERE id = $1`, [created.batch.id]),
+    ).resolves.toEqual([{ status: 'READY' }])
+    await expect(
+      dataSource.query(`SELECT status FROM payment_order WHERE id = $1`, [orderId]),
+    ).resolves.toEqual([{ status: 'READY' }])
   })
 
   it('keeps a mismatched Alipay detail unknown without changing the payment result', async () => {

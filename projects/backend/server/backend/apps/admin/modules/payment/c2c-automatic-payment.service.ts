@@ -86,6 +86,8 @@ export class C2cAutomaticPaymentService {
         submitted: number
         failed: number
         errors: string[]
+        skipped: number
+        skippedReasons: string[]
         batchIds: string[]
       }
     >()
@@ -100,6 +102,8 @@ export class C2cAutomaticPaymentService {
         submitted: 0,
         failed: 0,
         errors: [],
+        skipped: 0,
+        skippedReasons: [],
         batchIds: [],
       }
       summary.totalCount += group.paymentOrderIds.length
@@ -125,6 +129,10 @@ export class C2cAutomaticPaymentService {
           summary.failed += 1
           summary.batchIds.push(submitted.id)
         }
+        if (submitted !== undefined) {
+          summary.skipped += submitted.preflightSkippedCount ?? 0
+          summary.skippedReasons.push(...(submitted.preflightSkippedReasons ?? []))
+        }
         return submitted
       } catch (error) {
         summary.failed += 1
@@ -142,6 +150,9 @@ export class C2cAutomaticPaymentService {
         groups: summary.groups,
         submitted: summary.submitted,
         failed: summary.failed,
+        ...(summary.skipped
+          ? { skipped: summary.skipped, skippedReasons: summary.skippedReasons }
+          : {}),
         ...(summary.errors.length ? { errors: summary.errors } : {}),
         batchIds: summary.batchIds,
       })

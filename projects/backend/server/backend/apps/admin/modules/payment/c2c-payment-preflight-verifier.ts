@@ -18,6 +18,17 @@ import {
 import { C2C_SECRET_RESOLVER, type C2cSecretResolver } from '../c2c-order/c2c-secret-resolver'
 import { sameCnyAmount } from './payment-adapter.types'
 import { PaymentNotSubmittedError } from './payment-execution-coordinator'
+import { isMerchantOrderUnavailableForPayment } from './payment-merchant-order-state'
+
+export class PaymentPreflightRejectionError extends PaymentNotSubmittedError {
+  constructor(
+    message: string,
+    readonly terminalOrder: boolean,
+  ) {
+    super(message)
+    Object.defineProperty(this, 'terminalOrder', { value: terminalOrder, enumerable: false })
+  }
+}
 
 export interface PaymentPreflightConfiguration {
   order: {
@@ -222,8 +233,13 @@ export class C2cPaymentPreflightVerifier {
     this.require(
       merchantOrder.status === expected.merchantOrderStatus,
       '商家订单状态不允许执行当前支付方式',
+      this.isTerminalMerchantStatus(merchantOrder.status),
     )
-    this.require(merchantOrder.payable, '商家订单当前不可付款')
+    this.require(
+      merchantOrder.payable,
+      '商家订单当前不可付款',
+      this.isTerminalMerchantStatus(merchantOrder.status),
+    )
     this.require(credential.status === BusinessStatus.ACTIVE, '商家平台凭据已停用')
     this.require(
       merchant.platform === merchantOrder.platform && merchant.platform === credential.platform,
@@ -263,8 +279,16 @@ export class C2cPaymentPreflightVerifier {
 
   private verifyPlatform(context: PaymentPreflightConfiguration, current: C2cBuyOrderDetail): void {
     const snapshot = context.merchantOrder
-    this.require(current.status === C2cBuyOrderStatus.PENDING_PAYMENT, '平台订单已不可付款')
-    this.require(current.payable, '平台订单当前不可付款')
+    this.require(
+      current.status === C2cBuyOrderStatus.PENDING_PAYMENT,
+      '平台订单已不可付款',
+      this.isTerminalPlatformStatus(current.status),
+    )
+    this.require(
+      current.payable,
+      '平台订单当前不可付款',
+      this.isTerminalPlatformStatus(current.status),
+    )
     this.require(current.platformOrderId === snapshot.platformOrderId, '平台订单编号不匹配')
     this.require(this.sameAmount(current.fiatAmount, context.order.amount), '平台订单金额已变化')
     this.require(current.fiatCurrency === context.order.currency, '平台订单币种已变化')
@@ -289,8 +313,22 @@ export class C2cPaymentPreflightVerifier {
     return sameCnyAmount(left, right)
   }
 
-  private require(condition: boolean, message: string): asserts condition {
-    if (!condition) throw new PaymentNotSubmittedError(message)
+  private require(condition: boolean, message: string, terminalOrder = false): asserts condition {
+    if (!condition) throw new PaymentPreflightRejectionError(message, terminalOrder)
+  }
+
+  private isTerminalMerchantStatus(status: MerchantOrderStatus): boolean {
+    return isMerchantOrderUnavailableForPayment(status)
+  }
+
+  private isTerminalPlatformStatus(status: C2cBuyOrderStatus): boolean {
+    return [
+      C2cBuyOrderStatus.PAID,
+      C2cBuyOrderStatus.COMPLETED,
+      C2cBuyOrderStatus.CANCELLED,
+      C2cBuyOrderStatus.EXPIRED,
+      C2cBuyOrderStatus.DISPUTED,
+    ].includes(status)
   }
 
   private notSubmitted(error: unknown): PaymentNotSubmittedError {

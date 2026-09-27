@@ -3,7 +3,9 @@ import {
   PaymentBatchItemEntity,
   PaymentBatchItemStatus,
   PaymentBatchStatus,
+  PaymentBatchStatusHistoryEntity,
   PaymentOrderEntity,
+  PaymentOrderStatusHistoryEntity,
   PaymentOrderStatus,
   PaymentSourceType,
 } from '@admin/database'
@@ -79,6 +81,54 @@ describe('TypeOrmPaymentBatchStore amount matching', () => {
   it('rejects a genuinely different Alipay detail amount', async () => {
     await expect(store.applyQuery(executable, queryResult('56.01'))).rejects.toThrow(
       '支付宝批次明细金额不匹配',
+    )
+  })
+
+  it('cancels a terminal invalid item without leaving a ready batch behind', async () => {
+    const readyBatch = {
+      ...batch,
+      status: PaymentBatchStatus.READY,
+      totalCount: 1,
+      totalAmount: '56.00',
+    }
+    const readyItem = { ...item, status: PaymentBatchItemStatus.QUEUED }
+    const readyOrder = { ...order, status: PaymentOrderStatus.READY }
+    manager.getRepository.mockImplementation((entity) => {
+      if (entity === PaymentBatchEntity)
+        return { findOne: jest.fn().mockResolvedValue({ ...readyBatch }) }
+      if (entity === PaymentBatchItemEntity)
+        return { find: jest.fn().mockResolvedValue([{ ...readyItem }]) }
+      if (entity === PaymentOrderEntity)
+        return { find: jest.fn().mockResolvedValue([{ ...readyOrder }]) }
+      if (entity === PaymentBatchStatusHistoryEntity || entity === PaymentOrderStatusHistoryEntity)
+        return {}
+      throw new Error('Unexpected repository')
+    })
+
+    await expect(
+      store.pruneReadyItems(
+        {
+          ...executable,
+          status: PaymentBatchStatus.READY,
+          items: [
+            {
+              ...readyItem,
+              paymentNo: 'PAY-1',
+              payeeIdentity: 'x',
+              payeeName: 'x',
+              sourceType: PaymentSourceType.BOT_MANUAL,
+            },
+          ],
+        },
+        [{ paymentOrderId: 'order-1', reason: '商家订单状态不允许执行当前支付方式' }],
+      ),
+    ).resolves.toMatchObject({ status: PaymentBatchStatus.CANCELLED, items: [] })
+    expect(manager.save).toHaveBeenCalledWith(
+      expect.objectContaining({ status: PaymentOrderStatus.CANCELLED }),
+    )
+    expect(manager.insert).toHaveBeenCalledWith(
+      PaymentBatchStatusHistoryEntity,
+      expect.objectContaining({ toStatus: PaymentBatchStatus.CANCELLED }),
     )
   })
 
