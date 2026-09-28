@@ -30,6 +30,42 @@ import {
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
+interface PaymentStatsRow {
+  awaitSubmitAmount: string
+  awaitSubmitAssetAmount: string
+  awaitSubmitCount: string
+  failedAmount: string
+  failedAssetAmount: string
+  failedCount: string
+  processingAmount: string
+  processingAssetAmount: string
+  processingCount: string
+  successAmount: string
+  successAssetAmount: string
+  successCount: string
+  totalAmount: string
+  totalAssetAmount: string
+  totalCount: string
+}
+
+const EMPTY_PAYMENT_STATS: PaymentStatsRow = {
+  awaitSubmitAmount: '0',
+  awaitSubmitAssetAmount: '0',
+  awaitSubmitCount: '0',
+  failedAmount: '0',
+  failedAssetAmount: '0',
+  failedCount: '0',
+  processingAmount: '0',
+  processingAssetAmount: '0',
+  processingCount: '0',
+  successAmount: '0',
+  successAssetAmount: '0',
+  successCount: '0',
+  totalAmount: '0',
+  totalAssetAmount: '0',
+  totalCount: '0',
+}
+
 export interface TelegramQueryCapabilities {
   canReceipt?: boolean
   canVoid?: boolean
@@ -308,46 +344,60 @@ export class TelegramQueryService {
   ): Promise<TelegramBotReply> {
     const [row] = (await this.dataSource.query(
       `SELECT COUNT(*)::text AS "totalCount",
-              COALESCE(SUM(amount), 0)::text AS "totalAmount",
-              COUNT(*) FILTER (WHERE status IN ('PENDING_CONFIG', 'CREATED', 'READY'))::text AS "awaitSubmitCount",
-              COUNT(*) FILTER (WHERE status IN ('SUBMITTING', 'PROCESSING', 'UNKNOWN'))::text AS "processingCount",
-              COUNT(*) FILTER (WHERE status = 'SUCCESS')::text AS "successCount",
-              COUNT(*) FILTER (WHERE status IN ('FAILED', 'CANCELLED', 'FUND_EXCEPTION'))::text AS "failedCount",
-              COALESCE(SUM(amount) FILTER (WHERE status = 'SUCCESS'), 0)::text AS "successAmount"
+              COALESCE(SUM(payment_order.amount), 0)::text AS "totalAmount",
+              COALESCE(SUM(merchant_order."assetAmount"), 0)::text AS "totalAssetAmount",
+              COUNT(*) FILTER (WHERE payment_order.status IN ('PENDING_CONFIG', 'CREATED', 'READY'))::text AS "awaitSubmitCount",
+              COALESCE(SUM(merchant_order."assetAmount") FILTER (WHERE payment_order.status IN ('PENDING_CONFIG', 'CREATED', 'READY')), 0)::text AS "awaitSubmitAssetAmount",
+              COALESCE(SUM(payment_order.amount) FILTER (WHERE payment_order.status IN ('PENDING_CONFIG', 'CREATED', 'READY')), 0)::text AS "awaitSubmitAmount",
+              COUNT(*) FILTER (WHERE payment_order.status IN ('SUBMITTING', 'PROCESSING', 'UNKNOWN'))::text AS "processingCount",
+              COALESCE(SUM(merchant_order."assetAmount") FILTER (WHERE payment_order.status IN ('SUBMITTING', 'PROCESSING', 'UNKNOWN')), 0)::text AS "processingAssetAmount",
+              COALESCE(SUM(payment_order.amount) FILTER (WHERE payment_order.status IN ('SUBMITTING', 'PROCESSING', 'UNKNOWN')), 0)::text AS "processingAmount",
+              COUNT(*) FILTER (WHERE payment_order.status = 'SUCCESS')::text AS "successCount",
+              COALESCE(SUM(merchant_order."assetAmount") FILTER (WHERE payment_order.status = 'SUCCESS'), 0)::text AS "successAssetAmount",
+              COALESCE(SUM(payment_order.amount) FILTER (WHERE payment_order.status = 'SUCCESS'), 0)::text AS "successAmount",
+              COUNT(*) FILTER (WHERE payment_order.status IN ('FAILED', 'CANCELLED', 'FUND_EXCEPTION'))::text AS "failedCount",
+              COALESCE(SUM(merchant_order."assetAmount") FILTER (WHERE payment_order.status IN ('FAILED', 'CANCELLED', 'FUND_EXCEPTION')), 0)::text AS "failedAssetAmount",
+              COALESCE(SUM(payment_order.amount) FILTER (WHERE payment_order.status IN ('FAILED', 'CANCELLED', 'FUND_EXCEPTION')), 0)::text AS "failedAmount"
        FROM payment_order
-       WHERE "tenantId" = $1 AND "merchantId" = $2
-         AND "createdAt" >= $3 AND "createdAt" < $4`,
+       LEFT JOIN merchant_order ON merchant_order."tenantId" = payment_order."tenantId"
+         AND merchant_order."merchantId" = payment_order."merchantId"
+         AND merchant_order."platformOrderId" = payment_order."sourceBusinessNo"
+       WHERE payment_order."tenantId" = $1 AND payment_order."merchantId" = $2
+         AND payment_order."sourceType" = 'C2C_BUY'
+         AND payment_order."createdAt" >= $3 AND payment_order."createdAt" < $4`,
       [tenantId, merchantId, window.start, window.endExclusive],
-    )) as Array<{
-      awaitSubmitCount: string
-      failedCount: string
-      processingCount: string
-      successAmount: string
-      successCount: string
-      totalAmount: string
-      totalCount: string
-    }>
-    const total = Number(row?.totalCount ?? 0)
-    const success = Number(row?.successCount ?? 0)
+    )) as PaymentStatsRow[]
+    const stats = { ...EMPTY_PAYMENT_STATS, ...row }
+    const total = Number(stats.totalCount)
+    const success = Number(stats.successCount)
     const rate = total ? ((success / total) * 100).toFixed(2) : '0.00'
     return {
       parseMode: 'HTML',
       text:
         `<b>${title}</b>\n` +
         `<i>统计口径：${scope}</i>\n\n` +
-        `<b>核心指标</b>\n` +
-        `成功金额：<code>¥${money(row?.successAmount)}</code>\n` +
-        `成功笔数：<code>${success}</code> 笔\n` +
+        `<b>买入汇总</b>\n` +
+        `成功买入：<code>${statsAsset(stats.successAssetAmount)}</code> USDT\n` +
+        `成功付款：<code>¥${money(stats.successAmount)}</code>\n` +
+        `成功订单：<code>${success}</code> 笔\n` +
         `成功率：<code>${rate}%</code>\n\n` +
         `<b>订单状态</b>\n` +
-        `总计：<code>${total}</code> 笔\n` +
-        `待提交：<code>${Number(row?.awaitSubmitCount ?? 0)}</code> 笔 / ` +
-        `处理中：<code>${Number(row?.processingCount ?? 0)}</code> 笔\n` +
-        `成功：<code>${success}</code> 笔 / ` +
-        `失败：<code>${Number(row?.failedCount ?? 0)}</code> 笔\n\n` +
-        `<b>金额明细</b>\n` +
-        `订单总额：<code>¥${money(row?.totalAmount)}</code>\n` +
-        `成功本金：<code>¥${money(row?.successAmount)}</code>`,
+        `待支付：<code>${Number(stats.awaitSubmitCount)}</code> 笔 / ` +
+        `<code>${statsAsset(stats.awaitSubmitAssetAmount)}</code> USDT / ` +
+        `<code>¥${money(stats.awaitSubmitAmount)}</code>\n` +
+        `支付中：<code>${Number(stats.processingCount)}</code> 笔 / ` +
+        `<code>${statsAsset(stats.processingAssetAmount)}</code> USDT / ` +
+        `<code>¥${money(stats.processingAmount)}</code>\n` +
+        `支付成功：<code>${success}</code> 笔 / ` +
+        `<code>${statsAsset(stats.successAssetAmount)}</code> USDT / ` +
+        `<code>¥${money(stats.successAmount)}</code>\n` +
+        `失败/作废：<code>${Number(stats.failedCount)}</code> 笔 / ` +
+        `<code>${statsAsset(stats.failedAssetAmount)}</code> USDT / ` +
+        `<code>¥${money(stats.failedAmount)}</code>\n\n` +
+        `<b>订单汇总</b>\n` +
+        `订单总数：<code>${total}</code> 笔\n` +
+        `订单金额：<code>¥${money(stats.totalAmount)}</code>\n` +
+        `买入数量：<code>${statsAsset(stats.totalAssetAmount)}</code> USDT`,
     }
   }
 
@@ -369,6 +419,10 @@ function money(value: unknown): string {
 
 function asset(value: unknown): string {
   return formatTrimmedDecimal(value, 8)
+}
+
+function statsAsset(value: unknown): string {
+  return formatTrimmedDecimal(value, 18)
 }
 
 function merchantOrderStatusLabel(status: string): string {

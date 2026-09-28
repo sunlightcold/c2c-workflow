@@ -104,24 +104,62 @@ describe('TelegramQueryService', () => {
       {
         totalCount: '3',
         totalAmount: '60.00',
+        totalAssetAmount: '39.520000000000000000',
         awaitSubmitCount: '0',
+        awaitSubmitAssetAmount: '0',
+        awaitSubmitAmount: '0',
         processingCount: '1',
+        processingAssetAmount: '10.000000000000000000',
+        processingAmount: '10.00',
         successCount: '2',
         failedCount: '0',
         successAmount: '50.00',
+        successAssetAmount: '29.520000000000000000',
+        failedAssetAmount: '0',
+        failedAmount: '0',
       },
     ])
 
     const reply = await service.todayStats('tenant-1', 'merchant-1')
 
     expect(reply.text).toContain('<b>今日支付统计</b>')
-    expect(reply.text).toContain('成功笔数：<code>2</code> 笔')
-    expect(dataSource.query).toHaveBeenCalledWith(expect.stringContaining('"merchantId" = $2'), [
-      'tenant-1',
-      'merchant-1',
-      expect.any(Date),
-      expect.any(Date),
+    expect(reply.text).toContain('成功订单：<code>2</code> 笔')
+    expect(reply.text).toContain('成功买入：<code>29.52</code> USDT')
+    expect(reply.text).toContain(
+      '支付中：<code>1</code> 笔 / <code>10</code> USDT / <code>¥10.00</code>',
+    )
+    expect(reply.text).toContain('买入数量：<code>39.52</code> USDT')
+    expect(dataSource.query).toHaveBeenCalledWith(
+      expect.stringContaining('payment_order."sourceType" = \'C2C_BUY\''),
+      ['tenant-1', 'merchant-1', expect.any(Date), expect.any(Date)],
+    )
+  })
+
+  it('keeps up to 18 decimal places for buy-asset statistics', async () => {
+    dataSource.query.mockResolvedValue([
+      {
+        totalCount: '1',
+        totalAmount: '1.00',
+        totalAssetAmount: '0.123456789012345678',
+        awaitSubmitCount: '0',
+        awaitSubmitAssetAmount: '0',
+        awaitSubmitAmount: '0',
+        processingCount: '0',
+        processingAssetAmount: '0',
+        processingAmount: '0',
+        successCount: '1',
+        successAssetAmount: '0.123456789012345678',
+        successAmount: '1.00',
+        failedCount: '0',
+        failedAssetAmount: '0',
+        failedAmount: '0',
+      },
     ])
+
+    const reply = await service.todayStats('tenant-1', 'merchant-1')
+
+    expect(reply.text).toContain('成功买入：<code>0.123456789012345678</code> USDT')
+    expect(reply.text).toContain('买入数量：<code>0.123456789012345678</code> USDT')
   })
 
   it('returns yesterday statistics for the complete previous Shanghai business day', async () => {
