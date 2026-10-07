@@ -2,6 +2,9 @@ import axios from 'axios'
 import { Injectable, Optional, ServiceUnavailableException } from '@nestjs/common'
 import { CredentialCipherService } from '../system/credential/credential-cipher.service'
 
+const SEND_MESSAGE_MAX_ATTEMPTS = 3
+const SEND_MESSAGE_RETRY_DELAYS_MS = [500, 1_000]
+
 export interface TelegramSendMessageInput {
   chatId: string
   parseMode?: 'HTML' | 'MarkdownV2'
@@ -52,32 +55,43 @@ export class TelegramApiClient {
 
   async sendMessage(input: TelegramSendMessageInput): Promise<{ messageId: number }> {
     const token = this.resolveToken(input.tokenRef)
-    try {
-      const response = await axios.post<{ ok: boolean; result: { message_id: number } }>(
-        `https://api.telegram.org/bot${token}/sendMessage`,
-        {
-          chat_id: input.chatId,
-          text: input.text,
-          ...(input.parseMode ? { parse_mode: input.parseMode } : {}),
-          ...(input.replyToMessageId
-            ? {
-                reply_parameters: {
-                  allow_sending_without_reply: true,
-                  message_id: input.replyToMessageId,
-                },
-              }
-            : {}),
-          ...(input.replyMarkup ? { reply_markup: input.replyMarkup } : {}),
-        },
-        { timeout: 10_000 },
-      )
-      if (!response.data.ok || !Number.isInteger(response.data.result?.message_id)) {
-        throw new Error('Telegram API rejected message')
-      }
-      return { messageId: response.data.result.message_id }
-    } catch {
-      throw new ServiceUnavailableException('Telegram 消息发送失败')
+    const body = {
+      chat_id: input.chatId,
+      text: input.text,
+      ...(input.parseMode ? { parse_mode: input.parseMode } : {}),
+      ...(input.replyToMessageId
+        ? {
+            reply_parameters: {
+              allow_sending_without_reply: true,
+              message_id: input.replyToMessageId,
+            },
+          }
+        : {}),
+      ...(input.replyMarkup ? { reply_markup: input.replyMarkup } : {}),
     }
+
+    for (let attempt = 1; attempt <= SEND_MESSAGE_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        const response = await axios.post<{
+          ok: boolean
+          result?: { message_id?: number }
+          error_code?: number
+          description?: string
+        }>(`https://api.telegram.org/bot${token}/sendMessage`, body, { timeout: 10_000 })
+        const messageId = response.data.result?.message_id
+        if (!response.data.ok || typeof messageId !== 'number' || !Number.isInteger(messageId)) {
+          throw new Error('Telegram API rejected message')
+        }
+        return { messageId }
+      } catch (error) {
+        if (attempt >= SEND_MESSAGE_MAX_ATTEMPTS || !this.isTransientSendError(error)) {
+          throw new ServiceUnavailableException(this.sendMessageErrorMessage(error))
+        }
+        await this.sleep(this.sendRetryDelay(attempt, error))
+      }
+    }
+
+    throw new ServiceUnavailableException('Telegram 消息发送失败')
   }
 
   async sendPhoto(input: TelegramSendPhotoInput): Promise<void> {
@@ -201,6 +215,16 @@ export class TelegramApiClient {
     if (!axios.isAxiosError(error)) return 'Telegram API 请求失败'
     if (error.response?.status === 401) return 'Telegram Token 无效或已失效'
     if (error.response?.status === 409) return 'Telegram 长轮询被其他实例占用'
+    const description = this.telegramErrorDescription(error)
+    if (error.response?.status === 400 || error.response?.status === 403) {
+      return `Telegram API 请求被拒绝 (${error.response.status})${description ? `: ${description}` : ''}`
+    }
+    if (error.response?.status === 429) {
+      return `Telegram API 请求受限 (429)${description ? `: ${description}` : ''}`
+    }
+    if (error.response?.status && error.response.status >= 500) {
+      return `Telegram 服务暂时不可用 (${error.response.status})${description ? `: ${description}` : ''}`
+    }
     if (
       error.code === 'ECONNABORTED' ||
       error.code === 'ECONNREFUSED' ||
@@ -210,5 +234,45 @@ export class TelegramApiClient {
       return 'Telegram 网络连接失败'
     }
     return 'Telegram API 请求失败'
+  }
+
+  private sendMessageErrorMessage(error: unknown): string {
+    if (!axios.isAxiosError(error)) return 'Telegram 消息发送失败'
+    return this.requestErrorMessage(error)
+  }
+
+  private isTransientSendError(error: unknown): boolean {
+    if (!axios.isAxiosError(error)) return false
+    const status = error.response?.status
+    if (status === 429 || (status !== undefined && status >= 500)) return true
+    return [
+      'ECONNABORTED',
+      'ECONNREFUSED',
+      'ENOTFOUND',
+      'ETIMEDOUT',
+      'ERR_NETWORK',
+      'ECONNRESET',
+      'EAI_AGAIN',
+    ].includes(error.code ?? '')
+  }
+
+  private sendRetryDelay(attempt: number, error: unknown): number {
+    if (axios.isAxiosError(error) && error.response?.status === 429) {
+      const retryAfter = error.response.data?.parameters?.retry_after
+      if (typeof retryAfter === 'number' && Number.isFinite(retryAfter)) {
+        return Math.min(Math.max(retryAfter, 1) * 1_000, 10_000)
+      }
+    }
+    return SEND_MESSAGE_RETRY_DELAYS_MS[attempt - 1] ?? SEND_MESSAGE_RETRY_DELAYS_MS.at(-1)!
+  }
+
+  private sleep(delayMs: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, delayMs))
+  }
+
+  private telegramErrorDescription(error: unknown): string | undefined {
+    if (!axios.isAxiosError(error)) return undefined
+    const description = error.response?.data?.description
+    return typeof description === 'string' ? description : undefined
   }
 }

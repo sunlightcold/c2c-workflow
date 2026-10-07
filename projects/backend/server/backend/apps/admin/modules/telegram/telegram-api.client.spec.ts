@@ -49,6 +49,49 @@ describe('TelegramApiClient', () => {
     ).rejects.toEqual(new ServiceUnavailableException('Telegram 消息发送失败'))
   })
 
+  it('retries sendMessage after a transient network failure', async () => {
+    const post = jest
+      .spyOn(axios, 'post')
+      .mockRejectedValueOnce({ isAxiosError: true, code: 'ETIMEDOUT' })
+      .mockResolvedValueOnce({ data: { ok: true, result: { message_id: 104 } } })
+    const client = new TelegramApiClient()
+    jest.spyOn(client as any, 'sleep').mockResolvedValue(undefined)
+
+    await expect(
+      client.sendMessage({
+        tokenRef: 'env://TG_TEST_TOKEN',
+        chatId: '-1001',
+        text: '网络波动后重试',
+      }),
+    ).resolves.toEqual({ messageId: 104 })
+
+    expect(post).toHaveBeenCalledTimes(2)
+    expect((client as any).sleep).toHaveBeenCalledWith(500)
+  })
+
+  it('does not retry a Telegram request rejected by the API', async () => {
+    const post = jest.spyOn(axios, 'post').mockRejectedValue({
+      isAxiosError: true,
+      response: {
+        status: 403,
+        data: { ok: false, error_code: 403, description: 'Forbidden: bot was kicked from the group' },
+      },
+    })
+    const client = new TelegramApiClient()
+
+    await expect(
+      client.sendMessage({
+        tokenRef: 'env://TG_TEST_TOKEN',
+        chatId: '-1001',
+        text: '不应重试',
+      }),
+    ).rejects.toEqual(
+      new ServiceUnavailableException('Telegram API 请求被拒绝 (403): Forbidden: bot was kicked from the group'),
+    )
+
+    expect(post).toHaveBeenCalledTimes(1)
+  })
+
   it('uploads a JPG receipt as a Telegram photo', async () => {
     const post = jest
       .spyOn(axios, 'post')
