@@ -225,12 +225,7 @@ export class TelegramApiClient {
     if (error.response?.status && error.response.status >= 500) {
       return `Telegram 服务暂时不可用 (${error.response.status})${description ? `: ${description}` : ''}`
     }
-    if (
-      error.code === 'ECONNABORTED' ||
-      error.code === 'ECONNREFUSED' ||
-      error.code === 'ENOTFOUND' ||
-      error.code === 'ETIMEDOUT'
-    ) {
+    if (['ECONNABORTED', 'ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT'].includes(error.code ?? '')) {
       return 'Telegram 网络连接失败'
     }
     return 'Telegram API 请求失败'
@@ -267,7 +262,9 @@ export class TelegramApiClient {
   }
 
   private sleep(delayMs: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, delayMs))
+    return new Promise((resolve) => {
+      setTimeout(resolve, delayMs)
+    })
   }
 
   private telegramErrorDescription(error: unknown): string | undefined {

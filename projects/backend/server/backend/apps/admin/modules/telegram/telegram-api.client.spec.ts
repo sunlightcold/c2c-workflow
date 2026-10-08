@@ -74,7 +74,11 @@ describe('TelegramApiClient', () => {
       isAxiosError: true,
       response: {
         status: 403,
-        data: { ok: false, error_code: 403, description: 'Forbidden: bot was kicked from the group' },
+        data: {
+          ok: false,
+          error_code: 403,
+          description: 'Forbidden: bot was kicked from the group',
+        },
       },
     })
     const client = new TelegramApiClient()
@@ -86,7 +90,9 @@ describe('TelegramApiClient', () => {
         text: '不应重试',
       }),
     ).rejects.toEqual(
-      new ServiceUnavailableException('Telegram API 请求被拒绝 (403): Forbidden: bot was kicked from the group'),
+      new ServiceUnavailableException(
+        'Telegram API 请求被拒绝 (403): Forbidden: bot was kicked from the group',
+      ),
     )
 
     expect(post).toHaveBeenCalledTimes(1)

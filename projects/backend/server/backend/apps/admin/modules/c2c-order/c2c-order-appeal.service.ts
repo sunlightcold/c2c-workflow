@@ -12,6 +12,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
@@ -103,6 +104,8 @@ export interface SubmitC2cOrderAppealInput {
 
 @Injectable()
 export class C2cOrderAppealService {
+  private readonly logger = new Logger(C2cOrderAppealService.name)
+
   constructor(
     private readonly orders: C2cOrderService,
     @InjectRepository(MerchantEntity)
@@ -155,24 +158,35 @@ export class C2cOrderAppealService {
     reasonCode: number,
     source: 'AUTO' | 'MANUAL',
   ) {
+    const logContext = `tenantId=${tenantId}, merchantId=${merchantId}, merchantOrderId=${orderId}, source=${source}`
+    this.logger.log(`C2C 申诉开始: ${logContext}, reasonCode=${reasonCode}`)
     const context = await this.requireEligibleOrder(tenantId, merchantId, orderId)
     const paymentOrderId = context.paymentOrder?.id
     if (!paymentOrderId) throw new BadRequestException('商家订单未关联已完成的支付订单')
     const claim = await this.store.claim(tenantId, merchantId, orderId)
     if (claim === 'SUBMITTED') throw new BadRequestException('该商家订单已提交申诉')
-    if (claim === 'PROCESSING') throw new C2cAppealProcessingError()
+    if (claim === 'PROCESSING') {
+      this.logger.warn(
+        `C2C 申诉本地拦截: ${logContext}, platformOrderId=${context.platformOrderId}, reason=申诉正在处理中`,
+      )
+      throw new C2cAppealProcessingError()
+    }
 
     let credentials: C2cPlatformCredentials
     let reason: C2cComplaintReason
     let filePaths: string[]
+    let stage = 'RESOLVE_CREDENTIALS'
     try {
       credentials = await this.resolveCredentials(tenantId, merchantId, context.platform)
+      stage = 'QUERY_PLATFORM_ORDER'
       await this.requireUpstreamPaid(context.platform, credentials, context.platformOrderId)
+      stage = 'GET_COMPLAINT_REASONS'
       const reasons = await this.platformClient.getComplaintReasons(
         context.platform,
         credentials,
         context.platformOrderId,
       )
+      stage = 'SELECT_REASON'
       reason = this.requireReason(reasons, reasonCode, context.platformOrderId, source)
       await this.store.setReason(
         tenantId,
@@ -181,12 +195,19 @@ export class C2cOrderAppealService {
         reason.reasonCode,
         reason.reasonDesc,
       )
+      stage = 'GET_RECEIPT'
       const receipt = await this.receipts.getReceipt(tenantId, merchantId, paymentOrderId)
       if (receipt.status !== 'READY' || !receipt.downloadUrl) {
         throw new BadRequestException(receipt.message || '付款回单尚未生成')
       }
+      stage = 'DOWNLOAD_RECEIPT'
       const document = await this.downloader.download(receipt.downloadUrl)
+      stage = 'CONVERT_RECEIPT'
       const images = await this.receiptImages.convert(document, context.platformOrderId)
+      stage = 'UPLOAD_COMPLAINT_FILES'
+      this.logger.log(
+        `C2C 申诉回单上传: ${logContext}, platform=${context.platform}, platformOrderId=${context.platformOrderId}, files=${JSON.stringify(images.map(({ fileName, content }) => ({ fileName, bytes: content.length })))}`,
+      )
       filePaths = await this.platformClient.uploadComplaintFiles(
         context.platform,
         credentials,
@@ -194,11 +215,18 @@ export class C2cOrderAppealService {
         images.map((image) => ({ ...image, imageType: 'jpeg' })),
       )
     } catch (error) {
+      this.logger.error(
+        `C2C 申诉准备失败: ${logContext}, platform=${context.platform}, platformOrderId=${context.platformOrderId}, stage=${stage}, error=${error instanceof Error ? error.message : String(error)}`,
+      )
       await this.store.releaseClaim(tenantId, merchantId, orderId, this.errorMessage(error))
       throw error
     }
 
     try {
+      stage = 'SUBMIT_COMPLAINT'
+      this.logger.log(
+        `C2C 申诉提交上游: ${logContext}, platform=${context.platform}, platformOrderId=${context.platformOrderId}, reasonCode=${reason.reasonCode}, reason=${reason.reasonDesc}, description=${DEFAULT_APPEAL_DESCRIPTION}, fileCount=${filePaths.length}`,
+      )
       const result = await this.platformClient.submitComplaint(context.platform, credentials, {
         description: DEFAULT_APPEAL_DESCRIPTION,
         fileUrls: filePaths,
@@ -206,8 +234,13 @@ export class C2cOrderAppealService {
         reason: reason.reasonDesc,
         reasonCode: reason.reasonCode,
       })
+      stage = 'VALIDATE_COMPLAINT_RESPONSE'
       const complaintNo = this.complaintNo(result.data.complaintNo)
+      stage = 'RECORD_SUBMITTED'
       await this.store.markSubmitted(tenantId, merchantId, orderId, complaintNo)
+      this.logger.log(
+        `C2C 申诉提交成功: ${logContext}, platformOrderId=${context.platformOrderId}, complaintNo=${complaintNo}`,
+      )
       return {
         complaintNo,
         orderNo: context.platformOrderId,
@@ -215,6 +248,9 @@ export class C2cOrderAppealService {
         reasonCode: reason.reasonCode,
       }
     } catch (error) {
+      this.logger.error(
+        `C2C 申诉提交结果待核对: ${logContext}, platform=${context.platform}, platformOrderId=${context.platformOrderId}, stage=${stage}, error=${error instanceof Error ? error.message : String(error)}`,
+      )
       await this.store.markSubmissionUncertain(
         tenantId,
         merchantId,
@@ -237,6 +273,9 @@ export class C2cOrderAppealService {
       throw new BadRequestException('该商家订单已提交申诉')
     }
     if (order.appealStatus === MerchantOrderAppealStatus.PROCESSING) {
+      this.logger.warn(
+        `C2C 申诉本地拦截: tenantId=${tenantId}, merchantId=${merchantId}, merchantOrderId=${orderId}, platformOrderId=${order.platformOrderId}, reason=申诉正在处理中, lastError=${order.appealLastError ?? 'none'}`,
+      )
       throw new C2cAppealProcessingError()
     }
     if (order.status !== MerchantOrderStatus.PENDING_RELEASE) {
