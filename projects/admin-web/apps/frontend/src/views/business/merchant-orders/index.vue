@@ -5,8 +5,10 @@ import type { BusinessApi } from '#/api';
 
 import { computed, onMounted, reactive, ref } from 'vue';
 
-import { Page } from '@vben/common-ui';
+import { useAccess } from '@vben/access';
+import { JsonViewer, Page } from '@vben/common-ui';
 
+import { DownOutlined } from '@ant-design/icons-vue';
 import { notification } from 'ant-design-vue';
 
 import {
@@ -19,6 +21,7 @@ import {
   getMerchantOrderStatisticsApi,
   getMerchantsApi,
   getPaymentAccountsApi,
+  queryMerchantOrderUpstreamApi,
   submitMerchantOrderAppealApi,
   syncMerchantOrdersApi,
 } from '#/api';
@@ -83,6 +86,15 @@ const detailLoading = ref(false);
 const detail = ref<BusinessApi.MerchantOrderDetail>();
 const actionLoading = ref('');
 const statistics = ref<BusinessApi.OrderStatistics>();
+const upstreamOpen = ref(false);
+const upstreamLoading = ref(false);
+const upstream = ref<BusinessApi.MerchantOrderUpstreamQueryResult>();
+const upstreamError = ref('');
+const { hasAccessByCodes } = useAccess();
+
+function getActionPopupContainer() {
+  return window.document.body;
+}
 
 const statisticItems = computed(() =>
   createOrderStatisticItems(statistics.value),
@@ -246,9 +258,10 @@ const gridOptions: VxeTableGridOptions<BusinessApi.MerchantOrder> = {
       align: 'center',
       field: 'active',
       fixed: 'right',
+      minWidth: 180,
       slots: { default: 'action' },
       title: '操作',
-      width: 320,
+      width: 180,
     },
   ],
   showOverflow: true,
@@ -374,6 +387,24 @@ function createPayment(order: BusinessApi.MerchantOrder) {
     onSuccess: () => gridApi.query(),
     title: '确认支付该订单吗？',
   });
+}
+
+async function queryUpstream(order: BusinessApi.MerchantOrder) {
+  upstream.value = undefined;
+  upstreamError.value = '';
+  upstreamOpen.value = true;
+  upstreamLoading.value = true;
+  try {
+    upstream.value = await queryMerchantOrderUpstreamApi(order.id, {
+      merchantId: order.merchantId,
+      tenantId: order.tenantId,
+    });
+  } catch (error) {
+    upstreamError.value =
+      error instanceof Error ? error.message : '上游查询失败';
+  } finally {
+    upstreamLoading.value = false;
+  }
 }
 
 function confirmPaid(order: BusinessApi.MerchantOrder) {
@@ -578,60 +609,68 @@ onMounted(async () => {
         />
       </template>
       <template #action="{ row }">
-        <div
-          class="flex w-full flex-nowrap items-center justify-center gap-1 px-1"
-        >
-          <AButton
-            class="px-1"
-            size="small"
-            type="link"
-            @click="openDetail(row)"
-          >
+        <ASpace size="small" class="whitespace-nowrap">
+          <AButton size="small" type="primary" @click="openDetail(row)">
             详情
           </AButton>
-          <AButton
-            v-access:code="['merchant:order:pay']"
-            class="px-1"
-            :disabled="!canPay(row)"
-            size="small"
-            type="primary"
-            @click="createPayment(row)"
-          >
-            支付
-          </AButton>
-          <AButton
-            v-access:code="['merchant:order:confirm_paid']"
-            class="px-1"
-            :disabled="!canConfirm(row)"
-            size="small"
-            type="primary"
-            @click="confirmPaid(row)"
-          >
-            补偿确认
-          </AButton>
-          <AButton
-            v-access:code="['merchant:order:appeal']"
-            class="px-1"
-            :disabled="!canAppeal(row)"
-            :loading="actionLoading === `appeal:${row.id}`"
-            size="small"
-            type="link"
-            @click="appealOrder(row)"
-          >
-            申诉
-          </AButton>
-          <AButton
-            v-access:code="['merchant:order:cancel']"
-            class="px-1"
-            danger
-            :disabled="!canCancel(row)"
-            size="small"
-            type="link"
-            @click="cancelOrder(row)"
-          >
-            作废
-          </AButton>
-        </div>
+          <ADropdown :get-popup-container="getActionPopupContainer">
+            <AButton
+              size="small"
+              type="text"
+              :loading="actionLoading === `appeal:${row.id}`"
+            >
+              更多
+              <DownOutlined :style="{ fontSize: '12px' }" aria-hidden="true" />
+            </AButton>
+            <template #overlay>
+              <AMenu>
+                <AMenuItem
+                  v-if="hasAccessByCodes(['merchant:order:read'])"
+                  key="upstream"
+                  :disabled="upstreamLoading"
+                  @click="queryUpstream(row)"
+                >
+                  上游查询
+                </AMenuItem>
+                <AMenuItem
+                  v-if="hasAccessByCodes(['merchant:order:pay'])"
+                  key="pay"
+                  :disabled="!canPay(row)"
+                  @click="createPayment(row)"
+                >
+                  支付
+                </AMenuItem>
+                <AMenuItem
+                  v-if="hasAccessByCodes(['merchant:order:confirm_paid'])"
+                  key="confirm"
+                  :disabled="!canConfirm(row)"
+                  @click="confirmPaid(row)"
+                >
+                  补偿确认
+                </AMenuItem>
+                <AMenuItem
+                  v-if="hasAccessByCodes(['merchant:order:appeal'])"
+                  key="appeal"
+                  :disabled="
+                    !canAppeal(row) || actionLoading === `appeal:${row.id}`
+                  "
+                  @click="appealOrder(row)"
+                >
+                  申诉
+                </AMenuItem>
+                <AMenuItem
+                  v-if="hasAccessByCodes(['merchant:order:cancel'])"
+                  key="cancel"
+                  danger
+                  :disabled="!canCancel(row)"
+                  @click="cancelOrder(row)"
+                >
+                  作废
+                </AMenuItem>
+              </AMenu>
+            </template>
+          </ADropdown>
+        </ASpace>
       </template>
     </Grid>
 
@@ -751,6 +790,61 @@ onMounted(async () => {
               </ATimelineItem>
             </ATimeline>
           </template>
+        </template>
+      </ASpin>
+    </ADrawer>
+    <ADrawer
+      v-model:open="upstreamOpen"
+      title="商家订单上游查询"
+      width="min(1000px, 96vw)"
+    >
+      <ASpin :spinning="upstreamLoading">
+        <AAlert
+          v-if="upstreamError"
+          :message="upstreamError"
+          show-icon
+          type="error"
+        />
+        <template v-if="upstream">
+          <ADescriptions :column="1" size="small" class="mb-4">
+            <ADescriptionsItem label="平台订单号">
+              {{ upstream.platformOrderId }}
+            </ADescriptionsItem>
+            <ADescriptionsItem label="交易平台">
+              {{ merchantPlatformText(upstream.platform) }}
+            </ADescriptionsItem>
+            <ADescriptionsItem label="查询时间">
+              {{ formatBusinessTime(upstream.queriedAt) }}
+            </ADescriptionsItem>
+          </ADescriptions>
+          <ATabs default-active-key="normalized">
+            <ATabPane key="normalized" tab="处理后信息">
+              <AAlert
+                v-if="upstream.normalizationError"
+                :message="upstream.normalizationError"
+                show-icon
+                type="error"
+              />
+              <div v-else class="overflow-x-auto">
+                <JsonViewer
+                  :value="upstream.normalized"
+                  :expand-depth="3"
+                  copyable
+                  show-double-quotes
+                />
+              </div>
+            </ATabPane>
+            <ATabPane key="raw" tab="上游原始信息">
+              <div class="overflow-x-auto">
+                <JsonViewer
+                  :value="upstream.raw"
+                  :expand-depth="3"
+                  copyable
+                  show-double-quotes
+                />
+              </div>
+            </ATabPane>
+          </ATabs>
         </template>
       </ASpin>
     </ADrawer>

@@ -7,6 +7,7 @@ Controller：`C2cOrderController`。基础路径：`/v1/sys`。所有接口均�
 | GET    | `/merchant-orders`                     | `merchant:order:read`         | Query `{ tenantId?, merchantId?, platformOrderId?, status?, paymentMethod?, startTime?, endTime?, page?, pageSize? }` | 分页买币订单及关联支付单摘要；不传 `merchantId` 时查询经营单位内全部商家 |
 | GET    | `/merchant-orders/statistics`          | `merchant:order:read`         | Query `{ tenantId?, merchantId?, platformOrderId?, paymentMethod? }`                                                 | 今日、昨日支付成功金额与笔数，今日待付款金额与笔数                         |
 | GET    | `/merchant-orders/{id}`                | `merchant:order:read`         | Query `{ tenantId?, merchantId }`                                                                                     | 订单详情与状态时间线，含 `identityName`、`payeeName`、`identityMatched`、`kycStatus`；实名不一致仍展示核验结果 |
+| GET    | `/merchant-orders/{id}/upstream-query` | `merchant:order:read`         | Query `{ tenantId?, merchantId }` | 实时平台完整响应与当前解析结果，不修改订单 |
 | POST   | `/merchants/{id}/orders/sync`          | `merchant:order:sync`         | Query `{ tenantId? }`                                                                                                 | `{ scanned, created, updated }`                                          |
 | POST   | `/merchant-orders/{id}/payment`        | `merchant:order:pay`          | Body `{ tenantId?, merchantId }`                                                                                      | 按启用支付方案创建支付并锁定支付账号与通道                               |
 | POST   | `/merchant-orders/{id}/confirm-paid`   | `merchant:order:confirm_paid` | Body `{ tenantId?, merchantId }`                                                                                      | 重试平台付款确认，不重复发起支付宝付款                                   |
@@ -39,3 +40,81 @@ Controller：`C2cOrderController`。基础路径：`/v1/sys`。所有接口均�
 
 商家订单保存平台状态快照、收款资料、付款方式 ID 和支付时限。重复同步只更新同一订单；状态变化
 追加时间线。V1 的数据库约束拒绝 `SELL` 订单，后台不存在收款确认或放币入口。
+
+### Operation: merchantOrderQueryUpstream
+
+| 项 | 值 |
+| --- | --- |
+| Method | `GET` |
+| Path | `/v1/sys/merchant-orders/{id}/upstream-query` |
+| Function | 只读查询选中订单的平台实时详情，展示完整原始响应和系统解析结果 |
+| Controller | `C2cOrderController.queryUpstream` |
+| Auth | Bearer token；`merchant:order:read`；所属单位与商家范围校验 |
+| Rate limit | 全局限流规则 |
+| Request DTO | `MerchantOrderDetailDto` |
+| Success data | `MerchantOrderUpstreamResponseDto` |
+
+#### Request
+
+Header：`Authorization: Bearer <accessToken>`。
+
+| 参数 | 位置 | 类型 | 必填 | 校验与用途 |
+| --- | --- | --- | --- | --- |
+| `id` | path | string | 是 | 本地商家订单 UUID，不接受任意平台订单号或 URL |
+| `tenantId` | query | string | 总部用户必填 | UUID；代理商只允许自己的所属单位 |
+| `merchantId` | query | string | 是 | UUID；必须与订单的商家归属一致 |
+
+只查询所选订单一次，不改写数据库快照、支付结果、申诉状态或状态历史，不触发消息、付款或批次提交。
+使用商家当前有效平台凭据：币安调用 `POST /sapi/v1/c2c/orderMatch/getUserOrderDetail`，
+欧易由 `OKX_WEB_PRIVATE` Adapter 调用 `GET /v3/c2c/orders/{orderId}`。
+
+#### Success Response
+
+HTTP `200`，由 `ResponseInterceptor` 包装：
+
+```json
+{
+  "code": 200,
+  "data": {
+    "platform": "BINANCE",
+    "platformOrderId": "22941455316514955264",
+    "queriedAt": "2026-10-08T10:20:00.000Z",
+    "raw": {
+      "success": true,
+      "code": "000000",
+      "data": { "orderNumber": "22941455316514955264", "orderStatus": 2 }
+    },
+    "normalized": null,
+    "normalizationError": "币安数字资产为空"
+  },
+  "msg": "success",
+  "timestamp": "2026-10-08T10:20:00.000Z"
+}
+```
+
+`raw` 保留平台响应包装体及所有业务字段，不返回请求认证头、签名、Cookie、Token、API Key 或私钥。
+`normalized` 成功时为 `C2cBuyOrderDetail`：平台订单号、方向、状态、资产与数量、法币与金额、
+创建时间、付款方式 ID、付款方式、收款账号、收款人、平台实名、可付款判断及可选的
+KYC、不可付款原因、付款期限、更新时间。金额与外部 ID 使用字符串，时间使用 ISO 8601。
+解析失败时 `normalized` 为 `null`、`normalizationError` 为具体原因，原始响应仍可查看。
+
+#### Error Responses
+
+| HTTP Status | code | 场景 | msg 来源 |
+| --- | ---: | --- | --- |
+| 400 | 400 | UUID 或 query 校验失败、商家平台配置不一致、凭据未配置 | DTO / service |
+| 401 | 401 | 未登录或令牌无效 | Auth guard |
+| 403 | 403 | 缺少读取权限或所属单位不匹配 | Permission guard / BusinessScopeService |
+| 404 | 404 | 指定所属单位和商家下没有该订单或商家 | C2cOrderUpstreamService |
+| 500 | 500 | 上游请求失败或平台拒绝查询 | 平台 Adapter / HTTP transport；详细原因记录到后端日志 |
+| 429 | 429 | 超过全局请求频率 | Throttler |
+
+```json
+{
+  "code": 404,
+  "data": {},
+  "msg": "商家订单不存在",
+  "timestamp": "2026-10-08T10:20:00.000Z",
+  "path": "/v1/sys/merchant-orders/00000000-0000-4000-8000-000000000030/upstream-query"
+}
+```

@@ -72,12 +72,16 @@ export class BinanceC2cClient implements C2cPlatformAdapter<BinanceCredentials> 
   }
 
   async getOrderDetail(credentials: BinanceCredentials, orderNumber: string) {
-    const response = await this.post<Record<string, unknown>>(
+    const response = await this.getOrderDetailRaw(credentials, orderNumber)
+    return normalizeBinanceDetail(response.data, orderNumber)
+  }
+
+  getOrderDetailRaw(credentials: BinanceCredentials, orderNumber: string) {
+    return this.post<Record<string, unknown>>(
       credentials,
       '/sapi/v1/c2c/orderMatch/getUserOrderDetail',
       { adOrderNo: orderNumber },
     )
-    return normalizeBinanceDetail(response.data, orderNumber)
   }
 
   async listReportOrders(credentials: BinanceCredentials, input: C2cReportInput) {

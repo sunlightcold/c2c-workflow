@@ -14,8 +14,10 @@ import type {
   C2cPaymentProofImage,
   C2cReportInput,
   C2cReportPage,
+  C2cOrderDetailSnapshot,
 } from './c2c-platform.types'
 import { OkxWebPrivateClient, type OkxWebPrivateCredentials } from './okx-web-private.client'
+import { normalizeBinanceDetail, normalizeOkxDetail } from './c2c-order-normalizer'
 
 export type C2cPlatformCredentials = BinanceCredentials | OkxWebPrivateCredentials
 export type C2cPlatformCapability = keyof C2cCapabilities
@@ -86,6 +88,31 @@ export class C2cPlatformClient {
     return platform === MerchantPlatform.BINANCE
       ? this.binance.getOrderDetail(credentials as BinanceCredentials, orderId)
       : this.okx.getOrderDetail(credentials as OkxWebPrivateCredentials, orderId)
+  }
+
+  async getOrderDetailSnapshot(
+    platform: MerchantPlatform,
+    credentials: C2cPlatformCredentials,
+    orderId: string,
+  ): Promise<C2cOrderDetailSnapshot> {
+    this.requireCapability(platform, 'getOrderDetail')
+    const raw =
+      platform === MerchantPlatform.BINANCE
+        ? await this.binance.getOrderDetailRaw(credentials as BinanceCredentials, orderId)
+        : await this.okx.getOrderDetailRaw(credentials as OkxWebPrivateCredentials, orderId)
+    try {
+      const normalized =
+        platform === MerchantPlatform.BINANCE
+          ? normalizeBinanceDetail(raw.data!, orderId)
+          : normalizeOkxDetail(raw.data!, orderId)
+      return { raw, normalized, normalizationError: null }
+    } catch (error) {
+      return {
+        raw,
+        normalized: null,
+        normalizationError: error instanceof Error ? error.message : String(error),
+      }
+    }
   }
 
   async markOrderAsPaid(

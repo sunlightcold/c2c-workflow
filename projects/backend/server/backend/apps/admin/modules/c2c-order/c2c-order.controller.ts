@@ -9,10 +9,12 @@ import {
   MerchantOrderDetailDto,
   MerchantOrderListDto,
   MerchantOrderStatisticsDto,
+  MerchantOrderUpstreamResponseDto,
 } from './c2c-order.dto'
 import { C2cOrderAppealService } from './c2c-order-appeal.service'
 import { C2cOrderService } from './c2c-order.service'
 import { C2cOrderSyncService } from './c2c-order-sync.service'
+import { C2cOrderUpstreamService } from './c2c-order-upstream.service'
 
 const MerchantOrderPermissions = definePermission('merchant:order', [
   'read',
@@ -29,6 +31,7 @@ export class C2cOrderController {
     private readonly orders: C2cOrderService,
     private readonly syncService: C2cOrderSyncService,
     private readonly appeals: C2cOrderAppealService,
+    private readonly upstream: C2cOrderUpstreamService,
   ) {}
 
   @Get('merchant-orders')
@@ -55,6 +58,18 @@ export class C2cOrderController {
     @User() actor: AuthUser,
   ) {
     return this.orders.detail(this.scope.resolveTenantId(actor, dto.tenantId), dto.merchantId, id)
+  }
+
+  @Get('merchant-orders/:id/upstream-query')
+  @Permission(MerchantOrderPermissions.READ)
+  @ApiOperation({ summary: '只读查询商家平台订单原始详情与解析结果' })
+  @ApiResult({ type: MerchantOrderUpstreamResponseDto })
+  queryUpstream(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() dto: MerchantOrderDetailDto,
+    @User() actor: AuthUser,
+  ) {
+    return this.upstream.query(this.scope.resolveTenantId(actor, dto.tenantId), dto.merchantId, id)
   }
 
   @Get('merchant-orders/:id/appeal-reasons')

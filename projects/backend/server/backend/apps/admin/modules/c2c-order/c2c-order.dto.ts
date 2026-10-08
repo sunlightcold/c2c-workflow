@@ -1,4 +1,4 @@
-import { MerchantOrderStatus } from '@admin/database'
+import { MerchantOrderStatus, MerchantPlatform } from '@admin/database'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { Transform, Type } from 'class-transformer'
 import {
@@ -130,4 +130,33 @@ export class MerchantOrderAppealSubmitDto extends MerchantOrderDetailDto {
   @IsInt()
   @Min(1)
   reasonCode: number
+}
+
+export class MerchantOrderUpstreamResponseDto {
+  @ApiProperty({ enum: MerchantPlatform })
+  platform: MerchantPlatform
+
+  @ApiProperty({ description: '平台订单号，字符串' })
+  platformOrderId: string
+
+  @ApiProperty({ description: '实时查询完成时间，ISO 8601' })
+  queriedAt: string
+
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+    description: '平台完整响应，认证字段除外',
+  })
+  raw: unknown
+
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+    nullable: true,
+    description: '现有订单解析器的实时结果；解析失败时为 null',
+  })
+  normalized: unknown
+
+  @ApiProperty({ type: String, nullable: true, description: '解析失败原因，成功时为 null' })
+  normalizationError: string | null
 }

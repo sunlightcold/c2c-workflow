@@ -1379,7 +1379,8 @@ test('keeps merchant order actions aligned across order states', async ({
         paymentNo: 'PAY-0001',
         sourceBusinessNo: 'ORDER-APPEALABLE',
         sourceType: 'C2C_BUY',
-        status: 'COMPLETED',
+        status: 'SUCCESS',
+        platformConfirmStatus: 'SUCCESS',
         tenantId,
         updatedAt: '2026-09-14T09:05:00.000Z',
         upstreamId: 'ALIPAY-0001',
@@ -1440,25 +1441,28 @@ test('keeps merchant order actions aligned across order states', async ({
   await expect(merchantOrderTime.locator('time')).toHaveCount(1);
   await expect(merchantOrderTime).toContainText('-');
   for (const row of await rows.all()) {
-    await expect(row.getByRole('button')).toHaveCount(5);
-    await expect(row.locator('.flex-nowrap')).toHaveCount(1);
+    await expect(row.getByRole('button')).toHaveCount(2);
+    await expect(row.getByRole('button', { name: /详\s*情/ })).toBeVisible();
+    await expect(row.getByRole('button', { name: /更\s*多/ })).toBeVisible();
+    await expect(row.locator('.whitespace-nowrap')).toHaveCount(1);
   }
 
-  await expect(
-    rows.nth(0).getByRole('button', { name: /支\s*付/ }),
-  ).toBeEnabled();
-  await expect(
-    rows.nth(1).getByRole('button', { name: /支\s*付/ }),
-  ).toBeDisabled();
-  await expect(
-    rows.nth(2).getByRole('button', { name: /支\s*付/ }),
-  ).toBeDisabled();
-  await expect(
-    rows.nth(0).getByRole('button', { name: /申\s*诉/ }),
-  ).toBeDisabled();
-  await expect(
-    rows.nth(1).getByRole('button', { name: /申\s*诉/ }),
-  ).toBeEnabled();
+  const actionRows = await rows.all();
+  for (const [index, row] of actionRows.entries()) {
+    await row.getByRole('button', { name: /更\s*多/ }).hover();
+    const menu = page.locator('.ant-dropdown:visible');
+    await expect(
+      menu.getByRole('menuitem', { name: '上游查询' }),
+    ).toBeVisible();
+    await expect(
+      menu.getByRole('menuitem', { name: '支付', exact: true }),
+    ).toHaveAttribute('aria-disabled', index === 0 ? 'false' : 'true');
+    await expect(
+      menu.getByRole('menuitem', { name: '申诉', exact: true }),
+    ).toHaveAttribute('aria-disabled', index === 1 ? 'false' : 'true');
+    await page.mouse.move(0, 0);
+    await expect(menu).toBeHidden();
+  }
 });
 
 test('manages parallel payment batch policy rules without horizontal overflow', async ({

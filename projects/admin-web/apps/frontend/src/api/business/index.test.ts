@@ -27,6 +27,7 @@ import {
   getPaymentBatchPoliciesApi,
   getPaymentOrdersApi,
   getPaymentOrderStatisticsApi,
+  queryMerchantOrderUpstreamApi,
   restartTelegramBotRuntimeApi,
   rotateMerchantCredentialApi,
   setMerchantStatusApi,
@@ -72,6 +73,25 @@ describe('business api', () => {
     requestMocks.patch.mockReset();
     requestMocks.put.mockReset();
     requestMocks.request.mockReset();
+  });
+
+  it('queries merchant upstream details once with the order tenant and merchant scope', async () => {
+    const snapshot = {
+      raw: { data: { orderStatus: 2 } },
+      normalized: { status: 'PAID' },
+    };
+    requestMocks.get.mockResolvedValue(snapshot);
+    const result = await queryMerchantOrderUpstreamApi('order-1', {
+      merchantId: 'merchant-1',
+      tenantId: 'tenant-1',
+    });
+    expect(result).toEqual(snapshot);
+    expect(requestMocks.get).toHaveBeenCalledTimes(1);
+    expect(requestMocks.get).toHaveBeenCalledWith(
+      '/sys/merchant-orders/order-1/upstream-query',
+      { params: { merchantId: 'merchant-1', tenantId: 'tenant-1' } },
+    );
+    expect(requestMocks.post).not.toHaveBeenCalled();
   });
 
   it('omits an empty merchant filter when listing merchant orders', async () => {

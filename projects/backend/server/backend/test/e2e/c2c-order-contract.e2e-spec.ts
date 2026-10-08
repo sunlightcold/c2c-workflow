@@ -1,4 +1,5 @@
 import { C2cOrderController } from '@/apps/admin/modules/c2c-order/c2c-order.controller'
+import { C2cOrderUpstreamService } from '@/apps/admin/modules/c2c-order/c2c-order-upstream.service'
 import { C2cOrderService } from '@/apps/admin/modules/c2c-order/c2c-order.service'
 import { C2cOrderSyncService } from '@/apps/admin/modules/c2c-order/c2c-order-sync.service'
 import { C2cOrderAppealService } from '@/apps/admin/modules/c2c-order/c2c-order-appeal.service'
@@ -10,6 +11,7 @@ import request from 'supertest'
 import { createAdminContractTestApp, expectWrappedSuccess } from './helpers/admin-contract-test-app'
 
 jest.mock('@/common/decorators', () => ({
+  ApiResult: () => () => undefined,
   Permission: () => () => undefined,
   User: () => () => undefined,
   definePermission: (prefix: string, actions: string[]) =>
@@ -23,6 +25,7 @@ describe('C2C merchant order API contract (e2e)', () => {
   const sync = { sync: jest.fn() }
   const appeals = { getReasons: jest.fn(), submit: jest.fn() }
   const payment = { cancel: jest.fn(), confirmPaid: jest.fn(), create: jest.fn() }
+  const upstream = { query: jest.fn() }
 
   beforeAll(async () => {
     app = await createAdminContractTestApp({
@@ -34,6 +37,7 @@ describe('C2C merchant order API contract (e2e)', () => {
         { provide: C2cOrderSyncService, useValue: sync },
         { provide: C2cOrderAppealService, useValue: appeals },
         { provide: C2cMerchantPaymentService, useValue: payment },
+        { provide: C2cOrderUpstreamService, useValue: upstream },
       ],
     })
   })
@@ -54,7 +58,6 @@ describe('C2C merchant order API contract (e2e)', () => {
       'tenant-1',
       '00000000-0000-4000-8000-000000000020',
       '00000000-0000-4000-8000-000000000030',
-      'BATCH',
     )
   })
 
@@ -99,6 +102,40 @@ describe('C2C merchant order API contract (e2e)', () => {
 
   beforeEach(() => jest.clearAllMocks())
   afterAll(async () => app.close())
+
+  it('returns a scoped read-only upstream snapshot without synchronizing or creating payments', async () => {
+    upstream.query.mockResolvedValue({
+      platform: 'BINANCE',
+      platformOrderId: '22941455316514955264',
+      queriedAt: '2026-10-08T10:20:00.000Z',
+      raw: { success: true, code: '000000', data: { orderStatus: 2 } },
+      normalized: { status: 'PAID', fiatAmount: '19647.00' },
+      normalizationError: null,
+    })
+    const response = await request(app.getHttpServer())
+      .get('/v1/sys/merchant-orders/00000000-0000-4000-8000-000000000030/upstream-query')
+      .query({
+        tenantId: '00000000-0000-4000-8000-000000000010',
+        merchantId: '00000000-0000-4000-8000-000000000020',
+      })
+      .expect(200)
+    expectWrappedSuccess(response.body)
+    expect(response.body.data.raw.data.orderStatus).toBe(2)
+    expect(upstream.query).toHaveBeenCalledWith(
+      'tenant-1',
+      '00000000-0000-4000-8000-000000000020',
+      '00000000-0000-4000-8000-000000000030',
+    )
+    expect(sync.sync).not.toHaveBeenCalled()
+    expect(payment.create).not.toHaveBeenCalled()
+  })
+
+  it('requires a valid merchant scope for upstream queries', async () => {
+    await request(app.getHttpServer())
+      .get('/v1/sys/merchant-orders/00000000-0000-4000-8000-000000000030/upstream-query')
+      .expect(400)
+    expect(upstream.query).not.toHaveBeenCalled()
+  })
 
   it('lists one merchant buy-order scope with bounded pagination', async () => {
     orders.list.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 })

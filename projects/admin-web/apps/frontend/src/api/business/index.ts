@@ -295,6 +295,34 @@ export namespace BusinessApi {
     paymentOrder: null | (PaymentOrder & { history: StatusHistory[] });
   }
 
+  export interface MerchantOrderUpstreamQueryResult {
+    normalizationError: null | string;
+    normalized: null | {
+      asset: string;
+      assetAmount: null | string;
+      createdAt: string;
+      fiatAmount: string;
+      fiatCurrency: string;
+      identityName: string;
+      kycStatus?: string;
+      payable: boolean;
+      payeeIdentity: string;
+      payeeName: string;
+      paymentDeadline?: string;
+      paymentMethod: string;
+      platformOrderId: string;
+      platformPaymentMethodId: string;
+      side: 'BUY';
+      status: string;
+      unpayableReason?: string;
+      updatedAt?: string;
+    };
+    platform: MerchantPlatform;
+    platformOrderId: string;
+    queriedAt: string;
+    raw: unknown;
+  }
+
   export interface MerchantOrderAppealReason {
     reasonCode: number;
     reasonDesc: string;
@@ -896,6 +924,14 @@ export const getMerchantOrderApi = (
 ) =>
   requestClient.get<BusinessApi.MerchantOrderDetail>(
     `/sys/merchant-orders/${id}`,
+    { params },
+  );
+export const queryMerchantOrderUpstreamApi = (
+  id: string,
+  params: BusinessApi.TenantContext & { merchantId: string },
+) =>
+  requestClient.get<BusinessApi.MerchantOrderUpstreamQueryResult>(
+    `/sys/merchant-orders/${id}/upstream-query`,
     { params },
   );
 export const syncMerchantOrdersApi = (

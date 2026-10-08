@@ -28,6 +28,7 @@ describe('C2cPlatformClient', () => {
     listOrders: jest.fn(),
     listReportOrders: jest.fn(),
     getOrderDetail: jest.fn(),
+    getOrderDetailRaw: jest.fn(),
     markOrderAsPaid: jest.fn(),
     sendChatText: jest.fn(),
     getComplaintReasons: jest.fn(),
@@ -52,6 +53,7 @@ describe('C2cPlatformClient', () => {
     listOrders: jest.fn(),
     listReportOrders: jest.fn(),
     getOrderDetail: jest.fn(),
+    getOrderDetailRaw: jest.fn(),
     markOrderAsPaid: jest.fn(),
     sendChatText: jest.fn(),
     getComplaintReasons: jest.fn(),
@@ -74,6 +76,93 @@ describe('C2cPlatformClient', () => {
   const client = new C2cPlatformClient(binance as never, okx as never)
 
   beforeEach(() => jest.clearAllMocks())
+
+  it('preserves the complete Binance envelope and uses the existing payment normalizer once', async () => {
+    const raw = {
+      code: '000000',
+      success: true,
+      data: {
+        orderNumber: '22941455316514955264',
+        tradeType: 'BUY',
+        orderStatus: 2,
+        asset: 'USDT',
+        amount: '2954.430000',
+        fiatUnit: 'CNY',
+        totalPrice: '19647.00',
+        createTime: 1791454443171,
+        payType: 'ALIPAY',
+        selectedPayId: '80061360',
+        payAccount: '18516970120',
+        payee: '收款人',
+        realName: '实名',
+        extraField: { original: true },
+      },
+    }
+    binance.getOrderDetailRaw.mockResolvedValue(raw)
+    const result = await client.getOrderDetailSnapshot(
+      MerchantPlatform.BINANCE,
+      binanceCredentials,
+      '22941455316514955264',
+    )
+    expect(result.raw).toEqual(raw)
+    expect(result.normalized).toMatchObject({
+      platformOrderId: '22941455316514955264',
+      fiatAmount: '19647.00',
+      status: 'PAID',
+      payeeName: '收款人',
+    })
+    expect(result.normalizationError).toBeNull()
+    expect(binance.getOrderDetailRaw).toHaveBeenCalledTimes(1)
+    expect(binance.getOrderDetail).not.toHaveBeenCalled()
+    expect(okx.getOrderDetailRaw).not.toHaveBeenCalled()
+  })
+
+  it('returns the complete OKX response and normalized order from the same query', async () => {
+    const raw = {
+      code: 0,
+      requestId: 'trace-1',
+      data: {
+        side: 'buy',
+        orderStatus: 'cancelled',
+        orderProcessStatus: 3,
+        baseAmount: '10.00',
+        baseCurrency: 'USDT',
+        quoteAmount: '70.00',
+        quoteCurrency: 'CNY',
+        createdDate: 1791454443171,
+        originalField: 'unchanged',
+      },
+    }
+    okx.getOrderDetailRaw.mockResolvedValue(raw)
+    const result = await client.getOrderDetailSnapshot(
+      MerchantPlatform.OKX,
+      okxCredentials,
+      '260923135225452',
+    )
+    expect(result.raw).toEqual(raw)
+    expect(result.normalized).toMatchObject({
+      platformOrderId: '260923135225452',
+      status: 'CANCELLED',
+      fiatAmount: '70.00',
+    })
+    expect(result.normalizationError).toBeNull()
+    expect(okx.getOrderDetailRaw).toHaveBeenCalledTimes(1)
+  })
+
+  it('preserves the complete OKX response even when its order fields cannot be normalized', async () => {
+    const raw = { code: 0, requestId: 'trace-1', data: { unexpectedField: true } }
+    okx.getOrderDetailRaw.mockResolvedValue(raw)
+    const result = await client.getOrderDetailSnapshot(
+      MerchantPlatform.OKX,
+      okxCredentials,
+      '260923135225452',
+    )
+    expect(result.raw).toEqual(raw)
+    expect(result.normalized).toBeNull()
+    expect(result.normalizationError).toEqual(expect.any(String))
+    expect(okx.getOrderDetailRaw).toHaveBeenCalledTimes(1)
+    expect(binance.getOrderDetailRaw).not.toHaveBeenCalled()
+  })
 
   it.each([
     [MerchantPlatform.BINANCE, binance, okx, binanceCredentials],

@@ -1,6 +1,8 @@
 import { Test } from '@nestjs/testing'
 import { BinanceC2cClient } from './binance-c2c.client'
+import { C2cPlatformClient } from './c2c-platform.client'
 import { OkxWebPrivateClient } from './okx-web-private.client'
+import { MerchantPlatform } from '@admin/database'
 import {
   C2C_HTTP_TRANSPORT,
   C2cBuyOrderStatus,
@@ -25,6 +27,24 @@ describe('C2C buy-order clients', () => {
     }).compile()
     binance = module.get(BinanceC2cClient)
     okx = module.get(OkxWebPrivateClient)
+  })
+
+  it('retains an empty OKX detail response for diagnostics but rejects it for business use', async () => {
+    const response = { code: 0, data: null, msg: '详情为空', requestId: 'trace-empty' }
+    const credentials = { cookie: 'cookie', authorization: 'token', timeoutMs: 5000 }
+    http.request.mockResolvedValue(response)
+    await expect(okx.getOrderDetailRaw(credentials, '260923135225452')).resolves.toEqual(response)
+    const snapshot = await new C2cPlatformClient(binance, okx).getOrderDetailSnapshot(
+      MerchantPlatform.OKX,
+      credentials,
+      '260923135225452',
+    )
+    expect(snapshot).toEqual({
+      raw: response,
+      normalized: null,
+      normalizationError: expect.any(String),
+    })
+    await expect(okx.getOrderDetail(credentials, '260923135225452')).rejects.toThrow('详情为空')
   })
 
   it('declares every supported and unsupported provider capability explicitly', () => {

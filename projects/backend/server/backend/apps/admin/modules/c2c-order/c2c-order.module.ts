@@ -25,6 +25,7 @@ import { C2cPlatformChatService } from './c2c-platform-chat.service'
 import { C2cAutoAppealService } from './c2c-auto-appeal.service'
 import { C2cReportService } from './c2c-report.service'
 import { C2cCompletionReplyService } from './c2c-completion-reply.service'
+import { C2cOrderUpstreamService } from './c2c-order-upstream.service'
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { C2cCompletionReplyService } from './c2c-completion-reply.service'
     C2cReceiptImageService,
     ReceiptDocumentDownloader,
     C2cOrderService,
+    C2cOrderUpstreamService,
     C2cPlatformChatService,
   ],
   exports: [

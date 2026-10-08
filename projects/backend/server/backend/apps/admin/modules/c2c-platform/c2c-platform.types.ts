@@ -155,6 +155,12 @@ export interface C2cBuyOrderPage {
   total: number
 }
 
+export interface C2cOrderDetailSnapshot {
+  raw: unknown
+  normalized: C2cBuyOrderDetail | null
+  normalizationError: string | null
+}
+
 export interface C2cPlatformAdapter<TCredentials> {
   getCapabilities: () => C2cCapabilities
   getMarkPaidPolicy: (credentials: TCredentials) => C2cMarkPaidPolicy

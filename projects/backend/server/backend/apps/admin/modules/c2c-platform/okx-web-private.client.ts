@@ -135,13 +135,18 @@ export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCred
   }
 
   async getOrderDetail(credentials: OkxWebPrivateCredentials, orderId: string) {
+    const response = await this.getOrderDetailRaw(credentials, orderId)
+    if (!response.data) throw new Error(response.msg ?? '欧易 C2C 订单详情无效')
+    return normalizeOkxDetail(response.data, orderId)
+  }
+
+  async getOrderDetailRaw(credentials: OkxWebPrivateCredentials, orderId: string) {
     const response = await this.get<Record<string, unknown>>(
       credentials,
       `/v3/c2c/orders/${this.orderId(orderId)}`,
       {},
     )
-    if (!response.data) throw new Error(response.msg ?? '欧易 C2C 订单详情无效')
-    return normalizeOkxDetail(response.data, orderId)
+    return response
   }
 
   async checkAntiFraud(credentials: OkxWebPrivateCredentials, orderId: string, fiat: string) {
