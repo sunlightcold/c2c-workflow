@@ -13,7 +13,11 @@ import {
   type C2cPlatformAdapter,
   type C2cReportInput,
 } from './c2c-platform.types'
-import { normalizeBinanceDetail, normalizeBinanceSummary } from './c2c-order-normalizer'
+import {
+  normalizeBinanceDetail,
+  normalizeBinanceSummary,
+  normalizeBinanceReportSummary,
+} from './c2c-order-normalizer'
 
 export interface BinanceCredentials {
   apiKey: string
@@ -65,6 +69,8 @@ export class BinanceC2cClient implements C2cPlatformAdapter<BinanceCredentials> 
     return {
       items,
       total,
+      rawItemCount: response.data.length,
+      rawOrderIds: response.data.map((item) => String(item.orderNumber ?? '')),
       hasMore:
         response.data.length > 0 &&
         (hasUpstreamTotal ? input.page * input.rows < total : response.data.length === input.rows),
@@ -96,13 +102,18 @@ export class BinanceC2cClient implements C2cPlatformAdapter<BinanceCredentials> 
         tradeType: input.tradeType,
       },
     )
-    const total = Number.isFinite(Number(response.total))
-      ? Number(response.total)
-      : response.data.length
+    const hasUpstreamTotal = response.total !== undefined && Number.isFinite(Number(response.total))
+    const total = hasUpstreamTotal ? Number(response.total) : response.data.length
     return {
-      items: response.data.map(normalizeBinanceSummary),
+      items: response.data
+        .filter((item) => String(item.tradeType).toUpperCase() === 'BUY')
+        .map(normalizeBinanceReportSummary),
       total,
-      hasMore: input.page * input.rows < total,
+      rawItemCount: response.data.length,
+      rawOrderIds: response.data.map((item) => String(item.orderNumber ?? '')),
+      hasMore:
+        response.data.length > 0 &&
+        (hasUpstreamTotal ? input.page * input.rows < total : response.data.length === input.rows),
     }
   }
 

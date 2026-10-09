@@ -15,7 +15,11 @@ import {
   type C2cReportInput,
   C2cCredentialRejectedError,
 } from './c2c-platform.types'
-import { normalizeOkxDetail, normalizeOkxSummary } from './c2c-order-normalizer'
+import {
+  normalizeOkxDetail,
+  normalizeOkxSummary,
+  normalizeOkxReportSummary,
+} from './c2c-order-normalizer'
 
 export interface OkxWebPrivateCredentials {
   cookie: string
@@ -76,7 +80,7 @@ export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCred
     const rawItems = Array.isArray(data) ? data : (data?.items ?? data?.orders ?? [])
     const items = rawItems
       .filter((item) => String(item.side).toLowerCase() === 'buy')
-      .map(normalizeOkxSummary)
+      .map(input.orderStatusList.length ? normalizeOkxSummary : normalizeOkxReportSummary)
       .filter(
         (item) =>
           !input.orderStatusList.length ||
@@ -90,6 +94,8 @@ export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCred
     return {
       items,
       total,
+      rawItemCount: rawItems.length,
+      rawOrderIds: rawItems.map((item) => String(item.id ?? '')),
       hasMore:
         rawItems.length > 0 &&
         (hasUpstreamTotal ? input.page * input.rows < total : rawItems.length === input.rows),
@@ -119,7 +125,7 @@ export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCred
     const rawItems = Array.isArray(data) ? data : (data?.items ?? data?.orders ?? [])
     const items = rawItems
       .filter((item) => String(item.side).toLowerCase() === 'buy')
-      .map(normalizeOkxSummary)
+      .map(normalizeOkxReportSummary)
     const upstreamTotal = Array.isArray(data)
       ? undefined
       : (data?.total ?? data?.totalItemCount ?? data?.pageInfo?.totalItemCount)
@@ -128,6 +134,8 @@ export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCred
     return {
       items,
       total,
+      rawItemCount: rawItems.length,
+      rawOrderIds: rawItems.map((item) => String(item.id ?? '')),
       hasMore:
         rawItems.length > 0 &&
         (hasUpstreamTotal ? input.page * input.rows < total : rawItems.length === input.rows),

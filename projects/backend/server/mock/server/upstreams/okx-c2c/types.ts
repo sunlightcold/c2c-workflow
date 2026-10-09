@@ -11,7 +11,7 @@ export interface OkxC2cMockOrder {
   id: string
   publicTradingOrderId: string
   side: 'buy' | 'sell'
-  orderStatus: 'new' | 'appeal' | 'completed' | 'cancelled'
+  orderStatus: 'new' | 'appeal' | 'completed' | 'cancelled' | 'expired'
   orderProcessStatus: number
   paymentStatus: 'unpaid' | 'paid' | 'confirmed'
   baseAmount: string

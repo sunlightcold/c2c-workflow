@@ -70,16 +70,16 @@ export class OkxC2cMockPlugin {
   }
 
   private listOrders(query: Record<string, string>) {
-    if (query.orderType !== 'pending')
+    if (!['pending', 'completed'].includes(query.orderType))
       return { status: 200, body: { code: 0, data: { total: 0, items: [] } } }
     const start = Number(query.startTime)
     const end = Number(query.endTime)
     const orders = this.list().filter(
       (order) =>
         order.side === 'buy' &&
-        order.orderStatus === 'new' &&
-        order.orderProcessStatus === 2 &&
-        order.paymentStatus === 'unpaid' &&
+        (query.orderType === 'pending'
+          ? ['new', 'appeal'].includes(order.orderStatus)
+          : ['completed', 'cancelled', 'expired'].includes(order.orderStatus)) &&
         (!Number.isFinite(start) || order.createdDate >= start) &&
         (!Number.isFinite(end) || order.createdDate <= end),
     )

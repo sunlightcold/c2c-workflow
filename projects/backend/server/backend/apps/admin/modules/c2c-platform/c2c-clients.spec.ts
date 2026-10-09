@@ -102,6 +102,72 @@ describe('C2C buy-order clients', () => {
     })
   })
 
+  it('normalizes Binance history string states and pages a full response without an upstream total', async () => {
+    const records = ['COMPLETED', 'CANCELLED'].map((orderStatus, i) => ({
+      orderNumber: `history-${i}`,
+      orderStatus,
+      tradeType: 'BUY',
+      asset: 'USDT',
+      amount: '10',
+      totalPrice: '70.00',
+      fiat: 'CNY',
+      createTime: 1_787_586_752_664,
+    }))
+    http.request.mockResolvedValueOnce({ success: true, code: '000000', data: records })
+    const result = await binance.listReportOrders(
+      { apiKey: 'key', secretKey: 'secret', clientType: 'WEB', timeoutMs: 5000 },
+      { startTimestamp: 1, endTimestamp: 2, page: 1, rows: 2, tradeType: 'BUY' },
+    )
+    expect(result.hasMore).toBe(true)
+    expect(result.items.map((order) => order.status)).toEqual([
+      C2cBuyOrderStatus.COMPLETED,
+      C2cBuyOrderStatus.CANCELLED,
+    ])
+    expect(http.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'GET',
+        url: expect.stringContaining('/sapi/v1/c2c/orderMatch/listUserOrderHistory?'),
+      }),
+    )
+  })
+
+  it('does not turn OKX appealed or unknown report states into cancelled or unpaid orders', async () => {
+    http.request.mockResolvedValueOnce({
+      code: 0,
+      data: {
+        total: 2,
+        items: ['appeal', 'unsupported'].map((orderStatus, i) => ({
+          id: `okx-${i}`,
+          side: 'buy',
+          orderStatus,
+          orderProcessStatus: 3,
+          paymentStatus: 'unpaid',
+          baseAmount: '10',
+          baseCurrency: 'usdt',
+          quoteAmount: '70',
+          quoteCurrency: 'cny',
+          createdDate: 1_787_586_752_664,
+        })),
+      },
+    })
+    const result = await okx.listOrders(
+      { cookie: 'cookie', authorization: 'token', timeoutMs: 5000 },
+      {
+        startDate: 1,
+        endDate: 2,
+        page: 1,
+        rows: 50,
+        tradeType: 'BUY',
+        asset: 'USDT',
+        orderStatusList: [],
+      },
+    )
+    expect(result.items.map((order) => order.status)).toEqual([
+      C2cBuyOrderStatus.DISPUTED,
+      C2cBuyOrderStatus.UNKNOWN,
+    ])
+  })
+
   it('reads OKX merchant reports from the completed upstream order list', async () => {
     http.request.mockResolvedValueOnce({
       code: 0,
@@ -165,6 +231,8 @@ describe('C2C buy-order clients', () => {
       ],
       total: 3,
       hasMore: true,
+      rawItemCount: 2,
+      rawOrderIds: ['260903152326945', '260903152326946'],
     })
     expect(http.request).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -677,6 +745,8 @@ describe('C2C buy-order clients', () => {
       ],
       total: 1,
       hasMore: false,
+      rawItemCount: 1,
+      rawOrderIds: ['BIN-1'],
     })
     await expect(binance.getOrderDetail(credentials, 'BIN-1')).resolves.toMatchObject({
       platformOrderId: 'BIN-1',
@@ -710,7 +780,13 @@ describe('C2C buy-order clients', () => {
           orderStatusList: [1],
         },
       ),
-    ).resolves.toEqual({ items: [], total: 2, hasMore: false })
+    ).resolves.toEqual({
+      items: [],
+      total: 2,
+      hasMore: false,
+      rawItemCount: 2,
+      rawOrderIds: ['BIN-SELL', 'BIN-NO-SIDE'],
+    })
   })
 
   it('uses Binance structured KYC names and rejects an explicit non-PASS KYC result', async () => {
@@ -871,6 +947,8 @@ describe('C2C buy-order clients', () => {
       ],
       total: 1,
       hasMore: false,
+      rawItemCount: 1,
+      rawOrderIds: ['260000000000001'],
     })
     expect(http.request.mock.calls[0][0].params).toEqual(
       expect.objectContaining({ orderType: 'pending', startTime: '1', endTime: '2' }),
@@ -1063,7 +1141,7 @@ describe('C2C buy-order clients', () => {
           orderStatusList: [],
         },
       ),
-    ).resolves.toEqual({ items: [], total: 1, hasMore: false })
+    ).resolves.toMatchObject({ items: [], total: 1, hasMore: false, rawItemCount: 1 })
   })
 
   it('rejects OKX list records without the internal endpoint order id', async () => {
@@ -1144,7 +1222,7 @@ describe('C2C buy-order clients', () => {
           orderStatusList: [1],
         },
       ),
-    ).resolves.toEqual({ items: [], total: 40, hasMore: true })
+    ).resolves.toMatchObject({ items: [], total: 40, hasMore: true, rawItemCount: 1 })
   })
 
   it('does not turn OKX UI flags into payment blockers when the order status remains pending', async () => {

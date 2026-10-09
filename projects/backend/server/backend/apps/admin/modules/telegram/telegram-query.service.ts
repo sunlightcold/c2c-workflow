@@ -13,7 +13,7 @@ import {
   PaymentOrderStatusHistoryEntity,
   PaymentOrderStatus,
 } from '@admin/database'
-import { BadRequestException, Injectable } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, In, Repository } from 'typeorm'
 import { PaymentReceiptService } from '../payment/payment-receipt.service'
@@ -27,6 +27,11 @@ import {
   type TelegramBatchQueryView,
   type TelegramBotReply,
 } from './telegram-query.formatter'
+import {
+  formatProviderReconciliation,
+  splitStatisticsMessages,
+  type LocalReconciliationOrder,
+} from './telegram-statistics.formatter'
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -73,6 +78,7 @@ export interface TelegramQueryCapabilities {
 
 @Injectable()
 export class TelegramQueryService {
+  private readonly logger = new Logger(TelegramQueryService.name)
   constructor(
     @InjectRepository(PaymentOrderEntity)
     private readonly orders: Repository<PaymentOrderEntity>,
@@ -250,10 +256,11 @@ export class TelegramQueryService {
   }
 
   async todayStats(tenantId: string, merchantId: string): Promise<TelegramBotReply> {
+    const window = createRelativeBusinessDayWindow(0)
     return this.paymentStats(
       tenantId,
       merchantId,
-      createRelativeBusinessDayWindow(0),
+      { ...window, endExclusive: new Date() },
       '今日支付统计',
       '北京时间 00:00 - 当前时间',
     )
@@ -352,9 +359,9 @@ export class TelegramQueryService {
               COUNT(*) FILTER (WHERE payment_order.status IN ('SUBMITTING', 'PROCESSING', 'UNKNOWN'))::text AS "processingCount",
               COALESCE(SUM(merchant_order."assetAmount") FILTER (WHERE payment_order.status IN ('SUBMITTING', 'PROCESSING', 'UNKNOWN')), 0)::text AS "processingAssetAmount",
               COALESCE(SUM(payment_order.amount) FILTER (WHERE payment_order.status IN ('SUBMITTING', 'PROCESSING', 'UNKNOWN')), 0)::text AS "processingAmount",
-              COUNT(*) FILTER (WHERE payment_order.status = 'SUCCESS')::text AS "successCount",
-              COALESCE(SUM(merchant_order."assetAmount") FILTER (WHERE payment_order.status = 'SUCCESS'), 0)::text AS "successAssetAmount",
-              COALESCE(SUM(payment_order.amount) FILTER (WHERE payment_order.status = 'SUCCESS'), 0)::text AS "successAmount",
+              COUNT(*) FILTER (WHERE payment_order.status IN ('SUCCESS', 'COMPLETED', 'PLATFORM_CONFIRM_PENDING'))::text AS "successCount",
+              COALESCE(SUM(merchant_order."assetAmount") FILTER (WHERE payment_order.status IN ('SUCCESS', 'COMPLETED', 'PLATFORM_CONFIRM_PENDING')), 0)::text AS "successAssetAmount",
+              COALESCE(SUM(payment_order.amount) FILTER (WHERE payment_order.status IN ('SUCCESS', 'COMPLETED', 'PLATFORM_CONFIRM_PENDING')), 0)::text AS "successAmount",
               COUNT(*) FILTER (WHERE payment_order.status IN ('FAILED', 'CANCELLED', 'FUND_EXCEPTION'))::text AS "failedCount",
               COALESCE(SUM(merchant_order."assetAmount") FILTER (WHERE payment_order.status IN ('FAILED', 'CANCELLED', 'FUND_EXCEPTION')), 0)::text AS "failedAssetAmount",
               COALESCE(SUM(payment_order.amount) FILTER (WHERE payment_order.status IN ('FAILED', 'CANCELLED', 'FUND_EXCEPTION')), 0)::text AS "failedAmount"
@@ -371,33 +378,90 @@ export class TelegramQueryService {
     const total = Number(stats.totalCount)
     const success = Number(stats.successCount)
     const rate = total ? ((success / total) * 100).toFixed(2) : '0.00'
+    const platform = await this.platformStatistics(tenantId, merchantId, window)
+    const timestamp = getCurrentBusinessDateParts().compactDateTime
+    const summary =
+      `<b>${title}</b>\n` +
+      `<i>统计口径：${scope}</i>\n\n` +
+      `<b>C2C系统统计</b>\n` +
+      `成功买入：<code>${statsAsset(stats.successAssetAmount)}</code> USDT\n` +
+      `成功付款：<code>¥${money(stats.successAmount)}</code>\n` +
+      `成功订单：<code>${success}</code> 笔\n` +
+      `成功率：<code>${rate}%</code>\n\n` +
+      `<b>订单状态</b>\n` +
+      `待支付：<code>${Number(stats.awaitSubmitCount)}</code> 笔 / ` +
+      `<code>${statsAsset(stats.awaitSubmitAssetAmount)}</code> USDT / ` +
+      `<code>¥${money(stats.awaitSubmitAmount)}</code>\n` +
+      `支付中：<code>${Number(stats.processingCount)}</code> 笔 / ` +
+      `<code>${statsAsset(stats.processingAssetAmount)}</code> USDT / ` +
+      `<code>¥${money(stats.processingAmount)}</code>\n` +
+      `支付成功：<code>${success}</code> 笔 / ` +
+      `<code>${statsAsset(stats.successAssetAmount)}</code> USDT / ` +
+      `<code>¥${money(stats.successAmount)}</code>\n` +
+      `失败/作废：<code>${Number(stats.failedCount)}</code> 笔 / ` +
+      `<code>${statsAsset(stats.failedAssetAmount)}</code> USDT / ` +
+      `<code>¥${money(stats.failedAmount)}</code>\n` +
+      `汇总：${total} 笔 / ${statsAsset(stats.totalAssetAmount)} USDT / ¥${money(stats.totalAmount)}\n\n` +
+      platform.text
+    const [text, ...additionalMessages] = splitStatisticsMessages(
+      summary,
+      platform.details,
+      `查询时间：${timestamp.slice(4, 6)}-${timestamp.slice(6, 8)} ${timestamp.slice(8, 10)}:${timestamp.slice(10, 12)}:${timestamp.slice(12, 14)}`,
+    )
     return {
       parseMode: 'HTML',
-      text:
-        `<b>${title}</b>\n` +
-        `<i>统计口径：${scope}</i>\n\n` +
-        `<b>买入汇总</b>\n` +
-        `成功买入：<code>${statsAsset(stats.successAssetAmount)}</code> USDT\n` +
-        `成功付款：<code>¥${money(stats.successAmount)}</code>\n` +
-        `成功订单：<code>${success}</code> 笔\n` +
-        `成功率：<code>${rate}%</code>\n\n` +
-        `<b>订单状态</b>\n` +
-        `待支付：<code>${Number(stats.awaitSubmitCount)}</code> 笔 / ` +
-        `<code>${statsAsset(stats.awaitSubmitAssetAmount)}</code> USDT / ` +
-        `<code>¥${money(stats.awaitSubmitAmount)}</code>\n` +
-        `支付中：<code>${Number(stats.processingCount)}</code> 笔 / ` +
-        `<code>${statsAsset(stats.processingAssetAmount)}</code> USDT / ` +
-        `<code>¥${money(stats.processingAmount)}</code>\n` +
-        `支付成功：<code>${success}</code> 笔 / ` +
-        `<code>${statsAsset(stats.successAssetAmount)}</code> USDT / ` +
-        `<code>¥${money(stats.successAmount)}</code>\n` +
-        `失败/作废：<code>${Number(stats.failedCount)}</code> 笔 / ` +
-        `<code>${statsAsset(stats.failedAssetAmount)}</code> USDT / ` +
-        `<code>¥${money(stats.failedAmount)}</code>\n\n` +
-        `<b>订单汇总</b>\n` +
-        `订单总数：<code>${total}</code> 笔\n` +
-        `订单金额：<code>¥${money(stats.totalAmount)}</code>\n` +
-        `买入数量：<code>${statsAsset(stats.totalAssetAmount)}</code> USDT`,
+      text,
+      ...(additionalMessages.length ? { additionalMessages } : {}),
+    }
+  }
+
+  private async platformStatistics(
+    tenantId: string,
+    merchantId: string,
+    window: RequiredBusinessTimeRange,
+  ) {
+    try {
+      const providerOrders = await this.c2cReports.getProviderOrders(
+        tenantId,
+        merchantId,
+        window.start,
+        window.endExclusive,
+      )
+      const localOrders = (await this.dataSource.query(
+        `SELECT merchant_order."platformOrderId", merchant_order."assetAmount",
+                COALESCE(payment_order.amount, merchant_order."fiatAmount")::text AS "fiatAmount",
+                payment_order.status AS "paymentStatus"
+         FROM merchant_order
+         LEFT JOIN payment_order ON payment_order."tenantId" = merchant_order."tenantId"
+           AND payment_order."merchantId" = merchant_order."merchantId"
+           AND payment_order."sourceType" = 'C2C_BUY'
+           AND payment_order."sourceBusinessNo" = merchant_order."platformOrderId"
+         WHERE merchant_order."tenantId" = $1 AND merchant_order."merchantId" = $2
+           AND merchant_order.side = 'BUY' AND merchant_order.asset = 'USDT'
+           AND merchant_order."fiatCurrency" = 'CNY'
+           AND ((merchant_order."platformCreatedAt" >= $3 AND merchant_order."platformCreatedAt" < $4)
+             OR merchant_order."platformOrderId" = ANY($5::varchar[]))
+         ORDER BY merchant_order."platformCreatedAt", merchant_order."platformOrderId"`,
+        [
+          tenantId,
+          merchantId,
+          window.start,
+          window.endExclusive,
+          providerOrders.map((order) => order.platformOrderId),
+        ],
+      )) as LocalReconciliationOrder[]
+      return formatProviderReconciliation(providerOrders, localOrders)
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      this.logger.warn(
+        `机器人平台统计查询失败: tenantId=${tenantId}, merchantId=${merchantId}, reason=${reason}`,
+      )
+      return {
+        text:
+          `<b>商家平台统计</b>\n查询失败：${escapeTelegramHtml(reason.slice(0, 400))}\n\n` +
+          '<b>对账差异</b>\n核对结果：平台数据不完整，暂无法核对',
+        details: [],
+      }
     }
   }
 

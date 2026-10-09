@@ -821,6 +821,15 @@ export class TelegramRuntimeService {
         ? { replyMarkup: replyMarkup ?? result.replyMarkup }
         : {}),
     })
+    for (const text of result.additionalMessages ?? []) {
+      await this.telegram.sendMessage({
+        tokenRef,
+        chatId: message.chatId,
+        replyToMessageId: message.messageId,
+        text,
+        ...(result.parseMode ? { parseMode: result.parseMode } : {}),
+      })
+    }
   }
 
   private readCallbackMessage(payload: Record<string, unknown>): TelegramCallbackMessage | null {

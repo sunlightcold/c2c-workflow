@@ -1,5 +1,13 @@
-import { PaymentBatchStatus, PaymentOrderStatus } from '@admin/database'
+import { MerchantPlatform, PaymentBatchStatus, PaymentOrderStatus } from '@admin/database'
 import { TelegramQueryService } from './telegram-query.service'
+import {
+  BinanceC2cClient,
+  C2cPlatformClient,
+  OkxWebPrivateClient,
+  C2cBuyOrderStatus,
+  type C2cHttpRequest,
+} from '../c2c-platform'
+import { C2cReportService } from '../c2c-order/c2c-report.service'
 
 describe('TelegramQueryService', () => {
   const batchItems = { find: jest.fn() }
@@ -8,7 +16,7 @@ describe('TelegramQueryService', () => {
   const receipts = { getReceipt: jest.fn() }
   const downloader = { download: jest.fn() }
   const receiptImages = { convert: jest.fn() }
-  const c2cReports = { getProviderDailyReport: jest.fn() }
+  const c2cReports = { getProviderDailyReport: jest.fn(), getProviderOrders: jest.fn() }
   const dataSource = {
     getRepository: jest.fn().mockReturnValue(batchItems),
     query: jest.fn(),
@@ -25,7 +33,10 @@ describe('TelegramQueryService', () => {
 
   beforeEach(() => {
     jest.useRealTimers()
-    jest.clearAllMocks()
+    jest.resetAllMocks()
+    dataSource.getRepository.mockReturnValue(batchItems)
+    c2cReports.getProviderOrders.mockResolvedValue([])
+    dataSource.query.mockResolvedValue([])
   })
 
   it('queries every supported order identifier only inside the tenant and merchant', async () => {
@@ -100,7 +111,7 @@ describe('TelegramQueryService', () => {
   })
 
   it('returns today statistics scoped to the authorized merchant', async () => {
-    dataSource.query.mockResolvedValue([
+    dataSource.query.mockResolvedValueOnce([
       {
         totalCount: '3',
         totalAmount: '60.00',
@@ -128,7 +139,7 @@ describe('TelegramQueryService', () => {
     expect(reply.text).toContain(
       '支付中：<code>1</code> 笔 / <code>10</code> USDT / <code>¥10.00</code>',
     )
-    expect(reply.text).toContain('买入数量：<code>39.52</code> USDT')
+    expect(reply.text).toContain('汇总：3 笔 / 39.52 USDT / ¥60.00')
     expect(dataSource.query).toHaveBeenCalledWith(
       expect.stringContaining('payment_order."sourceType" = \'C2C_BUY\''),
       ['tenant-1', 'merchant-1', expect.any(Date), expect.any(Date)],
@@ -136,7 +147,7 @@ describe('TelegramQueryService', () => {
   })
 
   it('keeps up to 18 decimal places for buy-asset statistics', async () => {
-    dataSource.query.mockResolvedValue([
+    dataSource.query.mockResolvedValueOnce([
       {
         totalCount: '1',
         totalAmount: '1.00',
@@ -159,12 +170,12 @@ describe('TelegramQueryService', () => {
     const reply = await service.todayStats('tenant-1', 'merchant-1')
 
     expect(reply.text).toContain('成功买入：<code>0.123456789012345678</code> USDT')
-    expect(reply.text).toContain('买入数量：<code>0.123456789012345678</code> USDT')
+    expect(reply.text).toContain('汇总：1 笔 / 0.123456789012345678 USDT / ¥1.00')
   })
 
   it('returns yesterday statistics for the complete previous Shanghai business day', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-05-23T18:30:00.000Z'))
-    dataSource.query.mockResolvedValue([{}])
+    dataSource.query.mockResolvedValueOnce([{}])
 
     const reply = await service.yesterdayStats('tenant-1', 'merchant-1')
 
@@ -180,7 +191,7 @@ describe('TelegramQueryService', () => {
 
   it('returns current-month statistics from the Shanghai month start until now', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-05-23T18:30:00.000Z'))
-    dataSource.query.mockResolvedValue([{}])
+    dataSource.query.mockResolvedValueOnce([{}])
 
     const reply = await service.currentMonthStats('tenant-1', 'merchant-1')
 
@@ -193,6 +204,195 @@ describe('TelegramQueryService', () => {
       new Date('2026-05-23T18:30:00.000Z'),
     ])
   })
+
+  it('queries live orders up to now and matches scoped local records irrespective of payment creation time', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-10-10T07:30:00Z'))
+    c2cReports.getProviderOrders.mockResolvedValue([
+      {
+        platformOrderId: 'P1',
+        status: C2cBuyOrderStatus.COMPLETED,
+        assetAmount: '10.000',
+        fiatAmount: '70.00',
+      },
+      {
+        platformOrderId: 'P2',
+        status: C2cBuyOrderStatus.COMPLETED,
+        assetAmount: '20',
+        fiatAmount: '140',
+      },
+    ])
+    dataSource.query
+      .mockResolvedValueOnce([{}])
+      .mockResolvedValueOnce([
+        { platformOrderId: 'P1', paymentStatus: 'FAILED', assetAmount: '10', fiatAmount: '70' },
+      ])
+    const reply = await service.todayStats('tenant-1', 'merchant-1')
+    expect(c2cReports.getProviderOrders).toHaveBeenCalledWith(
+      'tenant-1',
+      'merchant-1',
+      new Date('2026-10-09T16:00:00Z'),
+      new Date('2026-10-10T07:30:00Z'),
+    )
+    expect(dataSource.query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining(
+        'merchant_order."tenantId" = $1 AND merchant_order."merchantId" = $2',
+      ),
+      ['tenant-1', 'merchant-1', expect.any(Date), expect.any(Date), ['P1', 'P2']],
+    )
+    const sql = dataSource.query.mock.calls[1][0]
+    expect(sql).toContain('payment_order."tenantId" = merchant_order."tenantId"')
+    expect(sql).toContain('payment_order."merchantId" = merchant_order."merchantId"')
+    expect(sql).not.toContain('payment_order."createdAt"')
+    expect(reply.text).toContain('已完成：2 笔 / 30 USDT / ¥210.00')
+    expect(reply.text).toContain('<code>P1</code>｜平台已完成，系统付款失败｜10 USDT｜¥70.00')
+    expect(reply.text).toContain('<code>P2</code>｜平台订单未同步到系统｜20 USDT｜¥140.00')
+    expect(reply.text).toContain('核对结果：2 笔需核实')
+    expect(reply.text).toContain('查询时间：10-10 15:30:00')
+    expect(reply.additionalMessages).toBeUndefined()
+  })
+
+  it('preserves system statistics and reports unavailable reconciliation when the platform fails', async () => {
+    dataSource.query.mockResolvedValueOnce([
+      { successCount: '2', successAmount: '70', successAssetAmount: '10' },
+    ])
+    c2cReports.getProviderOrders.mockRejectedValue(new Error('平台分页重复 <incomplete>'))
+    const reply = await service.yesterdayStats('tenant-1', 'merchant-1')
+    expect(reply.text).toContain('成功买入：<code>10</code> USDT')
+    expect(reply.text).toContain('查询失败：平台分页重复 &lt;incomplete&gt;')
+    expect(reply.text).toContain('暂无法核对')
+    expect(reply.text).not.toContain('数据一致')
+    expect(dataSource.query).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([MerchantPlatform.BINANCE, MerchantPlatform.OKX])(
+    'renders paged live %s responses through actual adapters, report service and reconciliation',
+    async (platform) => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-10T07:30:00Z'))
+      const created = Date.parse('2026-10-10T01:00:00Z')
+      const pending = Array.from({ length: 52 }, (_, i) => ({
+        orderNumber: `P${i}`,
+        orderStatus: 2,
+        tradeType: 'BUY',
+        asset: 'USDT',
+        amount: '10',
+        totalPrice: '70.00',
+        fiat: 'CNY',
+        createTime: created,
+        id: `P${i}`,
+        side: 'buy',
+        paymentStatus: 'paid',
+        baseCurrency: 'usdt',
+        baseAmount: '10',
+        quoteCurrency: 'cny',
+        quoteAmount: '70',
+        createdDate: created,
+      }))
+      const history = ['P0', 'manual', 'cancelled'].map((id) => ({
+        ...pending[0],
+        id,
+        orderNumber: id,
+        orderStatus: id === 'cancelled' ? 'CANCELLED' : 'COMPLETED',
+      }))
+      const pendingRecords =
+        platform === MerchantPlatform.OKX
+          ? pending.map((item) => ({ ...item, orderStatus: 'new' }))
+          : pending
+      const historyRecords =
+        platform === MerchantPlatform.OKX
+          ? history.map((item) => ({ ...item, orderStatus: item.orderStatus.toLowerCase() }))
+          : history
+      const http = {
+        request: jest.fn(async (request: C2cHttpRequest) => {
+          const url = new URL(request.url)
+          const query = request.params ?? Object.fromEntries(url.searchParams)
+          const isPending =
+            platform === MerchantPlatform.OKX
+              ? query.orderType === 'pending'
+              : request.method === 'POST'
+          const input =
+            platform === MerchantPlatform.BINANCE && isPending
+              ? (request.body as Record<string, unknown>)
+              : query
+          const page = Number(input.page ?? input.pageIndex)
+          const rows = Number(input.rows ?? input.pageSize)
+          const records = isPending ? pendingRecords : historyRecords
+          const items = records.slice((page - 1) * rows, page * rows)
+          return platform === MerchantPlatform.OKX
+            ? {
+                code: 0,
+                data: {
+                  items,
+                  total: records.length,
+                },
+              }
+            : { code: '000000', success: true, data: items, total: records.length }
+        }),
+      }
+      const client = new C2cPlatformClient(
+        new BinanceC2cClient(http as never),
+        new OkxWebPrivateClient(http as never),
+      )
+      const merchantRepo = { findOne: jest.fn().mockResolvedValue({ id: 'merchant-1', platform }) }
+      const credentials = {
+        getActiveReference: jest.fn().mockResolvedValue({ credentialRef: 'enc://test' }),
+      }
+      const secrets = { resolve: jest.fn().mockResolvedValue({}) }
+      const credentialFactory = {
+        create: jest.fn().mockReturnValue({
+          apiKey: 'key',
+          secretKey: 'secret',
+          clientType: 'WEB',
+          cookie: 'cookie',
+          authorization: 'token',
+          timeoutMs: 5000,
+        }),
+      }
+      const reports = new C2cReportService(
+        merchantRepo as never,
+        credentials as never,
+        secrets as never,
+        credentialFactory as never,
+        client,
+      )
+      const liveService = new TelegramQueryService(
+        orders as never,
+        batches as never,
+        dataSource as never,
+        receipts as never,
+        downloader as never,
+        receiptImages as never,
+        reports,
+      )
+      dataSource.query.mockResolvedValueOnce([{}]).mockResolvedValueOnce([
+        {
+          platformOrderId: 'P0',
+          paymentStatus: 'SUCCESS',
+          assetAmount: '10.000',
+          fiatAmount: '70',
+        },
+        { platformOrderId: 'manual', paymentStatus: 'FAILED', assetAmount: '10', fiatAmount: '70' },
+        {
+          platformOrderId: 'cancelled',
+          paymentStatus: 'SUCCESS',
+          assetAmount: '10',
+          fiatAmount: '70',
+        },
+      ])
+      const reply = await liveService.todayStats('tenant-1', 'merchant-1')
+      const messages = [reply.text, ...(reply.additionalMessages ?? [])]
+      expect(http.request).toHaveBeenCalledTimes(3)
+      expect(reply.text).toContain('已完成：2 笔 / 20 USDT / ¥140.00')
+      expect(reply.text).toContain('已付款待放币：51 笔 / 510 USDT / ¥3570.00')
+      expect(reply.text).toContain('汇总：54 笔 / 540 USDT / ¥3780.00')
+      expect(messages.join('\n')).toContain(
+        '<code>manual</code>｜平台已完成，系统付款失败｜10 USDT｜¥70.00',
+      )
+      expect(messages.every((message) => message.length <= 3500)).toBe(true)
+      expect(reply.text).toContain('核对结果：53 笔需核实')
+      expect(messages.at(-1)).toContain('查询时间：10-10 15:30:00')
+    },
+  )
 
   it('builds a C2C daily report for an explicit business date', async () => {
     c2cReports.getProviderDailyReport.mockResolvedValue({

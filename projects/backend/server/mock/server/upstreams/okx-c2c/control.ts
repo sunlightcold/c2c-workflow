@@ -43,7 +43,11 @@ export function validateOrder(value: unknown): OkxC2cMockOrder {
         ? 'completed'
         : input.orderStatus === 'cancelled'
           ? 'cancelled'
-          : 'new',
+          : input.orderStatus === 'expired'
+            ? 'expired'
+            : input.orderStatus === 'appeal'
+              ? 'appeal'
+              : 'new',
     orderProcessStatus: Number(input.orderProcessStatus ?? 2),
     paymentStatus:
       input.paymentStatus === 'confirmed'

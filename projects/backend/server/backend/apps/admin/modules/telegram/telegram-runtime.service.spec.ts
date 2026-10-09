@@ -614,7 +614,11 @@ describe('TelegramRuntimeService', () => {
       capabilities: [TelegramCapability.PAYMENT_STATISTICS],
       group: { merchantId: 'merchant-1' },
     })
-    queries.todayStats.mockResolvedValue('今日支付统计')
+    queries.todayStats.mockResolvedValue({
+      text: '今日支付统计',
+      parseMode: 'HTML',
+      additionalMessages: ['核实订单一', '核实订单二'],
+    })
     const runtime = new TelegramRuntimeService(
       bots as never,
       authorization as never,
@@ -634,6 +638,15 @@ describe('TelegramRuntimeService', () => {
     })
 
     expect(queries.todayStats).toHaveBeenCalledWith('tenant-1', 'merchant-1')
+    expect(telegram.sendMessage).toHaveBeenCalledTimes(3)
+    expect(telegram.sendMessage.mock.calls.map(([request]) => request.text)).toEqual([
+      '今日支付统计',
+      '核实订单一',
+      '核实订单二',
+    ])
+    for (const [request] of telegram.sendMessage.mock.calls) {
+      expect(request).toMatchObject({ chatId: '-1001', replyToMessageId: 14, parseMode: 'HTML' })
+    }
   })
 
   it.each([

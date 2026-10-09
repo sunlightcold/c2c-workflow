@@ -122,6 +122,8 @@ export interface C2cReportPage {
   hasMore: boolean
   items: C2cReportOrder[]
   total: number
+  rawItemCount?: number
+  rawOrderIds?: string[]
 }
 
 export interface C2cBuyOrderSummary {
@@ -153,6 +155,8 @@ export interface C2cBuyOrderPage {
   hasMore: boolean
   items: C2cBuyOrderSummary[]
   total: number
+  rawItemCount?: number
+  rawOrderIds?: string[]
 }
 
 export interface C2cOrderDetailSnapshot {

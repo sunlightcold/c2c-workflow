@@ -92,6 +92,15 @@ export function normalizeBinanceSummary(input: Record<string, unknown>): C2cBuyO
   }
 }
 
+export function normalizeBinanceReportSummary(input: Record<string, unknown>): C2cBuyOrderSummary {
+  const status = text(input.orderStatus).toUpperCase()
+  const reportStatuses: Record<string, number> = { COMPLETED: 4, CANCELLED: 6 }
+  return normalizeBinanceSummary({
+    ...input,
+    orderStatus: reportStatuses[status] ?? input.orderStatus,
+  })
+}
+
 export function normalizeBinanceDetail(
   input: Record<string, unknown>,
   expectedOrderId: string,
@@ -177,6 +186,23 @@ export function normalizeOkxSummary(input: Record<string, unknown>): C2cBuyOrder
     fiatAmount: requiredAmount(input.quoteAmount ?? input.totalPrice, '欧易法币金额'),
     createdAt: requiredDate(input.createdDate ?? input.createTime, '欧易订单创建时间'),
   }
+}
+
+export function normalizeOkxReportSummary(input: Record<string, unknown>): C2cBuyOrderSummary {
+  const order = normalizeOkxSummary(input)
+  const status = text(input.orderStatus ?? input.status).toLowerCase()
+  const statuses: Record<string, C2cBuyOrderStatus> = {
+    completed: C2cBuyOrderStatus.COMPLETED,
+    cancelled: C2cBuyOrderStatus.CANCELLED,
+    expired: C2cBuyOrderStatus.EXPIRED,
+    appeal: C2cBuyOrderStatus.DISPUTED,
+    disputed: C2cBuyOrderStatus.DISPUTED,
+  }
+  if (statuses[status]) order.status = statuses[status]
+  else if (status && !['new', 'pending', 'processing', 'open'].includes(status)) {
+    order.status = C2cBuyOrderStatus.UNKNOWN
+  }
+  return order
 }
 
 export function normalizeOkxDetail(

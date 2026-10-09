@@ -53,7 +53,7 @@ describe('OKX C2C mock', () => {
     ])
   })
 
-  it('filters out pending responses whose process or payment status is not payable', () => {
+  it('excludes terminal orders from pending responses', () => {
     addOrder({
       publicTradingOrderId: 'PROCESS-4',
       orderProcessStatus: 4,
@@ -65,6 +65,55 @@ describe('OKX C2C mock', () => {
       request('GET', '/v4/c2c/order/getOrderList', { orderType: 'pending' }),
     )
     expect((result.body as any).data.items.map((item: any) => item.id)).toEqual(['260905000000001'])
+  })
+
+  it('returns paid and disputed ongoing orders and paginated terminal history for reports', () => {
+    const createdDate = Date.now()
+    addOrder({ publicTradingOrderId: 'PAID', paymentStatus: 'paid', createdDate })
+    addOrder({ publicTradingOrderId: 'APPEAL', orderStatus: 'appeal', createdDate })
+    addOrder({ publicTradingOrderId: 'COMPLETED', orderStatus: 'completed', createdDate })
+    addOrder({ publicTradingOrderId: 'CANCELLED', orderStatus: 'cancelled', createdDate })
+    addOrder({ publicTradingOrderId: 'EXPIRED', orderStatus: 'expired', createdDate })
+    addOrder({
+      publicTradingOrderId: 'OLDER',
+      orderStatus: 'completed',
+      createdDate: createdDate - 10000,
+    })
+    const query = {
+      startTime: String(createdDate - 1000),
+      endTime: String(createdDate + 1000),
+      pageSize: '2',
+      pageIndex: '1',
+    }
+    const pending = getOkxC2cPlugin().handle(
+      request('GET', '/v4/c2c/order/getOrderList', {
+        ...query,
+        orderType: 'pending',
+        pageSize: '10',
+      }),
+    )
+    expect(
+      (pending.body as any).data.items.map((item: any) => item.publicTradingOrderId),
+    ).toContain('PAID')
+    expect(
+      (pending.body as any).data.items.map((item: any) => item.publicTradingOrderId),
+    ).toContain('APPEAL')
+    const first = getOkxC2cPlugin().handle(
+      request('GET', '/v4/c2c/order/getOrderList', { ...query, orderType: 'completed' }),
+    )
+    const second = getOkxC2cPlugin().handle(
+      request('GET', '/v4/c2c/order/getOrderList', {
+        ...query,
+        orderType: 'completed',
+        pageIndex: '2',
+      }),
+    )
+    expect((first.body as any).data.total).toBe(3)
+    expect(
+      [...(first.body as any).data.items, ...(second.body as any).data.items].map(
+        (item: any) => item.publicTradingOrderId,
+      ),
+    ).toEqual(['COMPLETED', 'CANCELLED', 'EXPIRED'])
   })
 
   it('requires the copied Authorization and Cookie values', () => {

@@ -126,7 +126,15 @@ export class BinanceC2cMockPlugin {
         code: '000000',
         success: true,
         total: orders.length,
-        data: orders.slice(offset, offset + rows).map(this.toListItem),
+        data: orders.slice(offset, offset + rows).map((order) => ({
+          ...this.toListItem(order),
+          orderStatus:
+            order.orderStatus === 4
+              ? 'COMPLETED'
+              : order.orderStatus === 6
+                ? 'CANCELLED'
+                : String(order.orderStatus),
+        })),
       },
     }
   }
