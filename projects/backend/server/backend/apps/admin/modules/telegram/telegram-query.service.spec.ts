@@ -245,11 +245,14 @@ describe('TelegramQueryService', () => {
     expect(sql).toContain('payment_order."merchantId" = merchant_order."merchantId"')
     expect(sql).not.toContain('payment_order."createdAt"')
     expect(reply.text).toContain('已完成：2 笔 / 30 USDT / ¥210.00')
-    expect(reply.text).toContain('<code>P1</code>｜平台已完成，系统付款失败｜10 USDT｜¥70.00')
-    expect(reply.text).toContain('<code>P2</code>｜平台订单未同步到系统｜20 USDT｜¥140.00')
+    expect(reply.text).toContain('系统未完成付款，平台已完成：1 笔 / 10 USDT / ¥70.00')
+    expect(reply.text).toContain('平台订单未同步到系统：1 笔 / 20 USDT / ¥140.00')
+    expect(reply.text).not.toContain('<code>P1</code>')
+    expect(reply.text).not.toContain('<code>P2</code>')
+    expect(reply.text).not.toContain('需核实订单')
     expect(reply.text).toContain('核对结果：2 笔需核实')
     expect(reply.text).toContain('查询时间：10-10 15:30:00')
-    expect(reply.additionalMessages).toBeUndefined()
+    expect(reply).not.toHaveProperty('additionalMessages')
   })
 
   it('preserves system statistics and reports unavailable reconciliation when the platform fails', async () => {
@@ -380,17 +383,18 @@ describe('TelegramQueryService', () => {
         },
       ])
       const reply = await liveService.todayStats('tenant-1', 'merchant-1')
-      const messages = [reply.text, ...(reply.additionalMessages ?? [])]
       expect(http.request).toHaveBeenCalledTimes(3)
       expect(reply.text).toContain('已完成：2 笔 / 20 USDT / ¥140.00')
       expect(reply.text).toContain('已付款待放币：51 笔 / 510 USDT / ¥3570.00')
       expect(reply.text).toContain('汇总：54 笔 / 540 USDT / ¥3780.00')
-      expect(messages.join('\n')).toContain(
-        '<code>manual</code>｜平台已完成，系统付款失败｜10 USDT｜¥70.00',
-      )
-      expect(messages.every((message) => message.length <= 3500)).toBe(true)
+      expect(reply.text).toContain('系统未完成付款，平台已完成：1 笔 / 10 USDT / ¥70.00')
+      expect(reply.text).toContain('平台订单未同步到系统：51 笔 / 510 USDT / ¥3570.00')
+      expect(reply.text).not.toContain('<code>manual</code>')
+      expect(reply.text).not.toContain('需核实订单')
+      expect(reply.text.length).toBeLessThanOrEqual(3500)
+      expect(reply).not.toHaveProperty('additionalMessages')
       expect(reply.text).toContain('核对结果：53 笔需核实')
-      expect(messages.at(-1)).toContain('查询时间：10-10 15:30:00')
+      expect(reply.text).toContain('查询时间：10-10 15:30:00')
     },
   )
 

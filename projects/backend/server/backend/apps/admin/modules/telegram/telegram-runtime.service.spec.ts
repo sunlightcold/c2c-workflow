@@ -608,7 +608,7 @@ describe('TelegramRuntimeService', () => {
     expect(telegram.editMessageReplyMarkup).not.toHaveBeenCalled()
   })
 
-  it('returns merchant-scoped payment statistics', async () => {
+  it('sends merchant-scoped payment statistics as a single summary message', async () => {
     authorization.authorize.mockResolvedValueOnce({
       allowed: true,
       capabilities: [TelegramCapability.PAYMENT_STATISTICS],
@@ -617,7 +617,6 @@ describe('TelegramRuntimeService', () => {
     queries.todayStats.mockResolvedValue({
       text: '今日支付统计',
       parseMode: 'HTML',
-      additionalMessages: ['核实订单一', '核实订单二'],
     })
     const runtime = new TelegramRuntimeService(
       bots as never,
@@ -638,11 +637,9 @@ describe('TelegramRuntimeService', () => {
     })
 
     expect(queries.todayStats).toHaveBeenCalledWith('tenant-1', 'merchant-1')
-    expect(telegram.sendMessage).toHaveBeenCalledTimes(3)
+    expect(telegram.sendMessage).toHaveBeenCalledTimes(1)
     expect(telegram.sendMessage.mock.calls.map(([request]) => request.text)).toEqual([
       '今日支付统计',
-      '核实订单一',
-      '核实订单二',
     ])
     for (const [request] of telegram.sendMessage.mock.calls) {
       expect(request).toMatchObject({ chatId: '-1001', replyToMessageId: 14, parseMode: 'HTML' })

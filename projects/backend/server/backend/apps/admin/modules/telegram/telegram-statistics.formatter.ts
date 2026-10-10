@@ -5,7 +5,6 @@ import {
   formatTrimmedDecimal,
 } from '@/common/utils/decimal'
 import { C2cBuyOrderStatus, type C2cReportOrder } from '../c2c-platform'
-import { escapeTelegramHtml } from './telegram-query.formatter'
 
 export interface LocalReconciliationOrder {
   platformOrderId: string
@@ -49,7 +48,6 @@ export function formatProviderReconciliation(
 ) {
   const statusSummary = new Map<string, Summary>()
   const differences = new Map<Difference, Summary>()
-  const details: string[] = []
   const localById = new Map(localOrders.map((order) => [order.platformOrderId, order]))
   const providerIds = new Set(providerOrders.map((order) => order.platformOrderId))
   const total = emptySummary()
@@ -64,16 +62,12 @@ export function formatProviderReconciliation(
     const summary = differences.get(difference) ?? emptySummary()
     accumulate(summary, order)
     differences.set(difference, summary)
-    if (difference !== 'awaitingRelease') {
-      details.push(detailLine(order, differenceDescription(order, local, difference)))
-    }
   }
   for (const order of localOrders) {
     if (providerIds.has(order.platformOrderId)) continue
     const summary = differences.get('localOnly') ?? emptySummary()
     accumulate(summary, order)
     differences.set('localOnly', summary)
-    details.push(detailLine(order, differenceLabels.localOnly))
   }
   const platformLines = Object.entries(platformLabels)
     .filter(([status]) => status !== 'UNKNOWN' || statusSummary.has(status))
@@ -96,8 +90,11 @@ export function formatProviderReconciliation(
         `${label}：${summaryLine(differences.get(key as Difference) ?? emptySummary())}`,
     )
   const waiting = differences.get('awaitingRelease')?.count ?? 0
-  const result = details.length
-    ? `核对结果：${details.length} 笔需核实${waiting ? `，${waiting} 笔待放币` : ''}`
+  const verificationCount = [...differences.entries()]
+    .filter(([key]) => key !== 'awaitingRelease')
+    .reduce((count, [, summary]) => count + summary.count, 0)
+  const result = verificationCount
+    ? `核对结果：${verificationCount} 笔需核实${waiting ? `，${waiting} 笔待放币` : ''}`
     : waiting
       ? `核对结果：${waiting} 笔待放币，无其他差异`
       : '核对结果：系统与商家平台数据一致'
@@ -105,7 +102,6 @@ export function formatProviderReconciliation(
     text:
       `<b>商家平台统计</b>\n${platformLines.join('\n')}\n汇总：${summaryLine(total)}\n\n` +
       `<b>对账差异</b>\n${differences.size ? `${differenceLines.join('\n')}\n\n` : ''}${result}`,
-    details,
   }
 }
 
@@ -130,42 +126,6 @@ function classify(order: C2cReportOrder, local?: LocalReconciliationOrder): Diff
   return undefined
 }
 
-function differenceDescription(
-  order: C2cReportOrder,
-  local: LocalReconciliationOrder | undefined,
-  difference: Difference,
-) {
-  if (difference === 'platformOnly') return differenceLabels.platformOnly
-  if (difference === 'amountMismatch' && local) {
-    return `数量/金额不一致，系统 ${formatTrimmedDecimal(local.assetAmount, 18)} USDT / ¥${formatDecimal(local.fiatAmount, 2)}`
-  }
-  const labels: Record<string, string> = {
-    SUCCESS: '支付成功',
-    COMPLETED: '支付成功',
-    PLATFORM_CONFIRM_PENDING: '已付款待平台确认',
-    FAILED: '付款失败',
-    CANCELLED: '已作废',
-    FUND_EXCEPTION: '资金异常',
-    PENDING_CONFIG: '待配置',
-    CREATED: '待支付',
-    READY: '待支付',
-    SUBMITTING: '支付中',
-    PROCESSING: '支付中',
-    UNKNOWN: '支付结果未知',
-  }
-  const system = local?.paymentStatus
-    ? (labels[local.paymentStatus] ?? local.paymentStatus)
-    : '无支付订单'
-  return `平台${platformLabels[order.status]}，系统${system}`
-}
-
-function detailLine(order: LocalReconciliationOrder | C2cReportOrder, description: string) {
-  return (
-    `<code>${escapeTelegramHtml(order.platformOrderId)}</code>｜${escapeTelegramHtml(description)}｜` +
-    `${formatTrimmedDecimal(order.assetAmount, 18)} USDT｜¥${formatDecimal(order.fiatAmount, 2)}`
-  )
-}
-
 function emptySummary(): Summary {
   return { count: 0, assetAmount: '0', fiatAmount: '0' }
 }
@@ -178,31 +138,4 @@ function accumulate(summary: Summary, order: { assetAmount: string; fiatAmount: 
 
 function summaryLine(summary: Summary) {
   return `${summary.count} 笔 / ${formatTrimmedDecimal(summary.assetAmount, 18)} USDT / ¥${formatDecimal(summary.fiatAmount, 2)}`
-}
-
-export function splitStatisticsMessages(
-  summary: string,
-  lines: string[],
-  footer: string,
-): string[] {
-  const messages: string[] = []
-  let text = summary
-  let heading = '\n\n<b>需核实订单</b>'
-  for (const line of lines) {
-    if (text.length + heading.length + line.length + 1 > 3500) {
-      messages.push(text)
-      text = '<b>需核实订单（续）</b>'
-      heading = ''
-    }
-    text += `${heading}\n${line}`
-    heading = ''
-  }
-  if (text.length + footer.length + 2 > 3500) {
-    messages.push(text)
-    text = footer
-  } else {
-    text += `\n\n${footer}`
-  }
-  messages.push(text)
-  return messages
 }

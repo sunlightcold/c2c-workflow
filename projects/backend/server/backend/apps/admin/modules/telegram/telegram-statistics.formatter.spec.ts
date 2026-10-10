@@ -1,7 +1,6 @@
 import { C2cBuyOrderStatus, type C2cReportOrder } from '../c2c-platform'
 import {
   formatProviderReconciliation,
-  splitStatisticsMessages,
   type LocalReconciliationOrder,
 } from './telegram-statistics.formatter'
 
@@ -23,7 +22,7 @@ const local = (id: string, paymentStatus: string | null = 'SUCCESS'): LocalRecon
 })
 
 describe('Telegram live statistics reconciliation', () => {
-  it('separates manual platform completion, missing payment orders, and completely missing local orders', () => {
+  it('summarizes manual platform completion and missing local records without order details', () => {
     const result = formatProviderReconciliation(
       [provider('failed'), provider('no-payment'), provider('missing')],
       [local('failed', 'FAILED'), local('no-payment', null)],
@@ -31,20 +30,16 @@ describe('Telegram live statistics reconciliation', () => {
     expect(result.text).toContain('系统未完成付款，平台已完成：2 笔 / 20 USDT / ¥140.00')
     expect(result.text).toContain('平台订单未同步到系统：1 笔 / 10 USDT / ¥70.00')
     expect(result.text).toContain('核对结果：3 笔需核实')
-    expect(result.details).toEqual([
-      '<code>failed</code>｜平台已完成，系统付款失败｜10 USDT｜¥70.00',
-      '<code>no-payment</code>｜平台已完成，系统无支付订单｜10 USDT｜¥70.00',
-      '<code>missing</code>｜平台订单未同步到系统｜10 USDT｜¥70.00',
-    ])
+    expect(result).not.toHaveProperty('details')
+    expect(result.text).not.toContain('<code>')
     expect(result.text).not.toContain('漏付')
   })
 
-  it('counts awaiting release without adding normal orders to verification details', () => {
+  it('counts awaiting release separately from orders requiring verification', () => {
     const result = formatProviderReconciliation(
       [provider('complete'), provider('paid', C2cBuyOrderStatus.PAID)],
       [local('complete'), local('paid')],
     )
-    expect(result.details).toEqual([])
     expect(result.text).toContain('核对结果：1 笔待放币，无其他差异')
     expect(result.text).toContain('汇总：2 笔 / 20 USDT / ¥140.00')
   })
@@ -58,7 +53,6 @@ describe('Telegram live statistics reconciliation', () => {
   ])('flags paid orders with platform status %s', (status) => {
     const result = formatProviderReconciliation([provider('P1', status)], [local('P1')])
     expect(result.text).toContain('核对结果：1 笔需核实')
-    expect(result.details).toHaveLength(1)
     expect(result.text).not.toContain('数据一致')
   })
 
@@ -68,7 +62,7 @@ describe('Telegram live statistics reconciliation', () => {
       [local('P1', 'FAILED')],
     )
     expect(result.text).toContain('平台已付款，系统未完成付款：1 笔 / 10 USDT / ¥70.00')
-    expect(result.details[0]).toContain('平台已付款待放币，系统付款失败')
+    expect(result.text).toContain('核对结果：1 笔需核实')
   })
 
   it('uses decimal equality and retains 18-digit precision in aggregates', () => {
@@ -84,39 +78,42 @@ describe('Telegram live statistics reconciliation', () => {
     )
     expect(result.text).toContain('汇总：2 笔 / 0.300000000000000001 USDT / ¥200.20')
     expect(result.text).toContain('数据一致')
-    expect(result.details).toEqual([])
   })
 
-  it('reports each discrepancy once and escapes external order identifiers', () => {
+  it('counts each discrepancy once without exposing external order identifiers', () => {
     const result = formatProviderReconciliation(
       [{ ...provider('<P&1>'), fiatAmount: '71' }],
       [local('<P&1>', 'FAILED'), local('missing')],
     )
-    expect(result.details).toHaveLength(2)
-    expect(result.details[0]).toContain('<code>&lt;P&amp;1&gt;</code>')
-    expect(result.details[0]).toContain('数量/金额不一致，系统 10 USDT / ¥70.00')
-    expect(result.details[1]).toContain('系统订单未在平台查到')
+    expect(result.text).toContain('双方订单金额或数量不一致：1 笔 / 10 USDT / ¥71.00')
+    expect(result.text).toContain('系统订单未在平台查到：1 笔 / 10 USDT / ¥70.00')
+    expect(result.text).not.toContain('<P&1>')
+    expect(result.text).not.toContain('missing')
     expect(result.text).toContain('核对结果：2 笔需核实')
   })
 
   it('recognizes legacy successful payment states', () => {
     expect(
-      formatProviderReconciliation([provider('P1')], [local('P1', 'COMPLETED')]).details,
-    ).toEqual([])
+      formatProviderReconciliation([provider('P1')], [local('P1', 'COMPLETED')]).text,
+    ).toContain('数据一致')
   })
 
-  it('keeps short details within the approved template and splits long details without dropping orders', () => {
-    const short = splitStatisticsMessages('summary', ['order'], 'timestamp')
-    expect(short).toEqual(['summary\n\n<b>需核实订单</b>\norder\n\ntimestamp'])
-    const lines = Array.from(
-      { length: 250 },
-      (_, i) => `<code>P${i}</code>｜平台已完成，系统付款失败｜10 USDT｜¥70.00`,
+  it('keeps large discrepancy volumes summarized in fixed rows', () => {
+    const orders = Array.from({ length: 1000 }, (_, i) => provider(`external-order-${i}`))
+    const result = formatProviderReconciliation(orders, [])
+    expect(result.text).toContain('平台订单未同步到系统：1000 笔 / 10000 USDT / ¥70000.00')
+    expect(result.text).toContain('核对结果：1000 笔需核实')
+    expect(result.text).not.toContain('external-order-')
+    expect(result.text).not.toContain('需核实订单')
+    expect(result).not.toHaveProperty('details')
+    expect(result.text.length).toBeLessThan(1500)
+  })
+
+  it('counts verification differences and awaiting release independently', () => {
+    const result = formatProviderReconciliation(
+      [provider('paid', C2cBuyOrderStatus.PAID), provider('failed')],
+      [local('paid'), local('failed', 'FAILED'), local('absent')],
     )
-    const messages = splitStatisticsMessages('summary', lines, 'timestamp')
-    expect(messages.length).toBeGreaterThan(1)
-    expect(messages.every((message) => message.length <= 3500)).toBe(true)
-    for (const line of lines)
-      expect(messages.filter((message) => message.includes(line))).toHaveLength(1)
-    expect(messages.at(-1)).toContain('timestamp')
+    expect(result.text).toContain('核对结果：2 笔需核实，1 笔待放币')
   })
 })

@@ -13,7 +13,6 @@ export interface TelegramReplyPhoto {
 }
 
 export interface TelegramBotReply {
-  additionalMessages?: string[]
   parseMode?: 'HTML'
   photos?: TelegramReplyPhoto[]
   replyMarkup?: { inline_keyboard: TelegramInlineButton[][] }

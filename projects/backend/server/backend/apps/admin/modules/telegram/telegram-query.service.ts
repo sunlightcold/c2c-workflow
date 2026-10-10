@@ -29,7 +29,6 @@ import {
 } from './telegram-query.formatter'
 import {
   formatProviderReconciliation,
-  splitStatisticsMessages,
   type LocalReconciliationOrder,
 } from './telegram-statistics.formatter'
 
@@ -403,15 +402,11 @@ export class TelegramQueryService {
       `<code>¥${money(stats.failedAmount)}</code>\n` +
       `汇总：${total} 笔 / ${statsAsset(stats.totalAssetAmount)} USDT / ¥${money(stats.totalAmount)}\n\n` +
       platform.text
-    const [text, ...additionalMessages] = splitStatisticsMessages(
-      summary,
-      platform.details,
-      `查询时间：${timestamp.slice(4, 6)}-${timestamp.slice(6, 8)} ${timestamp.slice(8, 10)}:${timestamp.slice(10, 12)}:${timestamp.slice(12, 14)}`,
-    )
     return {
       parseMode: 'HTML',
-      text,
-      ...(additionalMessages.length ? { additionalMessages } : {}),
+      text:
+        `${summary}\n\n` +
+        `查询时间：${timestamp.slice(4, 6)}-${timestamp.slice(6, 8)} ${timestamp.slice(8, 10)}:${timestamp.slice(10, 12)}:${timestamp.slice(12, 14)}`,
     }
   }
 
@@ -460,7 +455,6 @@ export class TelegramQueryService {
         text:
           `<b>商家平台统计</b>\n查询失败：${escapeTelegramHtml(reason.slice(0, 400))}\n\n` +
           '<b>对账差异</b>\n核对结果：平台数据不完整，暂无法核对',
-        details: [],
       }
     }
   }
