@@ -1,5 +1,6 @@
 import { verify } from 'node:crypto'
 import type { OkxC2cMockOrder, OkxC2cSettings } from './types'
+import { handleOkxAds } from './ads'
 
 interface OkxRequest {
   method: string
@@ -43,7 +44,10 @@ export class OkxC2cMockPlugin {
 
   handle(request: OkxRequest) {
     try {
+      if (request.path === '/v3/c2c/tradingOrders/getMarketplaceAdsPrelogin')
+        return handleOkxAds(request)
       this.verify(request)
+      if (request.path.startsWith('/v3/c2c/tradingOrders/')) return handleOkxAds(request)
       if (request.method === 'GET' && request.path === '/v4/c2c/order/getOrderList')
         return this.listOrders(request.query)
       if (request.method === 'GET' && request.path === '/v4/c2c/risk/antiFraudPopup/info')

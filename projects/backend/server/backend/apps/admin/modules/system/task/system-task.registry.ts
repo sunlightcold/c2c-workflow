@@ -7,6 +7,7 @@ export const C2C_AUTOMATIC_PAYMENT_INTERVAL_MS = 5_000
 export const C2C_PAYMENT_RECOVERY_INTERVAL_MS = 15_000
 export const C2C_AUTO_APPEAL_INTERVAL_MS = 30_000
 export const C2C_COMPLETION_REPLY_INTERVAL_MS = 30_000
+export const C2C_AD_PRICING_INTERVAL_MS = 5_000
 
 export interface SystemTaskDefinition {
   id: string
@@ -83,6 +84,15 @@ export const SYSTEM_TASKS: SystemTaskDefinition[] = [
     status: SysTaskStatus.Activated,
     every: C2C_COMPLETION_REPLY_INTERVAL_MS,
     description: '每30秒查询启用后的币安买单，完成后发送一次平台聊天回复并重试发送失败项',
+  },
+  {
+    id: '00000000-0000-4000-8000-000000000110',
+    name: '买 USDT 广告统一调价',
+    service: 'C2cAdPricingJob.runDue',
+    type: SysTaskTypeEnum.Interval,
+    status: SysTaskStatus.Activated,
+    every: C2C_AD_PRICING_INTERVAL_MS,
+    description: '按广告配置间隔执行统一策略；待核实请求只回查',
   },
 ]
 

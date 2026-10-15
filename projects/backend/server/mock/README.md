@@ -39,12 +39,57 @@ curl http://127.0.0.1:13002/api/mock/health
 
 ## 已实现上游
 
-| 上游              | 说明               | 渠道文档                                                                                   |
-| ----------------- | ------------------ | ------------------------------------------------------------------------------------------ |
-| `alipay-batch`    | 支付宝批量到户有密 | [`server/upstreams/alipay-batch/README.md`](server/upstreams/alipay-batch/README.md)       |
-| `alipay-transfer` | 支付宝商家单笔转账 | [`server/upstreams/alipay-transfer/README.md`](server/upstreams/alipay-transfer/README.md) |
-| `binance-c2c`     | 币安 C2C 商家订单   | [`server/upstreams/binance-c2c/README.md`](server/upstreams/binance-c2c/README.md)          |
-| `okx-c2c`         | OKX C2C 买单       | 本文“OKX C2C”章节                                                                                |
+| 上游              | 说明                | 渠道文档                                                                                   |
+| ----------------- | ------------------- | ------------------------------------------------------------------------------------------ |
+| `alipay-batch`    | 支付宝批量到户有密  | [`server/upstreams/alipay-batch/README.md`](server/upstreams/alipay-batch/README.md)       |
+| `alipay-transfer` | 支付宝商家单笔转账  | [`server/upstreams/alipay-transfer/README.md`](server/upstreams/alipay-transfer/README.md) |
+| `binance-c2c`     | 币安 C2C 订单与广告 | [`server/upstreams/binance-c2c/README.md`](server/upstreams/binance-c2c/README.md)         |
+| `okx-c2c`         | OKX C2C 买单与广告  | 本文“OKX C2C”章节                                                                          |
+
+## 买 USDT 广告测试
+
+启动 Mock 后自动准备以下广告，对应 `seed-local-workflow.ts` 创建的现有商家账号。无需添加新商家或广告能力配置。
+
+| 商家账号                                   | 广告                       |
+| ------------------------------------------ | -------------------------- |
+| 总部币安自动付款商家（`mock-hq-binance`）  | 1 张在线买单、1 张离线买单 |
+| 总部欧易批次付款商家（`mock-hq-okx`）      | 1 张在线买单、1 张离线买单 |
+| 代理商币安测试商家（`mock-agent-binance`） | 1 张在线买单               |
+
+两平台使用同一套行情样例：同行 A/B/C 的买价为 `7.08/7.09/7.12`，参考卖家 A/B/C 的卖价为
+`7.20/7.21/7.22`。广告均为 USDT/CNY，支持 `BANK`、`ALIPAY`，单笔范围 `100–50000` 元。
+在线自有买单初始价为 `7.05`（代理商为 `7.03`），离线买单为 `7.00`。币安通过 `x-user-id`
+区分总部和代理商的自有广告；公共行情可以看到其他商家的在线广告。
+
+在后台打开“广告列表”→“同步广告”，选择对应经营单位和商家。同步后可保存策略、试算、立即调价、
+开启/暂停自动调价，并在调价记录中查看结果。测试用参考条件：
+
+- 自有广告由系统按平台广告号自动排除，无需填写昵称。价格单位和加价步长都填 `0.01`，同行金额填 `1000`，支付方式用 `BANK`。
+- 普通跟价：买价上限 `7.14` → 跟随同行 C，目标价 `7.13`。
+- 动态跟价：参考卖价第 1 位、每 USDT 预留价差 `0.08`、手续费率 `0` → 上限 `7.12`，跳过同行 C，跟随同行 B，目标价 `7.10`。
+- 离线广告试算/执行应被阻断，不会因调价重新上架。
+
+Mock 实现了币安的广告列表、详情、行情搜索和价格更新，以及欧易的自有广告列表、行情搜索和广告修改。
+价格更新会写入内存，后续详情/列表返回更新后的价格，供后端回查确认；试算不更新价格。
+
+广告测试控制接口：
+
+```text
+GET    /api/mock/binance-c2c/ads  查看币安全部广告（含市场行情）
+POST   /api/mock/binance-c2c/ads  添加自定义广告
+DELETE /api/mock/binance-c2c/ads  清空币安广告，供隔离测试使用
+GET    /api/mock/okx-c2c/ads      查看欧易全部广告（含市场行情）
+POST   /api/mock/okx-c2c/ads      添加自定义广告
+DELETE /api/mock/okx-c2c/ads      清空欧易广告，供隔离测试使用
+POST   /api/mock/c2c-ads/reset   仅恢复两平台默认广告和行情，保留订单及凭据配置
+```
+
+测试完可执行下面命令恢复初始价格，再在后台同步广告。Mock 重启或单平台 `/reset` 也会恢复默认广告；
+单平台 `/reset` 还会重置该平台的订单及凭据配置。广告样例不会替后台保存策略或开启自动调价。
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:13002/api/mock/c2c-ads/reset
+```
 
 ## OKX C2C
 

@@ -108,6 +108,24 @@ describe('useResourceGrid', () => {
     });
   });
 
+  it('centers action columns by default and preserves explicit alignment', () => {
+    const columns = [
+      { field: 'name', title: '名称' },
+      { field: 'active', slots: { default: 'action' }, title: '操作' },
+      { field: 'actions', slots: { default: 'actions' }, title: '操作' },
+      { align: 'right' as const, field: 'action', title: '操作' },
+    ];
+    const options = createResourceGridOptions({ gridOptions: { columns } });
+
+    expect(options.columns?.map((column) => column.align)).toEqual([
+      undefined,
+      'center',
+      'center',
+      'right',
+    ]);
+    expect(columns[1]).not.toHaveProperty('align');
+  });
+
   it('runs action success notification before the success callback', async () => {
     const calls: string[] = [];
 

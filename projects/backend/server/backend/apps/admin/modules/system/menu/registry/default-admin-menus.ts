@@ -124,6 +124,33 @@ const paymentPages: BusinessPageDefinition[] = [
   },
 ]
 
+const advertisementPages: BusinessPageDefinition[] = [
+  {
+    key: 'merchantAds',
+    name: '广告列表',
+    path: '/business/merchant-ads',
+    permission: 'merchant:ad',
+    icon: 'lucide:megaphone',
+    actions: [
+      ['read', '查询'],
+      ['sync', '同步广告'],
+      ['rule', '设置策略'],
+      ['preview', '策略试算'],
+      ['start', '开启调价'],
+      ['stop', '暂停调价'],
+      ['execute', '执行调价'],
+    ],
+  },
+  {
+    key: 'merchantAdRuns',
+    name: '调价记录',
+    path: '/business/merchant-ad-runs',
+    permission: 'merchant:adRun',
+    icon: 'lucide:history',
+    actions: [['read', '查询']],
+  },
+]
+
 const telegramPages: BusinessPageDefinition[] = [
   {
     key: 'telegramBots',
@@ -207,6 +234,15 @@ const businessMenuGroups: BusinessMenuGroupDefinition[] = [
     icon: 'lucide:bot',
     orderNo: 993,
     pages: telegramPages,
+  },
+  {
+    key: 'advertisementManagement',
+    name: '广告管理',
+    path: '/advertisement-management',
+    permission: 'advertisementManagement',
+    icon: 'lucide:megaphone',
+    orderNo: 992,
+    pages: advertisementPages,
   },
 ]
 

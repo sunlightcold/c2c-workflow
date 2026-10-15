@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto'
 import { Inject, Injectable } from '@nestjs/common'
 import {
   C2C_HTTP_TRANSPORT,
+  C2cRequestRejectedError,
   type C2cCapabilities,
   type C2cComplaintPayload,
   type C2cComplaintReason,
@@ -18,6 +19,8 @@ import {
   normalizeBinanceSummary,
   normalizeBinanceReportSummary,
 } from './c2c-order-normalizer'
+import type { C2cAd, C2cAdMarketQuery, C2cAdMarketSnapshot } from './c2c-ad.types'
+import { normalizeBinanceAd, normalizeBinanceMarketQuote } from './c2c-ad-normalizer'
 
 export interface BinanceCredentials {
   apiKey: string
@@ -53,6 +56,91 @@ export type BinanceComplaintPayload = C2cComplaintPayload
 @Injectable()
 export class BinanceC2cClient implements C2cPlatformAdapter<BinanceCredentials> {
   constructor(@Inject(C2C_HTTP_TRANSPORT) private readonly http: C2cHttpTransport) {}
+
+  async listAds(credentials: BinanceCredentials) {
+    const ads: C2cAd[] = []
+    const rows = 100
+    for (let page = 1; ; page += 1) {
+      const response = await this.postList<Record<string, unknown>[]>(
+        credentials,
+        '/sapi/v1/c2c/ads/listWithPagination',
+        { page, rows },
+      )
+      ads.push(...response.data.map(normalizeBinanceAd))
+      if (
+        response.data.length < rows ||
+        (response.total !== undefined && page * rows >= response.total)
+      ) {
+        return ads
+      }
+    }
+  }
+
+  async getAd(credentials: BinanceCredentials, platformAdId: string) {
+    const response = await this.request<BinanceEnvelope<Record<string, unknown>>>(
+      credentials,
+      '/sapi/v1/c2c/ads/getDetailByNo',
+      undefined,
+      'POST',
+      { adsNo: platformAdId },
+    )
+    const ad = normalizeBinanceAd(response.data)
+    if (ad.platformAdId !== platformAdId) throw new Error('币安返回的广告编号不匹配')
+    return ad
+  }
+
+  async searchAds(
+    credentials: BinanceCredentials,
+    query: C2cAdMarketQuery,
+  ): Promise<C2cAdMarketSnapshot> {
+    const baseUrl = credentials.baseUrl ?? 'https://api.binance.com'
+    const marketOrigin =
+      new URL(baseUrl).origin === 'https://api.binance.com' ? 'https://p2p.binance.com' : baseUrl
+    const response = await this.http.request<
+      BinanceEnvelope<
+        Array<{
+          adv: Record<string, unknown>
+          advertiser: Record<string, unknown>
+        }>
+      >
+    >({
+      method: 'POST',
+      url: `${marketOrigin.replace(/\/$/, '')}/bapi/c2c/v2/friendly/c2c/adv/search`,
+      headers: { 'Content-Type': 'application/json' },
+      timeoutMs: credentials.timeoutMs,
+      body: {
+        fiat: query.fiatCurrency,
+        page: 1,
+        rows: query.limit,
+        tradeType: query.side === 'BUY' ? 'SELL' : 'BUY',
+        asset: query.asset,
+        countries: [],
+        filterType: 'all',
+        periods: query.periodMinutes === null ? [] : [String(query.periodMinutes)],
+        transAmount: query.amount,
+        payTypes: query.paymentMethods,
+        publisherType: query.merchantOnly ? 'merchant' : null,
+      },
+    })
+    if (!response.success || response.code !== '000000') {
+      throw new C2cRequestRejectedError('币安广告行情请求被拒绝', response.code)
+    }
+    return {
+      quotes: response.data.map((item) => normalizeBinanceMarketQuote(item, query.side)),
+      fetchedAt: new Date().toISOString(),
+      window: { page: 1, rows: query.limit },
+    }
+  }
+
+  async updateAdPrice(credentials: BinanceCredentials, platformAdId: string, price: string) {
+    const response = await this.post<boolean>(credentials, '/sapi/v1/c2c/ads/update', {
+      advNo: platformAdId,
+      price,
+    })
+    if (response.data === false)
+      throw new C2cRequestRejectedError('币安广告改价未成功', 'AD_UPDATE_REJECTED')
+    return { platformAdId }
+  }
 
   async listOrders(credentials: BinanceCredentials, input: C2cListInput) {
     if (input.tradeType !== 'BUY') throw new Error('币安 C2C 仅支持 BUY 买币订单')
@@ -298,6 +386,9 @@ export class BinanceC2cClient implements C2cPlatformAdapter<BinanceCredentials> 
       timeoutMs: credentials.timeoutMs,
       body,
     })
+    if ((!response.success || response.code !== '000000') && path.startsWith('/sapi/v1/c2c/ads/')) {
+      throw new C2cRequestRejectedError('币安广告请求被拒绝', response.code)
+    }
     if (!response.success || response.code !== '000000')
       throw new Error(`[${response.code}] ${response.message ?? '币安 C2C 请求失败'}`)
     return response

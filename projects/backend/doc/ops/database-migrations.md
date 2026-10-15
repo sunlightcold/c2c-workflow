@@ -87,3 +87,4 @@ Compose 会等待 PostgreSQL 健康检查通过，启动一次性 `migrate` 服�
 12. `C2cPaidNotificationCapability1789025000000`：为现有支付机器人和群组恢复默认启用的 C2C 标记付款通知能力。
 13. `C2cPaymentPlatformStateSeparation1789026000000`：将历史 `PLATFORM_CONFIRM_PENDING / COMPLETED` 支付状态迁移为资金结果 `SUCCESS`，平台标记进度和错误改由独立字段承载，并重建 15 秒恢复索引。
 14. `C2cAutomationScanCorrectness1789027000000`：记录自动申诉与完成回复的商家级扫描时间和错误，修正自动申诉索引，使其以资金支付后的平台确认时间为准。
+15. `C2cMerchantAds1789029000000`：新增买 USDT 广告与调价执行记录，保存共用规则快照、待核实记录和检查时间，并用复合外键约束所属单位、商家及平台范围。

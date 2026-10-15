@@ -122,8 +122,9 @@ export class MerchantPlatformCredentialService {
   async getActiveReference(
     tenantId: string,
     merchantId: string,
+    repository: Repository<MerchantPlatformCredentialEntity> = this.credentialRepository,
   ): Promise<ActiveMerchantPlatformCredentialReference> {
-    const credential = await this.credentialRepository
+    const credential = await repository
       .createQueryBuilder('credential')
       .addSelect('credential.credentialRef')
       .where('credential.tenantId = :tenantId', { tenantId })
@@ -214,7 +215,10 @@ export class MerchantPlatformCredentialService {
   ): string {
     const secret =
       platform === MerchantPlatform.BINANCE
-        ? { apiKey: input.apiKey!.trim(), secretKey: input.secretKey!.trim() }
+        ? {
+            apiKey: input.apiKey!.trim(),
+            secretKey: input.secretKey!.trim(),
+          }
         : {
             cookie: input.sessionCookie!.trim(),
             authorization: input.authorization!.trim(),

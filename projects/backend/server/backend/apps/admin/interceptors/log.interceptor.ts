@@ -7,6 +7,7 @@ import { CallHandler, ExecutionContext, Inject, Injectable, NestInterceptor } fr
 import { Reflector } from '@nestjs/core'
 import { tap } from 'rxjs/operators'
 import { SKIP_LOG_KEY } from './skip-log.decorator'
+import { serializeLogPayload } from './log-payload'
 
 // Swagger 元数据常量
 const SWAGGER_API_OPERATION = 'swagger/apiOperation'
@@ -62,9 +63,9 @@ export class LogInterceptor<T> implements NestInterceptor<T, ResponseModel<T>> {
         log.content = apiOperationSummary
         log.serviceMethod = `${controllerName}.${handlerName}`
         log.username = request.user?.username
-        log.body = JSON.stringify(request.body)
-        log.query = JSON.stringify(request.query)
-        log.params = JSON.stringify(request.params)
+        log.body = serializeLogPayload(request.body)
+        log.query = serializeLogPayload(request.query)
+        log.params = serializeLogPayload(request.params)
         this.logService.create(log)
       }),
     )

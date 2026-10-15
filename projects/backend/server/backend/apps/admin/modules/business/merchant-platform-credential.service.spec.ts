@@ -7,7 +7,7 @@ import {
 import { BadRequestException } from '@nestjs/common'
 import { getRepositoryToken } from '@nestjs/typeorm'
 import { Test } from '@nestjs/testing'
-import { DataSource } from 'typeorm'
+import { DataSource, type Repository } from 'typeorm'
 import { MerchantPlatformCredentialService } from './merchant-platform-credential.service'
 
 describe('MerchantPlatformCredentialService', () => {
@@ -170,6 +170,35 @@ describe('MerchantPlatformCredentialService', () => {
       '当前生效凭据不能删除',
     )
     expect(credentialRepository.remove).not.toHaveBeenCalled()
+  })
+
+  it('reads the active credential using the caller-held database connection', async () => {
+    const reference = {
+      credentialRef: 'enc://encrypted-value',
+      apiBaseUrl: 'http://127.0.0.1:13002',
+      clientType: 'WEB',
+      xUserId: null,
+      requestTimeoutMs: 5000,
+    }
+    const query = {
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue(reference),
+    }
+    const connectionRepository = { createQueryBuilder: jest.fn().mockReturnValue(query) }
+    await expect(
+      service.getActiveReference(
+        tenantId,
+        merchantId,
+        connectionRepository as unknown as Repository<MerchantPlatformCredentialEntity>,
+      ),
+    ).resolves.toEqual(reference)
+    expect(credentialRepository.createQueryBuilder).not.toHaveBeenCalled()
+    expect(query.where).toHaveBeenCalledWith('credential.tenantId = :tenantId', { tenantId })
+    expect(query.andWhere).toHaveBeenCalledWith('credential.merchantId = :merchantId', {
+      merchantId,
+    })
   })
 
   it('tests the active Binance credential against its configured gateway', async () => {

@@ -18,6 +18,12 @@ import type {
 } from './c2c-platform.types'
 import { OkxWebPrivateClient, type OkxWebPrivateCredentials } from './okx-web-private.client'
 import { normalizeBinanceDetail, normalizeOkxDetail } from './c2c-order-normalizer'
+import type {
+  C2cAd,
+  C2cAdMarketQuery,
+  C2cAdMarketSnapshot,
+  C2cAdPriceUpdateResult,
+} from './c2c-ad.types'
 
 export type C2cPlatformCredentials = BinanceCredentials | OkxWebPrivateCredentials
 export type C2cPlatformCapability = keyof C2cCapabilities
@@ -42,6 +48,43 @@ export class C2cPlatformClient {
     private readonly binance: BinanceC2cClient,
     private readonly okx: OkxWebPrivateClient,
   ) {}
+
+  listAds(platform: MerchantPlatform, credentials: C2cPlatformCredentials): Promise<C2cAd[]> {
+    return platform === MerchantPlatform.BINANCE
+      ? this.binance.listAds(credentials as BinanceCredentials)
+      : this.okx.listAds(credentials as OkxWebPrivateCredentials)
+  }
+
+  getAd(
+    platform: MerchantPlatform,
+    credentials: C2cPlatformCredentials,
+    platformAdId: string,
+  ): Promise<C2cAd> {
+    return platform === MerchantPlatform.BINANCE
+      ? this.binance.getAd(credentials as BinanceCredentials, platformAdId)
+      : this.okx.getAd(credentials as OkxWebPrivateCredentials, platformAdId)
+  }
+
+  searchAds(
+    platform: MerchantPlatform,
+    credentials: C2cPlatformCredentials,
+    query: C2cAdMarketQuery,
+  ): Promise<C2cAdMarketSnapshot> {
+    return platform === MerchantPlatform.BINANCE
+      ? this.binance.searchAds(credentials as BinanceCredentials, query)
+      : this.okx.searchAds(credentials as OkxWebPrivateCredentials, query)
+  }
+
+  updateAdPrice(
+    platform: MerchantPlatform,
+    credentials: C2cPlatformCredentials,
+    platformAdId: string,
+    price: string,
+  ): Promise<C2cAdPriceUpdateResult> {
+    return platform === MerchantPlatform.BINANCE
+      ? this.binance.updateAdPrice(credentials as BinanceCredentials, platformAdId, price)
+      : this.okx.updateAdPrice(credentials as OkxWebPrivateCredentials, platformAdId, price)
+  }
 
   getCapabilities(platform: MerchantPlatform): C2cCapabilities {
     return this.resolveCapabilities(platform)

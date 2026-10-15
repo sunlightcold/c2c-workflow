@@ -1,4 +1,7 @@
 export const OKX_C2C_PATHS = {
+  listAds: '/v3/c2c/tradingOrders/getMyAds',
+  updateAd: '/v3/c2c/tradingOrders/modify',
+  searchAds: '/v3/c2c/tradingOrders/getMarketplaceAdsPrelogin',
   listOrders: '/v4/c2c/order/getOrderList',
   antiFraud: '/v4/c2c/risk/antiFraudPopup/info',
   detail: '/v3/c2c/orders',

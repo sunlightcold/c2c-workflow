@@ -1,6 +1,6 @@
-import type { CommonPaginationData } from '../../../types/common';
-
 import { requestClient } from '#/api/request';
+
+import { toPagination } from './pagination';
 
 export namespace BusinessApi {
   export type BusinessStatus = 'active' | 'disabled';
@@ -615,23 +615,6 @@ export namespace BusinessApi {
     telegramUserId: string;
     telegramUsername: null | string;
   }
-}
-
-function toPagination<T>(response: {
-  items: T[];
-  page: number;
-  pageSize: number;
-  total: number;
-}): CommonPaginationData<T> {
-  return {
-    items: response.items,
-    meta: {
-      currentPage: response.page,
-      itemsPerPage: response.pageSize,
-      totalItems: response.total,
-      totalPages: Math.ceil(response.total / response.pageSize),
-    },
-  };
 }
 
 export const getTenantsApi = () =>

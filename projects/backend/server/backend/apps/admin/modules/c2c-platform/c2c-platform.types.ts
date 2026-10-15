@@ -1,3 +1,10 @@
+import type {
+  C2cAd,
+  C2cAdMarketQuery,
+  C2cAdMarketSnapshot,
+  C2cAdPriceUpdateResult,
+} from './c2c-ad.types'
+
 export const C2C_HTTP_TRANSPORT = Symbol('C2C_HTTP_TRANSPORT')
 
 export interface C2cHttpRequest {
@@ -84,6 +91,18 @@ export class C2cCredentialRejectedError extends Error {
   }
 }
 
+export class C2cRequestRejectedError extends Error {
+  readonly responseCode: string
+  constructor(message: string, responseCode: string) {
+    super(message)
+    this.name = 'C2cRequestRejectedError'
+    this.responseCode =
+      typeof responseCode === 'string' && /^[\w-]{1,64}$/.test(responseCode)
+        ? responseCode
+        : 'UPSTREAM_REJECTED'
+  }
+}
+
 export interface C2cCapabilities {
   appeal: boolean
   cancelOrder: boolean
@@ -166,6 +185,14 @@ export interface C2cOrderDetailSnapshot {
 }
 
 export interface C2cPlatformAdapter<TCredentials> {
+  listAds: (credentials: TCredentials) => Promise<C2cAd[]>
+  getAd: (credentials: TCredentials, platformAdId: string) => Promise<C2cAd>
+  searchAds: (credentials: TCredentials, query: C2cAdMarketQuery) => Promise<C2cAdMarketSnapshot>
+  updateAdPrice: (
+    credentials: TCredentials,
+    platformAdId: string,
+    price: string,
+  ) => Promise<C2cAdPriceUpdateResult>
   getCapabilities: () => C2cCapabilities
   getMarkPaidPolicy: (credentials: TCredentials) => C2cMarkPaidPolicy
   getOrderDetail: (credentials: TCredentials, orderId: string) => Promise<C2cBuyOrderDetail>

@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto'
 import type { BinanceC2cMockOrder, BinanceC2cSettings } from './types'
 import { BINANCE_C2C_PATHS } from './types'
 import { getBinanceC2cState } from './state'
+import { handleBinanceAds } from './ads'
 
 interface BinanceRequest {
   path: string
@@ -41,7 +42,9 @@ export class BinanceC2cMockPlugin {
 
   handle(request: BinanceRequest) {
     try {
+      if (request.path === '/bapi/c2c/v2/friendly/c2c/adv/search') return handleBinanceAds(request)
       this.verify(request)
+      if (request.path.startsWith('/sapi/v1/c2c/ads/')) return handleBinanceAds(request)
       if (request.path === BINANCE_C2C_PATHS.listOrders) return this.listOrders(request)
       if (request.path === BINANCE_C2C_PATHS.reportOrders) return this.reportOrders(request)
       if (request.path === BINANCE_C2C_PATHS.detail) return this.detail(request)

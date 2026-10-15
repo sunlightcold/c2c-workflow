@@ -127,6 +127,14 @@ export function createResourceGridOptions<
     keepSource: true,
     pagerConfig: {},
     ...gridOptions,
+    columns: gridOptions.columns?.map((column) =>
+      column.field === 'action' ||
+      column.field === 'actions' ||
+      column.slots?.default === 'action' ||
+      column.slots?.default === 'actions'
+        ? { align: 'center', ...column }
+        : column,
+    ),
     toolbarConfig: {
       ...defaultToolbarConfig,
       ...gridOptions.toolbarConfig,

@@ -51,6 +51,7 @@
 
 - [main](main/README.md)：当前管理端和平台契约。
 - [C2C 业务配置](main/c2c-business-config.md)：所属单位、商家、支付账号、账号通道和支付方案。
+- [买 USDT 广告与统一调价](main/merchant-ads.md)：广告同步、策略配置、试算、自动启停、执行和待核实回查。
 - [registry.md](registry.md)：API 路由注册表。
 
 ## Contract Test

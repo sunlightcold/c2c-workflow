@@ -1,4 +1,6 @@
 import { MemoryRepository } from '@mock/core/memory-repository'
+import { createDemoAds } from '../c2c-ad/demo-ads'
+import type { C2cMockAd } from '../c2c-ad/mock-ad'
 import type { BinanceC2cMockOrder, BinanceC2cSettings } from './types'
 
 const DEFAULT_SETTINGS: BinanceC2cSettings = {
@@ -11,8 +13,19 @@ const DEFAULT_SETTINGS: BinanceC2cSettings = {
 
 export class BinanceC2cState {
   readonly orders = new MemoryRepository<BinanceC2cMockOrder>()
+  readonly ads = new MemoryRepository<C2cMockAd>()
   private settings = { ...DEFAULT_SETTINGS }
   private complaintSequence = 30_000_000
+
+  constructor() {
+    this.resetAds()
+  }
+
+  resetAds() {
+    this.ads.clear()
+    for (const ad of createDemoAds('BINANCE')) this.ads.insert(ad)
+    return { ads: this.ads.list().length }
+  }
 
   getSettings() {
     return { ...this.settings }
@@ -30,6 +43,7 @@ export class BinanceC2cState {
 
   reset() {
     const deletedOrders = this.orders.clear()
+    this.resetAds()
     this.settings = { ...DEFAULT_SETTINGS }
     this.complaintSequence = 30_000_000
     return { deletedOrders, settings: this.getSettings() }

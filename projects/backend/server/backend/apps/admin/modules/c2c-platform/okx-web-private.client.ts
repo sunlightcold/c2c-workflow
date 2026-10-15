@@ -14,12 +14,15 @@ import {
   type C2cPlatformAdapter,
   type C2cReportInput,
   C2cCredentialRejectedError,
+  C2cRequestRejectedError,
 } from './c2c-platform.types'
 import {
   normalizeOkxDetail,
   normalizeOkxSummary,
   normalizeOkxReportSummary,
 } from './c2c-order-normalizer'
+import type { C2cAdMarketQuery, C2cAdMarketSnapshot } from './c2c-ad.types'
+import { adId, adText, normalizeOkxAd, normalizeOkxMarketQuote } from './c2c-ad-normalizer'
 
 export interface OkxWebPrivateCredentials {
   cookie: string
@@ -56,6 +59,61 @@ interface OkxOrderListData {
 export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCredentials> {
   private readonly logger = new Logger(OkxWebPrivateClient.name)
   constructor(@Inject(C2C_HTTP_TRANSPORT) private readonly http: C2cHttpTransport) {}
+
+  async listAds(credentials: OkxWebPrivateCredentials) {
+    return (await this.listAdRecords(credentials)).map(normalizeOkxAd)
+  }
+
+  async getAd(credentials: OkxWebPrivateCredentials, platformAdId: string) {
+    return normalizeOkxAd(await this.getAdRecord(credentials, platformAdId))
+  }
+
+  async searchAds(
+    credentials: OkxWebPrivateCredentials,
+    query: C2cAdMarketQuery,
+  ): Promise<C2cAdMarketSnapshot> {
+    if (query.periodMinutes !== null)
+      throw new C2cRequestRejectedError('欧易广告行情不支持付款时限筛选', 'UNSUPPORTED_AD_PERIOD')
+    const side = query.side.toLowerCase()
+    const response = await this.get<Record<string, Record<string, unknown>[]>>(
+      credentials,
+      '/v3/c2c/tradingOrders/getMarketplaceAdsPrelogin',
+      {
+        side,
+        paymentMethod: 'all',
+        userType: query.merchantOnly ? 'certified' : 'all',
+        hideOverseasVerificationAds: 'false',
+        sortType: query.side === 'BUY' ? 'price_desc' : 'price_asc',
+        limit: '100',
+        cryptoCurrency: query.asset.toLowerCase(),
+        fiatCurrency: query.fiatCurrency.toLowerCase(),
+        currentPage: '1',
+        numberPerPage: '100',
+        ...(query.amount !== '0' ? { quoteMinAmountPerOrder: query.amount } : {}),
+        t: String(Date.now()),
+      },
+    )
+    const quotes = response.data?.[side]
+    if (!Array.isArray(quotes)) throw new Error('欧易广告行情返回无效')
+    return {
+      quotes: quotes.map((raw) =>
+        normalizeOkxMarketQuote(raw, query.side, query.asset, query.fiatCurrency),
+      ),
+      fetchedAt: new Date().toISOString(),
+      window: { page: 1, rows: 100 },
+    }
+  }
+
+  async updateAdPrice(credentials: OkxWebPrivateCredentials, platformAdId: string, price: string) {
+    const body = await this.prepareAdPriceUpdate(credentials, platformAdId, price)
+    const response = await this.post<{ publicId?: string }>(
+      credentials,
+      '/v3/c2c/tradingOrders/modify',
+      body,
+      { t: String(Date.now()) },
+    )
+    return { platformAdId: adId(response.data?.publicId, 'publicId') }
+  }
 
   async listOrders(credentials: OkxWebPrivateCredentials, input: C2cListInput) {
     if (input.tradeType !== 'BUY') throw new Error('欧易 C2C 仅支持 BUY 买币订单')
@@ -320,6 +378,65 @@ export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCred
     }
   }
 
+  private async prepareAdPriceUpdate(
+    credentials: OkxWebPrivateCredentials,
+    platformAdId: string,
+    price: string,
+  ) {
+    try {
+      const current = await this.getAdRecord(credentials, platformAdId)
+      if (current.type !== 'limit')
+        throw new C2cRequestRejectedError('欧易仅支持固定价格广告调价', 'UNSUPPORTED_AD_TYPE')
+      const accountVos = current.accountVos as Array<{
+        receiptDetailVos: Array<{ receiptAccountId: unknown }>
+      }>
+      const receiptIds = accountVos.flatMap((account) =>
+        account.receiptDetailVos.map((detail) => adId(detail.receiptAccountId, 'receiptAccountId')),
+      )
+      if (!receiptIds.length) throw new Error('欧易广告未返回收款方式编号')
+      return {
+        publicId: platformAdId,
+        price,
+        type: current.type,
+        baseAmount: adText(current.availableAmount, 'availableAmount'),
+        receiptIds: receiptIds.join(' '),
+        ...(typeof current.online === 'boolean' ? { online: current.online } : {}),
+        ...(typeof current.enterMarket === 'boolean' ? { enterMarket: current.enterMarket } : {}),
+      }
+    } catch (error) {
+      if (error instanceof C2cCredentialRejectedError || error instanceof C2cRequestRejectedError)
+        throw error
+      throw new C2cRequestRejectedError(
+        '欧易广告改价准备失败，本次未提交',
+        'AD_UPDATE_NOT_SUBMITTED',
+      )
+    }
+  }
+
+  private async listAdRecords(credentials: OkxWebPrivateCredentials) {
+    const ads: Record<string, unknown>[] = []
+    const pagesize = 100
+    for (let page = 1; ; page += 1) {
+      const response = await this.get<{ current?: { items?: Record<string, unknown>[] } }>(
+        credentials,
+        '/v3/c2c/tradingOrders/getMyAds',
+        { page: String(page), pagesize: String(pagesize), t: String(Date.now()) },
+      )
+      const items = response.data?.current?.items
+      if (!Array.isArray(items)) throw new Error('欧易广告列表返回无效')
+      ads.push(...items)
+      if (items.length < pagesize) return ads
+    }
+  }
+
+  private async getAdRecord(credentials: OkxWebPrivateCredentials, platformAdId: string) {
+    const ad = (await this.listAdRecords(credentials)).find(
+      (item) => adId(item.publicId, 'publicId') === platformAdId,
+    )
+    if (!ad) throw new Error('欧易广告不存在')
+    return ad
+  }
+
   private get<T>(
     credentials: OkxWebPrivateCredentials,
     path: string,
@@ -374,6 +491,9 @@ export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCred
     const code = String(response.code ?? response.error_code ?? '')
     if (['401', '403', '800', '805'].includes(code))
       throw new C2cCredentialRejectedError(`欧易 Web 凭据失效 [${code}]`, code)
+    if (code !== '0' && path.startsWith('/v3/c2c/tradingOrders/')) {
+      throw new C2cRequestRejectedError('欧易广告请求被拒绝', code)
+    }
     if (code !== '0') throw new Error(response.msg ?? response.error_message ?? '欧易 C2C 请求失败')
     return response
   }

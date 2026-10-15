@@ -29,9 +29,30 @@ const menuGroups = [
     'lucide:wallet-cards',
   ],
   ['300', '机器人管理', '/robot-management', 'robotManagement', 'lucide:bot'],
+  [
+    '400',
+    '广告管理',
+    '/advertisement-management',
+    'advertisementManagement',
+    'lucide:chart-no-axes-combined',
+  ],
 ] as const;
 
 const pages = [
+  [
+    '广告列表',
+    '/business/merchant-ads',
+    '/business/merchant-ads',
+    'merchant:ad',
+    '400',
+  ],
+  [
+    '调价记录',
+    '/business/merchant-ad-runs',
+    '/business/merchant-ad-runs',
+    'merchant:adRun',
+    '400',
+  ],
   [
     '所属单位',
     '/business/tenants',
@@ -117,6 +138,15 @@ const permissions = [
   'merchantManagement',
   'paymentManagement',
   'robotManagement',
+  'advertisementManagement',
+  'merchant:ad:read',
+  'merchant:ad:sync',
+  'merchant:ad:rule',
+  'merchant:ad:preview',
+  'merchant:ad:execute',
+  'merchant:ad:start',
+  'merchant:ad:stop',
+  'merchant:adRun:read',
   'agency:tenant:read',
   'agency:tenant:create',
   'agency:tenant:update',
@@ -246,6 +276,9 @@ async function expectDialogAboveDrawerAndInsideViewport(
 test.beforeEach(async ({ page }) => {
   const errors: string[] = [];
   const tenantScopedPaths = new Set([
+    '/sys/merchant-ad-options/merchants',
+    '/sys/merchant-ad-runs',
+    '/sys/merchant-ads',
     '/sys/merchant-orders',
     '/sys/merchants',
     '/sys/payment-accounts',
@@ -501,6 +534,21 @@ test.beforeEach(async ({ page }) => {
             }),
           ),
         ];
+        break;
+      }
+      case '/sys/merchant-ad-options/merchants': {
+        data = [
+          {
+            id: '00000000-0000-4000-8000-000000000020',
+            name: '币安主账号',
+            platform: 'BINANCE',
+          },
+        ];
+        break;
+      }
+      case '/sys/merchant-ad-runs':
+      case '/sys/merchant-ads': {
+        data = { items: [], page: 1, pageSize: 20, total: 0 };
         break;
       }
       case '/sys/merchant-orders': {
@@ -899,6 +947,489 @@ test.beforeEach(async ({ page }) => {
 
 test.afterEach(async ({ page }) => {
   expect(pageErrors.get(page) ?? []).toEqual([]);
+});
+
+for (const [path, permission] of [
+  ['merchant-ads', 'merchant:ad:read'],
+  ['merchant-ad-runs', 'merchant:adRun:read'],
+] as const) {
+  test(`loads ${path} with advertisement permissions alone`, async ({
+    page,
+  }) => {
+    let merchantAccountRequests = 0;
+    let listRequests = 0;
+    let optionRequests = 0;
+    await page.route('**/v1/auth/permissions', (route) =>
+      route.fulfill({
+        json: ok([
+          'dashboard',
+          'dashboard:workspace',
+          'advertisementManagement',
+          permission,
+        ]),
+      }),
+    );
+    await page.route(/\/v1\/sys\/merchants(?:\?|$)/, async (route) => {
+      merchantAccountRequests += 1;
+      await route.fulfill({
+        status: 403,
+        json: { code: 403, msg: '无商家账号权限' },
+      });
+    });
+    await page.route(
+      '**/v1/sys/merchant-ad-options/merchants?*',
+      async (route) => {
+        optionRequests += 1;
+        expect(
+          new URL(route.request().url()).searchParams.get('tenantId'),
+        ).toBe(tenantId);
+        await route.fallback();
+      },
+    );
+    await page.route(new RegExp(`/v1/sys/${path}(?:\\?|$)`), async (route) => {
+      listRequests += 1;
+      await route.fulfill({
+        json: ok({ items: [], page: 1, pageSize: 20, total: 0 }),
+      });
+    });
+    await page.goto(`/business/${path}`);
+    await expect.poll(() => listRequests).toBeGreaterThan(0);
+    await expect.poll(() => optionRequests).toBeGreaterThan(0);
+    await page.getByRole('combobox', { name: '商家账号', exact: true }).click();
+    await expect(
+      page.getByTitle('币安主账号 · 币安', { exact: true }),
+    ).toBeVisible();
+    expect(merchantAccountRequests).toBe(0);
+  });
+}
+
+test('syncs ads independently of list filters', async ({ page }, testInfo) => {
+  const filterMerchantId = '00000000-0000-4000-8000-000000000020';
+  const syncTenantId = '00000000-0000-4000-8000-000000000002';
+  const syncMerchantId = '00000000-0000-4000-8000-000000000021';
+  const syncRequests: URL[] = [];
+  const listRequests: URL[] = [];
+  await page.route('**/v1/sys/tenants', async (route) => {
+    await route.fulfill({
+      json: ok([
+        {
+          id: tenantId,
+          name: '总部自营',
+          status: 'active',
+          type: 'HEADQUARTERS_SELF',
+        },
+        { id: syncTenantId, name: '代理商甲', status: 'active', type: 'AGENT' },
+      ]),
+    });
+  });
+  await page.route(
+    /\/v1\/sys\/(?:merchants(?:\?|\/)|merchant-ad-options\/merchants)/,
+    async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith('/ads/sync')) {
+        syncRequests.push(url);
+        await route.fulfill({ json: ok({ scanned: 2, synced: 1 }) });
+        return;
+      }
+      const otherTenant = url.searchParams.get('tenantId') === syncTenantId;
+      await route.fulfill({
+        json: ok([
+          {
+            id: otherTenant ? syncMerchantId : filterMerchantId,
+            name: otherTenant ? '欧易同步账号' : '币安筛选账号',
+            platform: otherTenant ? 'OKX' : 'BINANCE',
+          },
+        ]),
+      });
+    },
+  );
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === '/v1/sys/merchant-ads') listRequests.push(url);
+  });
+
+  await page.goto('/business/merchant-ads');
+  const syncButton = page.getByRole('button', {
+    name: '同步广告',
+    exact: true,
+  });
+  await expect(syncButton).toBeEnabled();
+  await expect(
+    page.getByText('选择商家后同步；仅管理买 USDT 广告'),
+  ).toHaveCount(0);
+  await page.getByRole('combobox', { name: '商家账号', exact: true }).click();
+  await page.getByTitle('币安筛选账号 · 币安', { exact: true }).click();
+  await page.getByRole('combobox', { name: '交易平台', exact: true }).click();
+  await page.getByTitle('币安', { exact: true }).click();
+  await page.getByRole('button', { name: /搜\s*索/ }).click();
+  await expect
+    .poll(() => listRequests.at(-1)?.searchParams.get('merchantId'))
+    .toBe(filterMerchantId);
+
+  await syncButton.click();
+  const dialog = page.getByRole('dialog', { name: '同步广告', exact: true });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: '开始同步' }).click();
+  await expect(
+    dialog
+      .locator('.ant-form-item-explain-error')
+      .getByText('请选择商家账号', { exact: true }),
+  ).toBeVisible();
+  expect(syncRequests).toHaveLength(0);
+  await dialog.getByRole('button', { name: /取\s*消/ }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(syncRequests).toHaveLength(0);
+
+  await syncButton.click();
+  await dialog.getByRole('combobox', { name: /经营单位/ }).press('ArrowDown');
+  await page.getByTitle('代理商甲', { exact: true }).click();
+  await dialog.getByRole('combobox', { name: /商家账号/ }).press('ArrowDown');
+  await page.getByTitle('欧易同步账号 · 欧易', { exact: true }).click();
+  await expect
+    .poll(() => dialog.evaluate((el) => el.scrollWidth - el.clientWidth))
+    .toBeLessThanOrEqual(1);
+  await page.screenshot({
+    fullPage: true,
+    path: `node_modules/.e2e/screenshots/merchant-ad-sync-${testInfo.project.name}.png`,
+  });
+  const listRequestsBeforeSync = listRequests.length;
+  await dialog.getByRole('button', { name: '开始同步' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(syncRequests).toHaveLength(1);
+  expect(syncRequests[0]?.pathname).toBe(
+    `/v1/sys/merchants/${syncMerchantId}/ads/sync`,
+  );
+  expect(syncRequests[0]?.searchParams.toString()).toBe(
+    new URLSearchParams({ tenantId: syncTenantId }).toString(),
+  );
+  await expect
+    .poll(() => listRequests.length)
+    .toBeGreaterThan(listRequestsBeforeSync);
+  await expect
+    .poll(() => listRequests.at(-1)?.searchParams.get('merchantId'))
+    .toBe(filterMerchantId);
+  expect(listRequests.at(-1)?.searchParams.get('tenantId')).toBe(tenantId);
+  expect(listRequests.at(-1)?.searchParams.get('platform')).toBe('BINANCE');
+});
+
+test('saves one ad strategy, previews evidence and controls automation', async ({
+  page,
+}, testInfo) => {
+  const merchantId = '00000000-0000-4000-8000-000000000020';
+  const rule = {
+    blockedNicknames: [],
+    competitorAmount: '0',
+    competitorPaymentMethods: ['ALIPAY'],
+    competitorPeriod: null,
+    feePercent: null as null | string,
+    fixedLimit: '7.10' as null | string,
+    followNickname: null,
+    intervalSeconds: 60,
+    merchantOnly: true,
+    mode: 'FIXED',
+    profitPerUsdt: null as null | string,
+    referencePaymentMethods: [],
+    referencePosition: 3,
+    step: '0.01',
+  };
+  const ad = {
+    asset: 'USDT',
+    enabled: false,
+    fiatCurrency: 'CNY',
+    id: 'ad-1',
+    lastError: null,
+    lastSyncedAt: '2026-10-15T08:00:00.000Z',
+    merchantId,
+    merchantName: '币安主账号',
+    nextRunAt: null,
+    paymentMethods: ['ALIPAY'],
+    pendingRunId: null as null | string,
+    platform: 'BINANCE',
+    platformAdId: 'AD10001',
+    pricing: { role: 'INDEPENDENT' },
+    price: '7.050000000000000000',
+    rule,
+    ruleVersion: 1,
+    status: 'ONLINE',
+    tenantId,
+  };
+  const quote = (traderNickname: string, price: string) => ({
+    asset: 'USDT',
+    fiatCurrency: 'CNY',
+    maxFiatAmount: '50000',
+    minFiatAmount: '100',
+    paymentMethods: ['ALIPAY'],
+    platformAdId: traderNickname,
+    price,
+    side: 'BUY',
+    traderNickname,
+  });
+  const selected = quote('同行 C', '7.12');
+  const query = {
+    amount: '0',
+    asset: 'USDT',
+    fiatCurrency: 'CNY',
+    limit: 20,
+    merchantOnly: true,
+    paymentMethods: ['ALIPAY'],
+    periodMinutes: null,
+    side: 'BUY',
+  };
+  const run = {
+    actualPrice: null,
+    adId: ad.id,
+    createdAt: '2026-10-15T08:00:00.000Z',
+    currentPrice: ad.price,
+    evidence: {
+      ownAdIds: ['AD10001'],
+      actualReferencePosition: 3,
+      candidates: [
+        {
+          eligible: true,
+          quote: selected,
+          reason: '选中最高合格候选',
+          targetPrice: '7.13',
+        },
+      ],
+      competitorQuery: query,
+      competitorSnapshot: {
+        fetchedAt: '2026-10-15T08:00:00.000Z',
+        quotes: [selected],
+        window: { page: 1, rows: 20 },
+      },
+      limit: '7.14',
+      rawLimit: '7.14208',
+      reference: { ...quote('参考商家', '7.20'), side: 'SELL' },
+      referenceQuery: { ...query, side: 'SELL' },
+      referenceSnapshot: {
+        fetchedAt: '2026-10-15T08:00:00.000Z',
+        quotes: [quote('参考商家', '7.20')],
+        window: { page: 1, rows: 10 },
+      },
+      rule,
+      selected,
+    },
+    finishedAt: '2026-10-15T08:00:00.000Z',
+    id: 'run-1',
+    merchantId,
+    merchantName: ad.merchantName,
+    platform: 'BINANCE',
+    platformAdId: ad.platformAdId,
+    reason: '同行 C 高一格后为 7.13，未超过本轮上限 7.14',
+    resultPlatformAdId: null,
+    ruleVersion: 2,
+    status: 'READY',
+    targetPrice: '7.13',
+    tenantId,
+    trigger: 'PREVIEW',
+    updatedAt: '2026-10-15T08:00:00.000Z',
+  };
+  const actions: Array<{ body: Record<string, unknown>; path: string }> = [];
+  let platformWrites = 0;
+  const executedRunIds: string[] = [];
+  await page.route(/\/v1\/sys\/merchant-ad/, async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/merchant-ad-options/merchants'))
+      return route.fallback();
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    let data: unknown = ad;
+    if (route.request().method() !== 'GET') {
+      actions.push({ path, body });
+      expect(body.tenantId).toBe(tenantId);
+      expect(body.merchantId).toBe(merchantId);
+    }
+    if (path.endsWith('/rule')) {
+      Object.assign(ad.rule, body.rule);
+      ad.ruleVersion += 1;
+    } else if (path.endsWith('/preview')) {
+      data = run;
+    } else if (path.endsWith('/execute')) {
+      if (!ad.pendingRunId) {
+        platformWrites += 1;
+        ad.pendingRunId = 'run-2';
+      }
+      executedRunIds.push(ad.pendingRunId);
+      data = {
+        ...run,
+        finishedAt: null,
+        id: ad.pendingRunId,
+        reason: '平台请求已提交，等待回查核实',
+        status: 'PENDING',
+        trigger: 'MANUAL',
+      };
+    } else if (path.endsWith('/start') || path.endsWith('/stop')) {
+      ad.enabled = path.endsWith('/start');
+    } else if (path.endsWith('/merchant-ad-runs')) {
+      data = { items: [run], page: 1, pageSize: 20, total: 1 };
+    } else if (path.endsWith('/merchant-ads')) {
+      const items =
+        new URL(route.request().url()).searchParams.get('pageSize') === '100'
+          ? [ad, { ...ad, id: 'ad-2', platformAdId: 'AD10002', rule: null }]
+          : [ad];
+      data = { items, page: 1, pageSize: 20, total: items.length };
+    } else if (path.endsWith('/run-1')) {
+      data = run;
+    }
+    await route.fulfill({ contentType: 'application/json', json: ok(data) });
+  });
+
+  await page.goto('/business/merchant-ads');
+  const syncButton = page.getByRole('button', {
+    name: '同步广告',
+    exact: true,
+  });
+  await expect(syncButton).toBeEnabled();
+  await page.getByRole('combobox', { name: '商家账号', exact: true }).click();
+  await page.getByTitle('币安主账号 · 币安', { exact: true }).click();
+  await expect(syncButton).toBeEnabled();
+  await page.getByRole('button', { name: /重\s*置/ }).click();
+  await expect(syncButton).toBeEnabled();
+  await expect(page.getByText('7.05', { exact: true }).first()).toBeVisible();
+  await expect(
+    page
+      .getByRole('button', { name: '策略', exact: true })
+      .last()
+      .locator('xpath=ancestor::td'),
+  ).toHaveCSS('text-align', 'center');
+  await page.screenshot({
+    fullPage: true,
+    path: `node_modules/.e2e/screenshots/merchant-ad-list-${testInfo.project.name}.png`,
+  });
+  await page.getByRole('button', { name: '策略', exact: true }).last().click();
+  const drawer = page
+    .locator('.ant-drawer-content')
+    .filter({ hasText: '买 USDT 广告策略' });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByLabel('自己的平台昵称')).toHaveCount(0);
+  await expect(drawer.getByLabel('最小价格单位')).toHaveCount(0);
+  await expect(
+    drawer.getByLabel('检查同行下单限制', { exact: true }),
+  ).toHaveCount(0);
+  await drawer.getByLabel('排除不活跃同行', { exact: true }).click();
+  await drawer.getByLabel('副广告', { exact: true }).click();
+  await page.getByTitle('AD10002 · 在线', { exact: true }).click();
+  await drawer
+    .getByRole('spinbutton', { name: '副广告折扣系数', exact: true })
+    .fill('0.01');
+  await drawer.getByLabel('同行支付方式', { exact: true }).click();
+  await page.getByTitle('微信支付', { exact: true }).click();
+  await drawer.getByText('看哪些收币同行', { exact: true }).click();
+  await drawer.getByText('动态跟价', { exact: true }).click();
+  await drawer
+    .getByRole('spinbutton', { name: '每个 USDT 预留价差' })
+    .fill('0.05');
+  await drawer
+    .getByRole('spinbutton', { name: '手续费率', exact: true })
+    .fill('0.11');
+  await expect(
+    drawer.getByRole('spinbutton', { name: '买价上限', exact: true }),
+  ).toHaveCount(0);
+  await expect
+    .poll(() =>
+      drawer.evaluate((element) => element.scrollWidth - element.clientWidth),
+    )
+    .toBeLessThanOrEqual(1);
+  await page.screenshot({
+    fullPage: true,
+    path: `node_modules/.e2e/screenshots/merchant-ad-rule-${testInfo.project.name}.png`,
+  });
+  await drawer.getByRole('button', { name: '保存策略' }).click();
+  await expect.poll(() => actions.length).toBe(1);
+  expect(actions[0]?.body.rule).toEqual(
+    expect.objectContaining({
+      competitorPaymentMethods: ['ALIPAY', 'WECHAT'],
+      excludeInactive: true,
+      linkedAdId: 'ad-2',
+      linkedDiscount: '0.01',
+      feePercent: '0.11',
+      fixedLimit: null,
+      mode: 'DYNAMIC',
+      profitPerUsdt: '0.05',
+      step: '0.01',
+    }),
+  );
+  await drawer.locator('.ant-drawer-close').click();
+
+  await page
+    .getByRole('button', { name: 'AD10001更多操作', exact: true })
+    .last()
+    .click();
+  await page.getByRole('menuitem', { name: '试算', exact: true }).click();
+  const resultDrawer = page
+    .locator('.ant-drawer-content')
+    .filter({ hasText: '本轮调价结果' });
+  await expect(
+    resultDrawer.getByText(run.reason, { exact: true }),
+  ).toBeVisible();
+  await expect(
+    resultDrawer.getByText('7.13', { exact: true }).first(),
+  ).toBeVisible();
+  expect(actions.map(({ path }) => path)).toEqual([
+    '/v1/sys/merchant-ads/ad-1/rule',
+    '/v1/sys/merchant-ads/ad-1/preview',
+  ]);
+  await resultDrawer.getByText('查看本轮查询条件和参考行情').click();
+  await expect(resultDrawer.getByText(/仅比较本次接口窗口/)).toBeVisible();
+  await expect
+    .poll(() =>
+      resultDrawer.evaluate(
+        (element) => element.scrollWidth - element.clientWidth,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
+  await page.screenshot({
+    fullPage: true,
+    path: `node_modules/.e2e/screenshots/merchant-ad-preview-${testInfo.project.name}.png`,
+  });
+  await resultDrawer.locator('.ant-drawer-close').click();
+
+  const automation = page.getByRole('switch', { name: 'AD10001自动调价' });
+  await automation.click();
+  await expect(automation).toBeChecked();
+  await automation.click();
+  await expect(automation).not.toBeChecked();
+  expect(actions.at(-1)?.path).toBe('/v1/sys/merchant-ads/ad-1/stop');
+
+  await page
+    .getByRole('button', { name: 'AD10001更多操作', exact: true })
+    .last()
+    .click();
+  await page.getByRole('menuitem', { name: '立即调价', exact: true }).click();
+  await expect(
+    resultDrawer.getByText('平台请求已提交，等待回查核实', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    resultDrawer.getByText('待核实', { exact: true }).first(),
+  ).toBeVisible();
+  expect(actions.at(-1)?.path).toBe('/v1/sys/merchant-ads/ad-1/execute');
+  await resultDrawer.locator('.ant-drawer-close').click();
+  await page
+    .getByRole('button', { name: 'AD10001更多操作', exact: true })
+    .last()
+    .click();
+  const executeCount = actions.filter(({ path }) =>
+    path.endsWith('/execute'),
+  ).length;
+  await page.getByRole('menuitem', { name: '核实结果', exact: true }).click();
+  await expect(
+    resultDrawer.getByText('待核实', { exact: true }).first(),
+  ).toBeVisible();
+  expect(actions.filter(({ path }) => path.endsWith('/execute'))).toHaveLength(
+    executeCount + 1,
+  );
+  expect(actions.at(-1)?.body).toEqual({ merchantId, tenantId });
+  expect(platformWrites).toBe(1);
+  expect(executedRunIds).toEqual(['run-2', 'run-2']);
+  await resultDrawer.locator('.ant-drawer-close').click();
+
+  await page.goto('/business/merchant-ad-runs');
+  await page.getByRole('button', { name: '详情', exact: true }).last().click();
+  const recordDrawer = page
+    .locator('.ant-drawer-content')
+    .filter({ hasText: '调价记录详情' });
+  await expect(
+    recordDrawer.getByText(run.reason, { exact: true }),
+  ).toBeVisible();
 });
 
 test('loads payment orders and batches on first visit', async ({ page }) => {
@@ -2273,4 +2804,241 @@ test('edits the payment account and its credential in one form and request', asy
     tenantId,
   });
   expect(payload.credential).not.toHaveProperty('alipayPublicKey');
+});
+
+test('shows linked ads as followers and manages unlinking only through the main ad', async ({
+  page,
+}, testInfo) => {
+  const merchantId = '00000000-0000-4000-8000-000000000020';
+  const rule = {
+    blockedNicknames: [],
+    competitorAmount: '0',
+    competitorPaymentMethods: ['ALIPAY'],
+    competitorPeriod: null,
+    feePercent: null,
+    fixedLimit: '7.10',
+    followNickname: null,
+    intervalSeconds: 60,
+    merchantOnly: true,
+    mode: 'FIXED',
+    profitPerUsdt: null,
+    referencePaymentMethods: [],
+    referencePosition: 1,
+    step: '0.01',
+    linkedAdId: 'child',
+    linkedDiscount: '0.01',
+  };
+  const main = {
+    asset: 'USDT',
+    enabled: false,
+    fiatCurrency: 'CNY',
+    id: 'main',
+    merchantId,
+    merchantName: '币安主账号',
+    tenantId,
+    platform: 'BINANCE',
+    platformAdId: '9100000000000000000001',
+    price: '7.10',
+    status: 'ONLINE',
+    rule,
+    ruleVersion: 1,
+    paymentMethods: ['ALIPAY'],
+    pendingRunId: null,
+    lastError: null,
+    lastSyncedAt: null,
+    nextRunAt: null,
+    pricing: {
+      role: 'MAIN',
+      discount: '0.01',
+      linkedAd: {
+        id: 'child',
+        platformAdId: '9100000000000000000002',
+        enabled: false,
+        status: 'OFFLINE',
+      },
+    },
+  };
+  const child = {
+    ...main,
+    id: 'child',
+    platformAdId: '9100000000000000000002',
+    status: 'OFFLINE',
+    rule: { ...rule, mode: 'DYNAMIC', linkedAdId: null, linkedDiscount: null },
+    pricing: {
+      role: 'LINKED',
+      discount: '0.01',
+      mainAd: {
+        id: main.id,
+        platformAdId: main.platformAdId,
+        enabled: false,
+        status: 'ONLINE',
+      },
+    },
+  };
+  const independent = {
+    ...main,
+    id: 'independent',
+    platformAdId: '9200000000000000000001',
+    pricing: { role: 'INDEPENDENT' },
+  };
+  let detached = false;
+  const mutations: string[] = [];
+  await page.route(/\/v1\/sys\/merchant-ad/, async (route) => {
+    const url = new URL(route.request().url());
+    const path = url.pathname;
+    if (path.endsWith('/merchant-ad-options/merchants'))
+      return route.fallback();
+    let data: unknown;
+    if (route.request().method() !== 'GET') {
+      mutations.push(path);
+      expect(path).toBe('/v1/sys/merchant-ads/main/rule');
+      const body = route.request().postDataJSON();
+      expect(body.rule.linkedAdId).toBeNull();
+      expect(body.rule.linkedDiscount).toBeNull();
+      detached = true;
+      data = {
+        ...main,
+        rule: body.rule,
+        pricing: { role: 'INDEPENDENT' },
+        ruleVersion: 2,
+      };
+    } else if (path.endsWith('/child')) {
+      data = child;
+    } else if (path.endsWith('/main')) {
+      data = main;
+    } else {
+      const items =
+        url.searchParams.get('pageSize') === '100'
+          ? [main, child]
+          : [
+              independent,
+              {
+                ...main,
+                ...(detached ? { pricing: { role: 'INDEPENDENT' } } : {}),
+              },
+              {
+                ...child,
+                ...(detached ? { pricing: { role: 'INDEPENDENT' } } : {}),
+              },
+            ];
+      data = { items, page: 1, pageSize: 20, total: items.length };
+    }
+    await route.fulfill({ contentType: 'application/json', json: ok(data) });
+  });
+  await page.goto('/business/merchant-ads');
+  await expect(
+    page.getByText('跟随主广告', { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('switch', { name: '9100000000000000000002自动调价' }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole('switch', { name: '9100000000000000000002自动调价' }),
+  ).not.toBeChecked();
+  await expect(
+    page.getByRole('button', { name: '试算', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: '立即调价', exact: true }),
+  ).toHaveCount(0);
+  const rows = page.locator('.vxe-table--main-wrapper .vxe-body--row');
+  await expect(rows).toHaveCount(3);
+  const heights = await rows.evaluateAll((elements) =>
+    elements.map((element) => element.getBoundingClientRect().height),
+  );
+  expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(1);
+  const actionCells = page.locator(
+    '.vxe-table--fixed-right-wrapper .vxe-body--row',
+  );
+  const buttonSizes = await actionCells
+    .getByRole('button')
+    .evaluateAll((elements) =>
+      elements.map((element) => ({
+        width: element.getBoundingClientRect().width,
+        height: element.getBoundingClientRect().height,
+      })),
+    );
+  const readActionLayout = () =>
+    actionCells.evaluateAll((elements) =>
+      elements.map((element) => ({
+        height: element.getBoundingClientRect().height,
+        buttons: [...element.querySelectorAll('button')].map((button) => ({
+          x: button.getBoundingClientRect().x,
+          y: button.getBoundingClientRect().y,
+          width: button.getBoundingClientRect().width,
+          height: button.getBoundingClientRect().height,
+        })),
+      })),
+    );
+  const actionLayout = await readActionLayout();
+  expect(buttonSizes).toHaveLength(6);
+  expect(
+    Math.max(...buttonSizes.map((size) => size.height)) -
+      Math.min(...buttonSizes.map((size) => size.height)),
+  ).toBeLessThanOrEqual(1);
+  await page
+    .getByRole('button', { name: `${main.platformAdId}更多操作`, exact: true })
+    .last()
+    .click();
+  await expect(
+    page.getByRole('menuitem', { name: '试算', exact: true }),
+  ).toBeVisible();
+  await page.waitForTimeout(500);
+  await expect(
+    page.getByRole('menuitem', { name: '试算', exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: `node_modules/.e2e/screenshots/merchant-ad-menu-${testInfo.project.name}.png`,
+  });
+  const openedHeights = await rows.evaluateAll((elements) =>
+    elements.map((element) => element.getBoundingClientRect().height),
+  );
+  expect(openedHeights).toEqual(heights);
+  expect(await readActionLayout()).toEqual(actionLayout);
+  await page
+    .getByRole('button', { name: `${main.platformAdId}更多操作`, exact: true })
+    .last()
+    .click();
+  await page
+    .getByRole('button', { name: '查看主广告', exact: true })
+    .scrollIntoViewIfNeeded();
+  await page.screenshot({
+    fullPage: true,
+    path: `node_modules/.e2e/screenshots/merchant-ad-roles-${testInfo.project.name}.png`,
+  });
+  await page.getByRole('button', { name: '联动', exact: true }).last().click();
+  const drawer = page.locator('.ant-drawer-content:visible');
+  await expect(
+    drawer.getByText('副广告由主广告联动调价，不能单独配置或启动。'),
+  ).toBeVisible();
+  await expect(drawer.getByRole('button', { name: '保存策略' })).toHaveCount(0);
+  await expect(drawer.getByLabel('策略模式')).toHaveCount(0);
+  await expect
+    .poll(() =>
+      drawer.evaluate((element) => element.scrollWidth - element.clientWidth),
+    )
+    .toBeLessThanOrEqual(1);
+  await page.screenshot({
+    fullPage: true,
+    path: `node_modules/.e2e/screenshots/merchant-ad-linked-${testInfo.project.name}.png`,
+  });
+  await drawer.getByRole('button', { name: '管理主广告', exact: true }).click();
+  await expect(
+    drawer.getByText(/副广告未在线，当前无法联动调价/),
+  ).toBeVisible();
+  await expect(drawer.getByLabel('策略模式')).toBeVisible();
+  await drawer.getByRole('button', { name: '解除联动', exact: true }).click();
+  await drawer.getByRole('button', { name: '保存策略', exact: true }).click();
+  await expect.poll(() => mutations.length).toBe(1);
+  await drawer.locator('.ant-drawer-close').click();
+  await expect(
+    page.getByRole('button', { name: '联动', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('switch', { name: '9100000000000000000002自动调价' }),
+  ).not.toBeChecked();
+  await expect(
+    page.getByRole('button', { name: '策略', exact: true }).last(),
+  ).toBeVisible();
 });

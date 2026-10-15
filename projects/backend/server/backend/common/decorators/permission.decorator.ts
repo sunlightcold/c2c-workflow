@@ -3,6 +3,8 @@ import { isPlainObject } from '@/common/utils'
 
 export const PERMISSION_KEY = 'PERMISSION_KEY'
 
+export type PermissionRequirement = string | string[] | { anyOf: string[] }
+
 type TupleToObject<T extends string, P extends ReadonlyArray<string>> = {
   [K in Uppercase<P[number]>]: `${T}:${Lowercase<K>}`
 }
@@ -11,7 +13,7 @@ type AddPrefixToObjectValue<T extends string, P extends Record<string, string>> 
 }
 
 /** 资源操作需要特定的权限 */
-export function Permission(permission: string | string[]) {
+export function Permission(permission: PermissionRequirement) {
   return applyDecorators(SetMetadata(PERMISSION_KEY, permission))
 }
 

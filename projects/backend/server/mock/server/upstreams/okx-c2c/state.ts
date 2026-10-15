@@ -1,4 +1,6 @@
 import { MemoryRepository } from '@mock/core/memory-repository'
+import { createDemoAds } from '../c2c-ad/demo-ads'
+import type { C2cMockAd } from '../c2c-ad/mock-ad'
 import type { OkxC2cMockOrder, OkxC2cSettings } from './types'
 
 const DEFAULT_SETTINGS: OkxC2cSettings = {
@@ -41,10 +43,18 @@ function defaultOrder(): OkxC2cMockOrder {
 
 export class OkxC2cState {
   readonly orders = new MemoryRepository<OkxC2cMockOrder>()
+  readonly ads = new MemoryRepository<C2cMockAd>()
   private settings = { ...DEFAULT_SETTINGS }
 
   constructor() {
     this.orders.insert(defaultOrder())
+    this.resetAds()
+  }
+
+  resetAds() {
+    this.ads.clear()
+    for (const ad of createDemoAds('OKX')) this.ads.insert(ad)
+    return { ads: this.ads.list().length }
   }
 
   getSettings() {
@@ -58,6 +68,7 @@ export class OkxC2cState {
 
   reset() {
     const deletedOrders = this.orders.clear()
+    this.resetAds()
     this.settings = { ...DEFAULT_SETTINGS }
     this.orders.insert(defaultOrder())
     return { deletedOrders, settings: this.getSettings(), orders: this.orders.list() }

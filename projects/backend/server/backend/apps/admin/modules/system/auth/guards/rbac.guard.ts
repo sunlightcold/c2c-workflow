@@ -8,8 +8,13 @@ import {
   UnauthorizedException,
 } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
-import { CacheService } from 'apps/admin/modules/cache'
-import { IS_OPTIONAL_AUTH_KEY, IS_PUBLIC_KEY, PERMISSION_KEY } from '@/common/decorators'
+import { CacheService } from '@admin/modules/cache'
+import {
+  IS_OPTIONAL_AUTH_KEY,
+  IS_PUBLIC_KEY,
+  PERMISSION_KEY,
+  type PermissionRequirement,
+} from '@/common/decorators'
 import { AuthRequest } from '@/common/interfaces'
 import { isSuperAdmin } from '@/common/utils'
 import { AuthService } from '../auth.service'
@@ -42,10 +47,10 @@ export class RbacAuthGuard implements CanActivate {
       throw new UnauthorizedException(ErrorEnum.INVALID_LOGIN)
     }
 
-    const payloadPermission = this.reflector.getAllAndOverride<string | string[]>(PERMISSION_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ])
+    const payloadPermission = this.reflector.getAllAndOverride<PermissionRequirement>(
+      PERMISSION_KEY,
+      [context.getHandler(), context.getClass()],
+    )
 
     // 控制器没有设置接口权限，则默认通过
     if (!payloadPermission) return true
@@ -54,12 +59,14 @@ export class RbacAuthGuard implements CanActivate {
 
     const allPermissions = await this.cacheService.getPermissions(user.uid)
 
-    let canNext = false
-    // handle permission strings
-    if (Array.isArray(payloadPermission)) {
+    let canNext: boolean
+    if (typeof payloadPermission === 'string') {
+      canNext = allPermissions.includes(payloadPermission)
+    } else if (Array.isArray(payloadPermission)) {
       canNext = payloadPermission.every((i) => allPermissions.includes(i))
+    } else {
+      canNext = payloadPermission.anyOf.some((permission) => allPermissions.includes(permission))
     }
-    if (typeof payloadPermission === 'string') canNext = allPermissions.includes(payloadPermission)
 
     if (!canNext) throw new ForbiddenException(ErrorEnum.FORBIDDEN)
 

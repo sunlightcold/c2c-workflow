@@ -1,4 +1,8 @@
 export const BINANCE_C2C_PATHS = {
+  listAds: '/sapi/v1/c2c/ads/listWithPagination',
+  adDetail: '/sapi/v1/c2c/ads/getDetailByNo',
+  updateAd: '/sapi/v1/c2c/ads/update',
+  searchAds: '/bapi/c2c/v2/friendly/c2c/adv/search',
   listOrders: '/sapi/v1/c2c/orderMatch/listOrders',
   reportOrders: '/sapi/v1/c2c/orderMatch/listUserOrderHistory',
   detail: '/sapi/v1/c2c/orderMatch/getUserOrderDetail',

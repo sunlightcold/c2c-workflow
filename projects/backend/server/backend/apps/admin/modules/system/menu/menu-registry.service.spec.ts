@@ -136,6 +136,52 @@ describe('MenuRegistryService', () => {
     )
   })
 
+  it('registers one shared advertisement menu and its operation permissions', () => {
+    expect(DEFAULT_ADMIN_MENUS).toContainEqual(
+      expect.objectContaining({
+        key: 'advertisementManagement',
+        name: '广告管理',
+        type: SysMenuType.FOLDER,
+      }),
+    )
+    expect(
+      DEFAULT_ADMIN_MENUS.filter(
+        ({ parentKey, type }) =>
+          parentKey === 'advertisementManagement' && type === SysMenuType.MENU,
+      ).map(({ name, path, component }) => ({ name, path, component })),
+    ).toEqual([
+      {
+        name: '广告列表',
+        path: '/business/merchant-ads',
+        component: '/business/merchant-ads',
+      },
+      {
+        name: '调价记录',
+        path: '/business/merchant-ad-runs',
+        component: '/business/merchant-ad-runs',
+      },
+    ])
+    expect(
+      DEFAULT_ADMIN_MENUS.filter(({ parentKey }) => parentKey === 'business.merchantAds').map(
+        ({ permission }) => permission,
+      ),
+    ).toEqual([
+      'merchant:ad:read',
+      'merchant:ad:sync',
+      'merchant:ad:rule',
+      'merchant:ad:preview',
+      'merchant:ad:start',
+      'merchant:ad:stop',
+      'merchant:ad:execute',
+    ])
+    expect(DEFAULT_ADMIN_MENUS).toContainEqual(
+      expect.objectContaining({
+        parentKey: 'business.merchantAdRuns',
+        permission: 'merchant:adRun:read',
+      }),
+    )
+  })
+
   it('rejects duplicate menu keys', () => {
     expect(() =>
       service.validateDefinitions([
