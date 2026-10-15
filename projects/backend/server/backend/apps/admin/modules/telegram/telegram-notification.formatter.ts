@@ -405,8 +405,17 @@ export function formatExceptionMessage(
       `请在后台更新该账号的凭证后，将账号重新启用。`
     )
   }
+  let title = '系统异常通知'
+  switch (code) {
+    case 'C2C_ORDER_SYNC_FAILED':
+      title = '商家订单同步异常'
+      break
+    case 'AUTOMATIC_PAYMENT_FAILED':
+      title = '支付任务处理异常'
+      break
+  }
   return (
-    `🔴 <b>支付异常通知</b>\n\n` +
+    `🔴 <b>${title}</b>\n\n` +
     `错误码：<code>${escapeTelegramHtml(code)}</code>\n` +
     `原因：<code>${escapeTelegramHtml(compact(message, 400))}</code>` +
     (referenceId ? `\n关联单号：<code>${escapeTelegramHtml(referenceId)}</code>` : '')

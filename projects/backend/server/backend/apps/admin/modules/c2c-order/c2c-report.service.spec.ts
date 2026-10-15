@@ -1,4 +1,5 @@
 import { MerchantPlatform } from '@admin/database'
+import { Logger } from '@nestjs/common'
 import { C2cReportService } from './c2c-report.service'
 
 describe('C2cReportService', () => {
@@ -19,6 +20,8 @@ describe('C2cReportService', () => {
 
   beforeEach(() => {
     jest.resetAllMocks()
+    jest.spyOn(Logger.prototype, 'log').mockImplementation()
+    jest.spyOn(Logger.prototype, 'error').mockImplementation()
     merchants.findOne.mockResolvedValue(merchant)
     credentials.getActiveReference.mockResolvedValue({ credentialRef: 'enc://secret' })
     secrets.resolve.mockResolvedValue({ apiKey: 'key', secretKey: 'secret' })
@@ -27,6 +30,8 @@ describe('C2cReportService', () => {
     platformClient.listOrders.mockResolvedValue({ items: [], total: 0, hasMore: false })
     platformClient.listReportOrders.mockResolvedValue({ items: [], total: 0, hasMore: false })
   })
+
+  afterEach(() => jest.restoreAllMocks())
 
   function createService() {
     return new C2cReportService(
@@ -211,7 +216,7 @@ describe('C2cReportService', () => {
     expect(platformClient.listReportOrders).not.toHaveBeenCalled()
   })
 
-  it('rejects an empty page that still claims more data', async () => {
+  it('ends pagination on an empty page even when the reported total claims more data', async () => {
     platformClient.listOrders.mockResolvedValueOnce({
       items: [],
       total: 10,
@@ -219,7 +224,8 @@ describe('C2cReportService', () => {
     })
     await expect(
       createService().getProviderOrders('tenant-1', 'merchant-1', start, end),
-    ).rejects.toThrow('分页不完整')
+    ).resolves.toEqual([])
+    expect(platformClient.listOrders).toHaveBeenCalledTimes(1)
   })
 
   it('rejects repeated SELL-only pages using unfiltered upstream order ids', async () => {
@@ -269,7 +275,7 @@ describe('C2cReportService', () => {
     ).rejects.toThrow('upstream timeout')
   })
 
-  it('rejects truncated pages including an empty final page with a reported total', async () => {
+  it('accepts an empty final page without enforcing the reported total', async () => {
     platformClient.listOrders.mockResolvedValueOnce({
       items: [],
       rawItemCount: 0,
@@ -278,7 +284,7 @@ describe('C2cReportService', () => {
     })
     await expect(
       createService().getProviderOrders('tenant-1', 'merchant-1', start, end),
-    ).rejects.toThrow('分页不完整')
+    ).resolves.toEqual([])
     platformClient.listOrders.mockResolvedValueOnce({
       items: [],
       rawItemCount: 1,
@@ -288,5 +294,92 @@ describe('C2cReportService', () => {
     await expect(
       createService().getProviderOrders('tenant-1', 'merchant-1', start, end),
     ).resolves.toEqual([])
+  })
+
+  it('reads subsequent short pages instead of enforcing the requested page size', async () => {
+    platformClient.listOrders
+      .mockResolvedValueOnce({
+        items: [order('1'), order('2')],
+        rawItemCount: 2,
+        total: 4,
+        hasMore: true,
+      })
+      .mockResolvedValueOnce({
+        items: [order('3'), order('4')],
+        rawItemCount: 2,
+        total: 4,
+        hasMore: false,
+      })
+    await expect(
+      createService().getProviderOrders('tenant-1', 'merchant-1', start, end),
+    ).resolves.toEqual([order('1'), order('2'), order('3'), order('4')])
+    expect(platformClient.listOrders).toHaveBeenCalledTimes(2)
+    expect(Logger.prototype.log).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /C2C 统计分页响应: queryId=.+tenantId=tenant-1, merchantId=merchant-1, platform=BINANCE, source=pending, endpoint=\/sapi\/v1\/c2c\/orderMatch\/listOrders, start=.+endExclusive=.+page=1, rows=50, received=2, receivedTotal=2, matched=2, total=4, hasMore=true, continuePaging=true, durationMs=\d+/,
+      ),
+    )
+  })
+
+  it('logs the failed interface, merchant, page, time range and original error', async () => {
+    const upstreamError = new Error('[429] Binance request rate limit')
+    platformClient.listReportOrders.mockRejectedValueOnce(upstreamError)
+    await expect(
+      createService().getProviderOrders('tenant-1', 'merchant-1', start, end),
+    ).rejects.toBe(upstreamError)
+    expect(Logger.prototype.error).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /C2C 统计分页请求失败: queryId=.+tenantId=tenant-1, merchantId=merchant-1, platform=BINANCE, source=history, endpoint=\/sapi\/v1\/c2c\/orderMatch\/listUserOrderHistory, start=.+endExclusive=.+page=1, rows=50, durationMs=\d+, reason=\[429\] Binance request rate limit/,
+      ),
+      upstreamError.stack,
+    )
+  })
+
+  it.each([MerchantPlatform.BINANCE, MerchantPlatform.OKX])(
+    'reads all short pages for %s when page-based hasMore ends before the accumulated total',
+    async (platform) => {
+      merchants.findOne.mockResolvedValue({ ...merchant, platform })
+      for (const loader of [platformClient.listOrders, platformClient.listReportOrders]) {
+        for (let page = 1; page <= 5; page += 1) {
+          const items = Array.from({ length: 20 }, (_, i) => order(String((page - 1) * 20 + i)))
+          loader.mockResolvedValueOnce({
+            items,
+            rawItemCount: items.length,
+            rawOrderIds: items.map((item) => item.platformOrderId),
+            total: 100,
+            hasMore: page * 50 < 100,
+          })
+        }
+      }
+      const result = await createService().getProviderOrders('tenant-1', 'merchant-1', start, end)
+      expect(result).toHaveLength(100)
+      expect(result.map((item) => item.platformOrderId)).toEqual(
+        Array.from({ length: 100 }, (_, i) => String(i)),
+      )
+      expect(platformClient.listOrders).toHaveBeenCalledTimes(5)
+      expect(platformClient.listReportOrders).toHaveBeenCalledTimes(5)
+    },
+  )
+
+  it('counts unfiltered rows when continuing past a SELL-only short page', async () => {
+    platformClient.listOrders
+      .mockResolvedValueOnce({
+        items: [],
+        rawItemCount: 20,
+        rawOrderIds: Array.from({ length: 20 }, (_, i) => `sell-${i}`),
+        total: 21,
+        hasMore: false,
+      })
+      .mockResolvedValueOnce({
+        items: [order('buy-1')],
+        rawItemCount: 1,
+        rawOrderIds: ['buy-1'],
+        total: 21,
+        hasMore: false,
+      })
+    await expect(
+      createService().getProviderOrders('tenant-1', 'merchant-1', start, end),
+    ).resolves.toEqual([order('buy-1')])
+    expect(platformClient.listOrders).toHaveBeenCalledTimes(2)
   })
 })
