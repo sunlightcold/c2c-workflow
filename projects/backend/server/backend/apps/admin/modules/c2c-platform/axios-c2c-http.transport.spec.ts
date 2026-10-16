@@ -2,6 +2,7 @@ import type { ProxyNetworkService } from '@/apps/admin/modules/proxy/proxy-netwo
 import axios, { AxiosError } from 'axios'
 import { Logger } from '@nestjs/common'
 import { AxiosC2cHttpTransport } from './axios-c2c-http.transport'
+import { C2cSensitiveRequestError } from './c2c-platform.types'
 
 describe('AxiosC2cHttpTransport appeal logging', () => {
   const transport = new AxiosC2cHttpTransport({
@@ -16,6 +17,33 @@ describe('AxiosC2cHttpTransport appeal logging', () => {
   }
 
   afterEach(() => jest.restoreAllMocks())
+
+  it('suppresses chat bodies, URLs and upstream errors while retaining only safe HTTP status', async () => {
+    const log = jest.spyOn(Logger.prototype, 'log').mockImplementation()
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation()
+    const failure = jest.spyOn(Logger.prototype, 'error').mockImplementation()
+    const upstream = new AxiosError('private-body', 'ERR_BAD_RESPONSE')
+    Object.defineProperty(upstream, 'response', { value: { status: 302, data: 'private-body' } })
+    const http = jest
+      .spyOn(axios, 'request')
+      .mockResolvedValueOnce({ status: 200, data: 'private-body' })
+      .mockRejectedValueOnce(upstream)
+    const sensitive = {
+      ...request,
+      sensitive: true,
+      responseType: 'text' as const,
+      maxBytes: 1024,
+      maxRedirects: 0 as const,
+    }
+    await expect(transport.request(sensitive)).resolves.toBe('private-body')
+    await expect(transport.request(sensitive)).rejects.toEqual(new C2cSensitiveRequestError(302))
+    expect(log).not.toHaveBeenCalled()
+    expect(warn).not.toHaveBeenCalled()
+    expect(failure).not.toHaveBeenCalled()
+    expect(http).toHaveBeenCalledWith(
+      expect.objectContaining({ maxContentLength: 1024, maxBodyLength: 1024, maxRedirects: 0 }),
+    )
+  })
 
   it('records the request and original HTTP rejection response while preserving the Axios error', async () => {
     const response = {

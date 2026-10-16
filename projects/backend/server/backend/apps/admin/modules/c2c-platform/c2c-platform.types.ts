@@ -7,7 +7,18 @@ import type {
 
 export const C2C_HTTP_TRANSPORT = Symbol('C2C_HTTP_TRANSPORT')
 
+export class C2cSensitiveRequestError extends Error {
+  constructor(readonly statusCode?: number) {
+    super('平台聊天请求失败')
+  }
+}
+
 export interface C2cHttpRequest {
+  lookup?: (hostname: string, options: object) => Promise<Array<{ address: string; family: 4 | 6 }>>
+  responseType?: 'text' | 'arraybuffer'
+  sensitive?: boolean
+  maxBytes?: number
+  maxRedirects?: 0
   proxyScope?: { tenantId: string; merchantId: string }
   method: 'GET' | 'POST' | 'PUT'
   url: string

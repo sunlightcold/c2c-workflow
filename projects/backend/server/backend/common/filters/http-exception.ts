@@ -23,6 +23,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
     this.logger.warn(`请求IP: ${clientIp}`)
     this.logger.error(exception.message, exception.stack)
     this.logger.log('----------------- exception.stack -----------------')
-    response.status(status).json(ResponseModel.error(status, msg).setPath(request.url))
+    const body = exception.getResponse()
+    const result = ResponseModel.error(status, msg).setPath(request.url)
+    if (body && typeof body === 'object' && 'data' in body) result.data = body.data as object
+    response.status(status).json(result)
   }
 }

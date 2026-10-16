@@ -1,7 +1,7 @@
 # C2C 商家代理出口与后台实时聊天实施需求
 
-> 文档版本：V2.2
-> 文档状态：需求已按“后台统一聊天、Telegram 不承接聊天”重新整理；未作为已实现或已验收声明。
+> 文档版本：V2.3
+> 文档状态：代理已交付，Binance 后台聊天已实现并进行本地验证；真实平台联调待验收，详见后台聊天实施契约。
 > 更新日期：2026-10-16
 > 适用项目：`backend`、`admin-web`
 > 本版本替代 V1.7 的商户群聊天转发、群内回复及相关权限、映射和迁移要求。
@@ -497,13 +497,13 @@ C2cChatOutboundMessage:
 
 代理 DTO、字段类型、错误包装与 HTTP 状态以 [后端 IP 代理 API](../projects/backend/doc/api/main/c2c-proxies.md) 为准，响应不含密码或 Secret 引用，过期为派生状态。
 
-聊天稳定错误至少包括：`CHAT_UNSUPPORTED`、`CHAT_CONTEXT_UNAVAILABLE`、`CHAT_SOCKET_UNAVAILABLE`、`CHAT_SEND_TEXT_PENDING`、`CHAT_SEND_TEXT_UNSUPPORTED`、`CHAT_SEND_IMAGE_PENDING`、`CHAT_IMAGE_UNSUPPORTED`、`CHAT_ORDER_NOT_FOUND`、`CHAT_ATTACHMENT_UNSUPPORTED`、`CHAT_ATTACHMENT_TOO_LARGE`、`CHAT_ATTACHMENT_DOWNLOAD_FAILED`、`CHAT_ATTACHMENT_REDIRECT_FORBIDDEN`、`CHAT_ATTACHMENT_EXPIRED`、`CHAT_DUPLICATE_MESSAGE`、`CHAT_SEND_FAILED`、`CHAT_SEND_UNKNOWN`、`CHAT_RETRY_REQUIRES_RECONCILIATION`。
+已实施的聊天字段、稳定错误码及状态以 [后台聊天 API](../projects/backend/doc/api/main/c2c-merchant-chat.md) 为准；未接入平台统一返回 `CHAT_UNSUPPORTED`，未知结果不提供自动重试接口。
 
 不再定义 Telegram 聊天成员、群原消息映射等错误；已有非聊天接口的错误保持兼容。
 
 ## 11. 实施顺序
 
-以下为完整代理与后台聊天的后续蓝图；本次仅交付代理，实际范围及发布顺序以 [IP 代理实施契约](c2c-proxy-contract.md) 为准。绑定历史、长期连接失效和聊天不属于当前交付。
+代理已按 [IP 代理实施契约](c2c-proxy-contract.md) 交付；2026-10-16 实现 Binance 后台实时聊天，具体 HTTP/实时事件、失败语义、容量与发布要求以 [后台聊天实施契约](c2c-merchant-chat-contract.md) 和 [后台聊天 API](../projects/backend/doc/api/main/c2c-merchant-chat.md) 为准。下表保留完整阶段蓝图，绑定历史和 OKX 聊天另行实施。
 
 | 阶段 | 工作 | 准入/完成证据 |
 | --- | --- | --- |
@@ -519,7 +519,7 @@ C2cChatOutboundMessage:
 
 ## 12. 验收标准
 
-以下覆盖完整后续蓝图；本次代理验收以 [IP 代理实施契约](c2c-proxy-contract.md) 为准。标准及批量添加响应为 created/skipped，前端过滤无效 URL 行；不新增逐行 failed 响应。
+以下覆盖完整蓝图；代理验收以 [IP 代理实施契约](c2c-proxy-contract.md) 为准，后台聊天验收以 [后台聊天实施契约](c2c-merchant-chat-contract.md) 为准。标准及批量添加响应为 created/skipped，前端过滤无效 URL 行；不新增逐行 failed 响应。
 
 1. 两个新增菜单为“商家管理 / 代理管理”和“商家管理 / 实时聊天”，商家账号可配置代理。
 2. 标准及批量添加可用，批量逐项返回创建/跳过/失败及原因；被绑定代理删除受保护。
@@ -542,12 +542,12 @@ C2cChatOutboundMessage:
 
 后端执行 `lint -> typecheck -> test -> build -> workspaceCheck`，结构变更追加隔离 schema integration 和迁移链验证；前端执行 `lint -> typecheck -> test -> build`，核心聊天链路追加 E2E、桌面/移动视口和权限状态验证。真实平台出口及协议联调结果单独记录，单元测试通过不替代外部验收。
 
-## 13. 实施前需补齐的技术资料
+## 13. 协议证据与联调待办
 
-- Binance 文本发送、凭据、WSS URL、未读通知触发 HTTP 和连接维护已有第 3.4、3.5 节源码依据，不再笼统列为“没有资料”。仍需真实账号核对完整入站包裹、初始化是否必要、消息分页/积压、图片类型与大小、预签名上传及 image 发送帧、平台回执或回显；源码未实现的部分继续对照 PDF 并单独验证。
+- Binance 文本发送、凭据、WSS URL、未读通知触发 HTTP 和连接维护依据第 3.4、3.5 节源码实现；用户提供的订单聊天 API PDF 已确认图片预签名接口、响应字段、PUT 上传及 image 帧。自动测试覆盖包裹数组、分页、基线、回显与未知结果；真实账号仍需核对实际帧、图片域名和平台回显。
 - sub2api 参考提交号；引用 PDF 的版本和内容确认，避免依赖不存在的旧文件名。
 - HTTP 代理对 WSS CONNECT、SOCKS5 对远端 DNS 的供应商支持及出口证明。
-- 发送请求标识、部分成功响应、Socket.IO 事件及快照衔接的最终 DTO；聊天实例的实际部署和请求路由。
+- 请求标识、部分成功响应、Socket.IO 事件与快照 DTO 已冻结在后台聊天实施契约；生产需确认单活动 admin 实例及 HTTP/Socket.IO/图片的统一路由。
 - OKX Python 模板未提供聊天协议；聊天授权、Origin/路径白名单和消息协议仍待补充，属于后续接入资料，不作为一期阻塞项。不得照搬模板的浏览器登录/会话获取方式到 `OKX_WEB_PRIVATE`。
 
 后台统一聊天、Telegram 不承接聊天、消息不持久化、手工代理分配和已绑定代理失败不回退是本版本固定范围。

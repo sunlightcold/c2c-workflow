@@ -1,6 +1,7 @@
 import { IpProxyEntity, MerchantEntity, TenantEntity } from '@admin/database'
 import { Injectable, Logger } from '@nestjs/common'
 import { Interval } from '@nestjs/schedule'
+import { EventEmitter2 } from '@nestjs/event-emitter'
 import { DataSource } from 'typeorm'
 
 // Port of sub2api/internal/service/proxy_fallback.go. Only expiry triggers rerouting.
@@ -36,7 +37,10 @@ export function resolveProxyFallback(
 export class ProxyExpiryService {
   private readonly logger = new Logger(ProxyExpiryService.name)
   private running = false
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly events: EventEmitter2,
+  ) {}
 
   async onApplicationBootstrap() {
     await this.sweep()
@@ -60,6 +64,7 @@ export class ProxyExpiryService {
   }
 
   async sweepTenant(tenantId: string) {
+    let changed = false
     await this.dataSource.transaction(async (manager) => {
       await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
         `ip-proxy-expiry:${tenantId}`,
@@ -76,8 +81,14 @@ export class ProxyExpiryService {
           continue
         const target = resolveProxyFallback(proxy, byId, now)
         if (target === undefined) continue
-        await manager.update(MerchantEntity, { tenantId, proxyId: proxy.id }, { proxyId: target })
+        const result = await manager.update(
+          MerchantEntity,
+          { tenantId, proxyId: proxy.id },
+          { proxyId: target },
+        )
+        if (result.affected) changed = true
       }
     })
+    if (changed) this.events.emit('merchant-chat.configuration-changed', { tenantId })
   }
 }

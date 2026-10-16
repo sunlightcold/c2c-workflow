@@ -17,6 +17,7 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { createPrivateKey } from 'node:crypto'
+import { EventEmitter2 } from '@nestjs/event-emitter'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, EntityManager, ILike, Repository } from 'typeorm'
 import { CredentialCipherService } from '../system/credential/credential-cipher.service'
@@ -90,6 +91,7 @@ export class MerchantService {
     private readonly credentialRepository: Repository<MerchantPlatformCredentialEntity>,
     private readonly dataSource: DataSource,
     private readonly cipher: CredentialCipherService,
+    private readonly events: EventEmitter2,
   ) {}
 
   async list(tenantId: string, input: MerchantListInput) {
@@ -207,7 +209,7 @@ export class MerchantService {
     if ('platform' in input || 'code' in input) {
       throw new BadRequestException('商家账号编码和平台创建后不可修改')
     }
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const repository = manager.getRepository(MerchantEntity)
       const merchant = await repository.findOne({
         where: { id, tenantId },
@@ -276,13 +278,17 @@ export class MerchantService {
       }
       return merchant
     })
+    this.events.emit('merchant-chat.configuration-changed', { tenantId, merchantId: id })
+    return result
   }
 
   async setStatus(tenantId: string, id: string, status: BusinessStatus) {
     const merchant = await this.repository.findOne({ where: { id, tenantId } })
     if (!merchant) throw new NotFoundException('商家账号不存在')
     merchant.status = status
-    return this.repository.save(merchant)
+    const result = await this.repository.save(merchant)
+    this.events.emit('merchant-chat.configuration-changed', { tenantId, merchantId: id })
+    return result
   }
 
   async remove(tenantId: string, id: string): Promise<void> {
@@ -304,6 +310,7 @@ export class MerchantService {
         .delete({ tenantId, merchantId: id })
       await manager.getRepository(MerchantEntity).delete({ id, tenantId })
     })
+    this.events.emit('merchant-chat.configuration-changed', { tenantId, merchantId: id })
   }
 
   private validateAccount(

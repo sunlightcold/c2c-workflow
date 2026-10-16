@@ -114,7 +114,9 @@ export class ProxyService {
       ...input,
     })
     await this.validateBackup(tenantId, value, id)
-    return this.save(Object.assign(entity, this.entityFields(value)))
+    const result = await this.save(Object.assign(entity, this.entityFields(value)))
+    this.events.emit('merchant-chat.configuration-changed', { tenantId })
+    return result
   }
 
   async batch(tenantId: string, inputs: ProxyFieldsDto[]) {
@@ -233,7 +235,7 @@ export class ProxyService {
   }
 
   async bind(tenantId: string, merchantId: string, proxyId: string | null) {
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       if (proxyId) {
         const proxy = await manager.findOne(IpProxyEntity, {
           where: { id: proxyId, tenantId },
@@ -250,6 +252,8 @@ export class ProxyService {
       if (!result.affected) throw new NotFoundException('商家不存在')
       return { merchantId, proxyId }
     })
+    this.events.emit('merchant-chat.configuration-changed', { tenantId, merchantId })
+    return result
   }
 
   async remove(tenantId: string, id: string) {

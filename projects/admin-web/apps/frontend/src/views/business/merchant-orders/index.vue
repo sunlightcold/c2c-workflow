@@ -4,6 +4,7 @@ import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { BusinessApi } from '#/api';
 
 import { computed, onMounted, reactive, ref } from 'vue';
+import { useRouter } from 'vue-router';
 
 import { useAccess } from '@vben/access';
 import { JsonViewer, Page } from '@vben/common-ui';
@@ -91,6 +92,7 @@ const upstreamLoading = ref(false);
 const upstream = ref<BusinessApi.MerchantOrderUpstreamQueryResult>();
 const upstreamError = ref('');
 const { hasAccessByCodes } = useAccess();
+const router = useRouter();
 
 function getActionPopupContainer() {
   return window.document.body;
@@ -624,6 +626,22 @@ onMounted(async () => {
             </AButton>
             <template #overlay>
               <AMenu>
+                <AMenuItem
+                  v-if="hasAccessByCodes(['merchant:chat:read'])"
+                  key="chat"
+                  @click="
+                    router.push({
+                      path: '/business/merchant-chats',
+                      query: {
+                        tenantId: row.tenantId,
+                        merchantId: row.merchantId,
+                        orderId: row.id,
+                      },
+                    })
+                  "
+                >
+                  实时聊天
+                </AMenuItem>
                 <AMenuItem
                   v-if="hasAccessByCodes(['merchant:order:read'])"
                   key="upstream"

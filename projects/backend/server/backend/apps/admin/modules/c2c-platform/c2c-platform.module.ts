@@ -17,6 +17,6 @@ import { C2cPlatformClient } from './c2c-platform.client'
     C2cPlatformCredentialFactory,
     C2cPlatformClient,
   ],
-  exports: [C2cPlatformClient, C2cPlatformCredentialFactory],
+  exports: [C2cPlatformClient, C2cPlatformCredentialFactory, BinanceC2cClient, C2C_HTTP_TRANSPORT],
 })
 export class C2cPlatformModule {}

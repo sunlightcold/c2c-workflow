@@ -26,6 +26,17 @@ interface BusinessMenuGroupDefinition {
 
 const merchantPages: BusinessPageDefinition[] = [
   {
+    key: 'merchantChats',
+    name: '实时聊天',
+    path: '/business/merchant-chats',
+    permission: 'merchant:chat',
+    icon: 'lucide:messages-square',
+    actions: [
+      ['read', '查看与订阅'],
+      ['reply', '回复'],
+    ],
+  },
+  {
     key: 'proxies',
     name: '代理管理',
     path: '/business/proxies',

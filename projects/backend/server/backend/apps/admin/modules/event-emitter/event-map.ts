@@ -3,6 +3,7 @@
  */
 export const EVENT_KEYS = {
   ADMIN_SESSION_REVOKED: 'admin.session.revoked',
+  MERCHANT_CHAT_CONFIGURATION_CHANGED: 'merchant-chat.configuration-changed',
   TELEGRAM_ORDER_DISCOVERED: 'telegram.order.discovered',
   TELEGRAM_PAYMENT_CREATED: 'telegram.payment.created',
   TELEGRAM_PAYMENT_STATUS: 'telegram.payment.status',
@@ -118,6 +119,7 @@ export interface TelegramBatchPlatformConfirmationResultPayload {
 }
 
 export interface GlobalEventMap {
+  [EVENT_KEYS.MERCHANT_CHAT_CONFIGURATION_CHANGED]: { tenantId: string; merchantId?: string }
   [EVENT_KEYS.ADMIN_SESSION_REVOKED]: AdminSessionRevokedPayload
   [EVENT_KEYS.TELEGRAM_ORDER_DISCOVERED]: TelegramOrderDiscoveredPayload
   [EVENT_KEYS.TELEGRAM_PAYMENT_CREATED]: TelegramPaymentCreatedPayload

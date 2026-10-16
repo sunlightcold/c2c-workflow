@@ -105,6 +105,9 @@ catalogs:
     '@types/jest':
       specifier: ^29.5.14
       version: 29.5.14
+    '@types/json-bigint':
+      specifier: ^1.0.4
+      version: 1.0.4
     '@types/lodash':
       specifier: ^4.17.13
       version: 4.17.16
@@ -207,6 +210,9 @@ catalogs:
     jest:
       specifier: ^29.7.0
       version: 29.7.0
+    json-bigint:
+      specifier: ^1.0.0
+      version: 1.0.0
     lodash:
       specifier: ^4.17.21
       version: 4.17.21
@@ -458,6 +464,9 @@ importers:
       ioredis:
         specifier: 'catalog:'
         version: 5.9.3
+      json-bigint:
+        specifier: 'catalog:'
+        version: 1.0.0
       lodash:
         specifier: 'catalog:'
         version: 4.17.21
@@ -570,6 +579,9 @@ importers:
       '@types/jest':
         specifier: 'catalog:'
         version: 29.5.14
+      '@types/json-bigint':
+        specifier: 'catalog:'
+        version: 1.0.4
       '@types/lodash':
         specifier: 'catalog:'
         version: 4.17.16
@@ -2955,6 +2967,9 @@ packages:
   '@types/jest@29.5.14':
     resolution: {integrity: sha512-ZN+4sdnLUbo8EVvVc2ao0GFW6oVrQRPn4K2lglySj7APvSrgzxHiNNK99us4WDMi57xxA2yggblIAMNhXOotLQ==, tarball: https://registry.npmjs.org/@types/jest/-/jest-29.5.14.tgz}
 
+  '@types/json-bigint@1.0.4':
+    resolution: {integrity: sha512-ydHooXLbOmxBbubnA7Eh+RpBzuaIiQjh8WGJYQB50JFGFrdxW7JzVlyEV7fAXw0T2sqJ1ysTneJbiyNLqZRAag==, tarball: https://registry.npmjs.org/@types/json-bigint/-/json-bigint-1.0.4.tgz}
+
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==, tarball: https://registry.npmjs.org/@types/json-schema/-/json-schema-7.0.15.tgz}
 
@@ -5134,6 +5149,9 @@ packages:
     resolution: {integrity: sha512-/sM3dO2FOzXjKQhJuo0Q173wf2KOo8t4I8vHy6lF9poUp7bKT0/NHE8fPX23PwfhnykfqnC2xRxOnVw5XuGIaA==, tarball: https://registry.npmjs.org/jsesc/-/jsesc-3.1.0.tgz}
     engines: {node: '>=6'}
     hasBin: true
+
+  json-bigint@1.0.0:
+    resolution: {integrity: sha512-SiPv/8VpZuWbvLSMtTDU8hEfrZWg/mH/nV/b4o0CYbSxu1UIQPLdwKOCIyLQX+VIPO5vrLX3i8qtqFyhdPSUSQ==, tarball: https://registry.npmjs.org/json-bigint/-/json-bigint-1.0.0.tgz}
 
   json-buffer@3.0.1:
     resolution: {integrity: sha512-4bV5BfR2mqfQTJm+V5tPPdf+ZpuhiIvTuAB5g8kcrXOZpTT/QwwVRWBywX1ozr6lEuPdbHxwaJlm9G6mI2sfSQ==, tarball: https://registry.npmjs.org/json-buffer/-/json-buffer-3.0.1.tgz}
@@ -10000,6 +10018,8 @@ snapshots:
       expect: 29.7.0
       pretty-format: 29.7.0
 
+  '@types/json-bigint@1.0.4': {}
+
   '@types/json-schema@7.0.15': {}
 
   '@types/jsonfile@6.1.4':
@@ -12643,6 +12663,10 @@ snapshots:
   jsbn@1.1.0: {}
 
   jsesc@3.1.0: {}
+
+  json-bigint@1.0.0:
+    dependencies:
+      bignumber.js: 9.3.1
 
   json-buffer@3.0.1: {}
 

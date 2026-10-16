@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, Repository } from 'typeorm'
 import { CredentialCipherService } from '../system/credential/credential-cipher.service'
 import { C2cPlatformClient, C2cPlatformCredentialFactory } from '../c2c-platform'
+import { EventEmitter2 } from '@nestjs/event-emitter'
 
 export interface RotateMerchantPlatformCredentialInput {
   apiKey?: string
@@ -56,6 +57,7 @@ export class MerchantPlatformCredentialService {
     private readonly cipher: CredentialCipherService,
     private readonly credentialFactory: C2cPlatformCredentialFactory,
     private readonly platformClient: C2cPlatformClient,
+    private readonly events: EventEmitter2,
   ) {}
 
   async list(tenantId: string, merchantId: string): Promise<MerchantPlatformCredentialView[]> {
@@ -79,12 +81,12 @@ export class MerchantPlatformCredentialService {
     await this.credentialRepository.remove(credential)
   }
 
-  rotate(
+  async rotate(
     tenantId: string,
     merchantId: string,
     input: RotateMerchantPlatformCredentialInput,
   ): Promise<MerchantPlatformCredentialView> {
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const merchant = await manager.getRepository(MerchantEntity).findOne({
         where: { id: merchantId, tenantId },
         lock: { mode: 'pessimistic_write' },
@@ -119,6 +121,8 @@ export class MerchantPlatformCredentialService {
       )
       return this.toView(credential)
     })
+    this.events.emit('merchant-chat.configuration-changed', { tenantId, merchantId })
+    return result
   }
 
   async getActiveReference(
@@ -170,7 +174,7 @@ export class MerchantPlatformCredentialService {
   }
 
   async disableRejectedCredential(tenantId: string, merchantId: string): Promise<boolean> {
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const merchantRepository = manager.getRepository(MerchantEntity)
       const credentialRepository = manager.getRepository(MerchantPlatformCredentialEntity)
       const merchant = await merchantRepository.findOne({
@@ -186,6 +190,8 @@ export class MerchantPlatformCredentialService {
       )
       return true
     })
+    if (result) this.events.emit('merchant-chat.configuration-changed', { tenantId, merchantId })
+    return result
   }
 
   private async requireMerchant(tenantId: string, merchantId: string): Promise<void> {

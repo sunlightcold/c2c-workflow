@@ -823,7 +823,7 @@ test.beforeEach(async ({ page }) => {
             {
               batchSubmitRequireConfirmation: true,
               botType: 'PAYMENT',
-              capabilities: ['MANUAL_PAYMENT', 'PAYMENT_BATCH_SUBMIT'],
+              capabilities: ['ALIPAY_BATCH_PAYMENT', 'PAYMENT_BATCH_SUBMIT'],
               code: 'PAYMENT_MAIN',
               createdAt: '2026-09-10T08:00:00.000Z',
               description: null,
@@ -859,7 +859,7 @@ test.beforeEach(async ({ page }) => {
             {
               bindingState: 'PENDING',
               botId: '00000000-0000-4000-8000-000000000201',
-              capabilities: ['MANUAL_PAYMENT'],
+              capabilities: ['ALIPAY_BATCH_PAYMENT'],
               chatId: null,
               chatType: null,
               createdAt: '2026-09-10T08:00:00.000Z',
@@ -899,7 +899,7 @@ test.beforeEach(async ({ page }) => {
         data = {
           items: [
             {
-              capabilities: ['MANUAL_PAYMENT'],
+              capabilities: ['ALIPAY_BATCH_PAYMENT'],
               displayName: '值班员',
               groupId: '00000000-0000-4000-8000-000000000202',
               id: '00000000-0000-4000-8000-000000000203',
@@ -2392,10 +2392,13 @@ test('provides complete Telegram administration actions', async ({ page }) => {
         const capabilityField = editDialog
           .locator('.ant-form-item')
           .filter({ hasText: '群组能力' });
-        await expect(capabilityField.getByRole('checkbox')).toHaveCount(13);
+        await expect(capabilityField.getByRole('checkbox')).toHaveCount(11);
+        await expect(
+          capabilityField.getByRole('checkbox', { name: /聊天/ }),
+        ).toHaveCount(0);
         await expect(capabilityField.getByRole('combobox')).toHaveCount(0);
         await expect(
-          capabilityField.getByRole('checkbox', { name: '手工支付' }),
+          capabilityField.getByRole('checkbox', { name: '支付宝批量支付' }),
         ).toBeChecked();
         await capabilityField
           .getByRole('checkbox', { name: '订单查询' })
@@ -2413,7 +2416,7 @@ test('provides complete Telegram administration actions', async ({ page }) => {
         const request = await updateRequest;
         expect(request.postDataJSON()).toMatchObject({ tenantId });
         expect(request.postDataJSON().capabilities).toEqual(
-          expect.arrayContaining(['MANUAL_PAYMENT', 'ORDER_QUERY']),
+          expect.arrayContaining(['ALIPAY_BATCH_PAYMENT', 'ORDER_QUERY']),
         );
         expect(request.postDataJSON().capabilities).toHaveLength(2);
 
@@ -2426,10 +2429,13 @@ test('provides complete Telegram administration actions', async ({ page }) => {
         const capabilityField = editDialog
           .locator('.ant-form-item')
           .filter({ hasText: '成员权限' });
-        await expect(capabilityField.getByRole('checkbox')).toHaveCount(13);
+        await expect(capabilityField.getByRole('checkbox')).toHaveCount(11);
+        await expect(
+          capabilityField.getByRole('checkbox', { name: /聊天/ }),
+        ).toHaveCount(0);
         await expect(capabilityField.getByRole('combobox')).toHaveCount(0);
         await expect(
-          capabilityField.getByRole('checkbox', { name: '手工支付' }),
+          capabilityField.getByRole('checkbox', { name: '支付宝批量支付' }),
         ).toBeChecked();
         await capabilityField
           .getByRole('checkbox', { name: '订单查询' })
@@ -2447,7 +2453,7 @@ test('provides complete Telegram administration actions', async ({ page }) => {
         const request = await updateRequest;
         expect(request.postDataJSON()).toMatchObject({ tenantId });
         expect(request.postDataJSON().capabilities).toEqual(
-          expect.arrayContaining(['MANUAL_PAYMENT', 'ORDER_QUERY']),
+          expect.arrayContaining(['ALIPAY_BATCH_PAYMENT', 'ORDER_QUERY']),
         );
         expect(request.postDataJSON().capabilities).toHaveLength(2);
 
@@ -2651,7 +2657,9 @@ test('keeps internal business codes out of filters and tables', async ({
 
   await page.goto('/business/merchants');
   await selectHeadquartersTenant(page);
-  await expect(page.getByText('币安主账号', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('cell', { name: '币安主账号', exact: true }).first(),
+  ).toBeVisible();
   await expect(page.getByText('账号编码', { exact: true })).toHaveCount(0);
   await expect(page.getByText('BINANCE_MAIN', { exact: true })).toHaveCount(0);
   await expect(page.getByText('同步配置', { exact: true })).toHaveCount(0);
@@ -2661,7 +2669,9 @@ test('keeps internal business codes out of filters and tables', async ({
       .locator('.ant-select-selection-item'),
   ).toHaveCount(0);
   await expect(
-    page.getByText('binance-merchant-main', { exact: true }),
+    page
+      .getByRole('cell', { name: 'binance-merchant-main', exact: true })
+      .first(),
   ).toBeVisible();
   if (testInfo.project.name === 'desktop-chromium') {
     await page.setViewportSize({ height: 800, width: 1920 });

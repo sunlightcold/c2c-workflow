@@ -1,7 +1,11 @@
 import axios from 'axios'
 import { Injectable, Logger } from '@nestjs/common'
 import { ProxyNetworkService } from '../proxy/proxy-network.service'
-import type { C2cHttpRequest, C2cHttpTransport } from './c2c-platform.types'
+import {
+  C2cSensitiveRequestError,
+  type C2cHttpRequest,
+  type C2cHttpTransport,
+} from './c2c-platform.types'
 
 @Injectable()
 export class AxiosC2cHttpTransport implements C2cHttpTransport {
@@ -12,7 +16,7 @@ export class AxiosC2cHttpTransport implements C2cHttpTransport {
   async request<T>(request: C2cHttpRequest): Promise<T> {
     const endpoint = new URL(request.url)
     const context = `method=${request.method}, endpoint=${endpoint.origin}${endpoint.pathname}`
-    const shouldLog = this.shouldLogRequest(request.method, endpoint.pathname)
+    const shouldLog = !request.sensitive && this.shouldLogRequest(request.method, endpoint.pathname)
     const startedAt = Date.now()
     this.logRequestDetails(request, context, shouldLog)
 
@@ -26,13 +30,26 @@ export class AxiosC2cHttpTransport implements C2cHttpTransport {
         data: request.body,
         params: request.params,
         proxy: false,
+        responseType: request.responseType,
+        ...(request.responseType === 'text'
+          ? { transformResponse: [(value: string) => value] }
+          : {}),
+        maxContentLength: request.maxBytes,
+        maxBodyLength: request.maxBytes,
+        maxRedirects: request.maxRedirects,
+        lookup: request.lookup,
         ...(agents
           ? { httpAgent: agents.httpAgent, httpsAgent: agents.httpsAgent, maxRedirects: 0 }
           : {}),
       })
-      this.logResponse(response.data, response.status, context, shouldLog, Date.now() - startedAt)
+      if (!request.sensitive)
+        this.logResponse(response.data, response.status, context, shouldLog, Date.now() - startedAt)
       return response.data
     } catch (error) {
+      if (request.sensitive)
+        throw new C2cSensitiveRequestError(
+          axios.isAxiosError(error) ? error.response?.status : undefined,
+        )
       if (agents && error instanceof Error) error.message = '代理出口请求失败'
       this.logFailure(error, context, Date.now() - startedAt)
       // Preserve Axios status and response for adapter credential/error handling.

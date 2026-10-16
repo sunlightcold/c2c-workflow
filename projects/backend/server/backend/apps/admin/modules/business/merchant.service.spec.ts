@@ -13,6 +13,7 @@ import { BadRequestException } from '@nestjs/common'
 import { MerchantService } from './merchant.service'
 
 describe('MerchantService', () => {
+  const events = { emit: jest.fn() }
   const tenantId = '00000000-0000-4000-8000-000000000010'
   const merchantId = '00000000-0000-4000-8000-000000000020'
   const merchantRepository = { findAndCount: jest.fn() }
@@ -47,6 +48,7 @@ describe('MerchantService', () => {
     credentialRepository as never,
     dataSource as never,
     cipher as never,
+    events as never,
   )
 
   beforeEach(() => jest.clearAllMocks())

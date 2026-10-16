@@ -77,6 +77,7 @@ describe('MenuRegistryService', () => {
         .filter(({ parentKey }) => parentKey === 'merchantManagement')
         .map(({ key }) => key),
     ).toEqual([
+      'business.merchantChats',
       'business.proxies',
       'business.tenants',
       'business.merchants',

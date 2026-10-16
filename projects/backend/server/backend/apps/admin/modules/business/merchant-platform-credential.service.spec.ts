@@ -7,6 +7,7 @@ import {
 import { BadRequestException } from '@nestjs/common'
 import { getRepositoryToken } from '@nestjs/typeorm'
 import { Test } from '@nestjs/testing'
+import { EventEmitter2 } from '@nestjs/event-emitter'
 import { DataSource, type Repository } from 'typeorm'
 import { MerchantPlatformCredentialService } from './merchant-platform-credential.service'
 
@@ -32,6 +33,7 @@ describe('MerchantPlatformCredentialService', () => {
     const module = await Test.createTestingModule({
       providers: [
         MerchantPlatformCredentialService,
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: getRepositoryToken(MerchantEntity), useValue: merchantRepository },
         {
           provide: getRepositoryToken(MerchantPlatformCredentialEntity),

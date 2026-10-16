@@ -16,3 +16,4 @@
 接口文档必须与 Controller、DTO、权限码、响应包装和 contract test 同步。
 
 - [IP 代理管理](c2c-proxies.md)：`/v1/sys/proxies`。
+- [后台实时聊天](c2c-merchant-chat.md)：`/v1/sys/merchant-chats/live` 与 Socket.IO 聊天订阅。

@@ -152,7 +152,7 @@ describe('IP proxy migration database integration', () => {
     expect(imported).toMatchObject({ proxy_created: 1, proxy_failed: 0 })
     await expect(service.remove(tenantId, backup.id)).rejects.toThrow()
     await service.update(tenantId, primary.id, { expires_at: 1 })
-    const expiry = new ProxyExpiryService(database)
+    const expiry = new ProxyExpiryService(database, new EventEmitter2())
     await expiry.sweepTenant(tenantId)
     expect(
       (await database.getRepository(MerchantEntity).findOneByOrFail({ tenantId, id: merchantId }))

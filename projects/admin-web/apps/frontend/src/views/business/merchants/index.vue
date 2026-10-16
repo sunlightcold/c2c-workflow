@@ -5,6 +5,7 @@ import type { BusinessApi } from '#/api';
 import type { IpProxy } from '#/api/business/proxies';
 
 import { onMounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 
 import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
@@ -88,6 +89,7 @@ const testingId = ref<string>();
 const syncingId = ref<string>();
 const editingId = ref<string>();
 const { hasAccessByCodes } = useAccess();
+const router = useRouter();
 const proxies = ref<IpProxy[]>([]);
 const proxiesLoading = ref(false);
 const proxySavingIds = ref(new Set<string>());
@@ -838,6 +840,18 @@ onMounted(async () => {
             </AButton>
             <template #overlay>
               <AMenu>
+                <AMenuItem
+                  v-if="hasAccessByCodes(['merchant:chat:read'])"
+                  key="chat"
+                  @click="
+                    router.push({
+                      path: '/business/merchant-chats',
+                      query: { tenantId: row.tenantId, merchantId: row.id },
+                    })
+                  "
+                >
+                  实时聊天
+                </AMenuItem>
                 <AMenuItem
                   v-if="hasAccessByCodes(['merchant:account:test'])"
                   key="test"

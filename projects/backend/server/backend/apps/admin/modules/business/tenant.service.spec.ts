@@ -1,11 +1,12 @@
 import { TenantService } from './tenant.service'
 
 describe('TenantService', () => {
+  const events = { emit: jest.fn() }
   const repository = {
     create: jest.fn((value) => value),
     save: jest.fn(async (value) => value),
   }
-  const service = new TenantService(repository as never)
+  const service = new TenantService(repository as never, events as never)
 
   beforeEach(() => jest.clearAllMocks())
 

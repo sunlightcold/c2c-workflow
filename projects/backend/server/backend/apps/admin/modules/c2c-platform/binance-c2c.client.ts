@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto'
+import { parseLargeIdJson } from '@/common/utils/json-large-id'
 import { Inject, Injectable } from '@nestjs/common'
 import Ws from 'ws'
 import { ProxyNetworkService, type ProxyScope } from '../proxy/proxy-network.service'
@@ -288,6 +289,18 @@ export class BinanceC2cClient implements C2cPlatformAdapter<BinanceCredentials> 
     return { supported: true }
   }
 
+  chatRequest<T>(
+    credentials: BinanceCredentials,
+    path:
+      | '/sapi/v1/c2c/chat/retrieveChatCredential'
+      | '/sapi/v1/c2c/chat/retrieveChatMessagesWithPagination'
+      | '/sapi/v1/c2c/chat/image/pre-signed-url',
+    params: Record<string, string> = {},
+    body?: unknown,
+  ) {
+    return this.request<BinanceEnvelope<T>>(credentials, path, body, body ? 'POST' : 'GET', params)
+  }
+
   async getComplaintReasons(credentials: BinanceCredentials, orderNo: string) {
     const response = await this.post<BinanceComplaintReason[]>(
       credentials,
@@ -387,19 +400,34 @@ export class BinanceC2cClient implements C2cPlatformAdapter<BinanceCredentials> 
       clientType: credentials.clientType,
     }
     if (credentials.xUserId) headers['x-user-id'] = credentials.xUserId
-    const response = await this.http.request<T>({
+    const sensitive = path.startsWith('/sapi/v1/c2c/chat/')
+    const raw = await this.http.request<T | string>({
       method,
       url: `${(credentials.baseUrl ?? 'https://api.binance.com').replace(/\/$/, '')}${path}?${query}&signature=${signature}`,
       headers,
       timeoutMs: credentials.timeoutMs,
       ...(credentials.proxyScope ? { proxyScope: credentials.proxyScope } : {}),
       body,
+      ...(sensitive
+        ? {
+            sensitive: true,
+            responseType: 'text' as const,
+            maxBytes: 1024 * 1024,
+            maxRedirects: 0 as const,
+          }
+        : {}),
     })
+    const response =
+      typeof raw === 'string' && sensitive ? (parseLargeIdJson(raw) as T) : (raw as T)
     if ((!response.success || response.code !== '000000') && path.startsWith('/sapi/v1/c2c/ads/')) {
       throw new C2cRequestRejectedError('币安广告请求被拒绝', response.code)
     }
     if (!response.success || response.code !== '000000')
-      throw new Error(`[${response.code}] ${response.message ?? '币安 C2C 请求失败'}`)
+      throw new Error(
+        sensitive
+          ? '币安聊天请求失败'
+          : `[${response.code}] ${response.message ?? '币安 C2C 请求失败'}`,
+      )
     return response
   }
 }

@@ -588,6 +588,7 @@ function createHarness(dataSource: DataSource): WorkflowHarness {
   const platformClient = new C2cPlatformClient(binance, okx)
   const credentialFactory = new C2cPlatformCredentialFactory()
   const secretResolver = new EnvironmentC2cSecretResolver(null as never)
+  const events = { emit: jest.fn() }
   const credentialService = new MerchantPlatformCredentialService(
     dataSource.getRepository(MerchantEntity),
     dataSource.getRepository(MerchantPlatformCredentialEntity),
@@ -595,6 +596,7 @@ function createHarness(dataSource: DataSource): WorkflowHarness {
     null as never,
     credentialFactory,
     platformClient,
+    events as never,
   )
   const syncStore = new TypeOrmC2cOrderSyncStore(dataSource)
   const orderSync = new C2cOrderSyncService(

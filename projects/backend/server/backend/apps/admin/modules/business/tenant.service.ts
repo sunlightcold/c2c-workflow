@@ -1,6 +1,7 @@
 import { BusinessStatus, TenantEntity, TenantType } from '@admin/database'
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
+import { EventEmitter2 } from '@nestjs/event-emitter'
 import { Repository } from 'typeorm'
 import { BusinessNoPrefix, IdUtils } from '@/common/utils/id'
 
@@ -9,6 +10,7 @@ export class TenantService {
   constructor(
     @InjectRepository(TenantEntity)
     private readonly repository: Repository<TenantEntity>,
+    private readonly events: EventEmitter2,
   ) {}
 
   list() {
@@ -33,6 +35,8 @@ export class TenantService {
     if (tenant.systemLocked && status !== BusinessStatus.ACTIVE)
       throw new BadRequestException('总部自营所属单位不可停用')
     tenant.status = status
-    return this.repository.save(tenant)
+    const saved = await this.repository.save(tenant)
+    this.events.emit('merchant-chat.configuration-changed', { tenantId: id })
+    return saved
   }
 }
