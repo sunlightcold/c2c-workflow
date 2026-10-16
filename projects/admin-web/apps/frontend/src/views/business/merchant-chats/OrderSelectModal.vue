@@ -88,7 +88,7 @@ const [Grid, gridApi] = useResourceGrid<MerchantChatApi.Order, SearchValues>({
     ],
   },
   gridOptions: {
-    height: 340,
+    height: 'auto',
     rowConfig: { keyField: 'id' },
     proxyConfig: {
       autoLoad: false,
@@ -164,7 +164,7 @@ onMounted(async () => {
     ok-text="生成会话"
     @ok="selected && emit('select', selected)"
   >
-    <Grid>
+    <Grid class="h-[min(760px,calc(100dvh-180px))] min-h-[520px]">
       <template #selection="{ row }">
         <ARadio
           :checked="selected?.id === row.id"
