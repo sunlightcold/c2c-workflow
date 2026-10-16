@@ -41,6 +41,7 @@ import {
   useFormModal,
   useResourceGrid,
 } from '#/hooks';
+import { useMerchantChatNavigationStore } from '#/store';
 
 import ProxySelector from '../proxies/proxy-selector.vue';
 import { createEmptyBusinessPage } from '../shared/business-grid';
@@ -90,10 +91,19 @@ const syncingId = ref<string>();
 const editingId = ref<string>();
 const { hasAccessByCodes } = useAccess();
 const router = useRouter();
+const chatNavigation = useMerchantChatNavigationStore();
 const proxies = ref<IpProxy[]>([]);
 const proxiesLoading = ref(false);
 const proxySavingIds = ref(new Set<string>());
 let proxyRequestVersion = 0;
+
+function openChat(merchant: BusinessApi.Merchant) {
+  chatNavigation.openTarget({
+    tenantId: merchant.tenantId,
+    merchantId: merchant.id,
+  });
+  void router.push('/business/merchant-chats');
+}
 
 watch(selectedTenantId, async (tenantId) => {
   const version = ++proxyRequestVersion;
@@ -819,6 +829,7 @@ onMounted(async () => {
           </AButton>
           <ADropdown
             v-if="
+              hasAccessByCodes(['merchant:chat:read']) ||
               hasAccessByCodes(['merchant:account:test']) ||
               hasAccessByCodes(['merchant:order:sync']) ||
               hasAccessByCodes(['merchant:account:update']) ||
@@ -843,12 +854,7 @@ onMounted(async () => {
                 <AMenuItem
                   v-if="hasAccessByCodes(['merchant:chat:read'])"
                   key="chat"
-                  @click="
-                    router.push({
-                      path: '/business/merchant-chats',
-                      query: { tenantId: row.tenantId, merchantId: row.id },
-                    })
-                  "
+                  @click="openChat(row)"
                 >
                   实时聊天
                 </AMenuItem>

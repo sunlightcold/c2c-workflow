@@ -16,7 +16,7 @@
 - GET `/orders`：read权限，tenantId、可选merchantId/platformOrderId/counterpartyName/status、page（默认1）/pageSize（默认20，最多100）。仅返回本单位、启用币安商家的已同步活动BUY订单，按平台创建时间倒序；items仅含订单标识、商家名称、对方姓名、状态、金额字符串、币种、创建时间，返回total/page/pageSize。
 - POST `/conversations`：read权限，tenantId、merchantId、merchantOrderId（本地UUID）；校验商家及活动BUY订单归属，创建或复用当前内存会话，返回instanceId/conversation。没有消息也允许打开，不伪造消息、不主动发送平台消息、不恢复运行前历史；连接未就绪时允许查看，回复仍受既有校验限制。越权/不存在/已结束订单拒绝，不创建会话；同商家同订单重复调用返回相同会话，空会话同样2小时过期，无数据库迁移。
 - DELETE `/conversations/:conversationId`：read+reply权限，query为tenantId、merchantId、instanceId，路径ID为UUID。只移除该单位/商家在当前后台窗口中的会话、消息和附件引用，返回conversationId，沿用expired事件通知所有订阅者；不调用平台删除接口、不修改订单、不清空上游去重记录。实例变化返回409 CHAT_INSTANCE_CHANGED，越权或不存在返回404 CHAT_CONTEXT_UNAVAILABLE，发送中的会话返回409 CHAT_CONVERSATION_BUSY。聊天面板提供删除按钮及确认框；只读用户无入口。后续新消息可重新生成会话，也可通过订单手动重新添加，但删除的消息不恢复。无数据库迁移。
-- 聊天页“新增会话”弹窗提供商家、订单号、对方姓名、状态筛选及分页，单选订单生成并打开会话。订单操作的实时聊天入口携带单位/商家/订单，进入页面即创建或复用并定位会话；页面内再次跳转另一订单也必须生效。
+- 聊天页“新增会话”弹窗提供商家、订单号、对方姓名、状态筛选及分页，单选订单生成并打开会话。商家订单的“聊天”入口放入“更多”菜单，保持聊天权限、币安平台和活动订单限制；通过非持久化 Pinia 内存传递单位/商家/本地订单 ID，URL 不携带定位参数，目标页面一次性消费，进入页面即创建或复用并定位会话。商家账号的“实时聊天”入口使用同一内存导航，仅定位单位/商家范围，不创建订单会话。首次打开和已缓存页面再次跳转其他订单均须生效；发送、删除或创建进行中时延后消费，忙状态结束后处理，只有成功选中会话才清除待定位订单。刷新不恢复跳转参数，退出登录清空待处理定位。聊天右侧订单信息和窄屏抽屉仅展示摘要，不提供跳转商家订单按钮。
 - 事件新增type=conversation，仅携带conversation，用于空会话创建及回复可用状态变化。已有message/merchant/expired事件兼容。
 
 - GET：可选 tenantId、merchantId，平台账号必须选所属单位；返回 `{instanceId,sequence,retentionSeconds,merchants,conversations,messages}`，仅当前内存快照，无历史分页。merchant 状态包括四项能力与连接状态。
@@ -28,7 +28,7 @@
 
 会话工作台采用会话列表、聊天、订单信息三栏。桌面并排展示，窄屏订单信息通过抽屉打开；列表支持按买家、商家和平台订单号搜索，并显示最新消息、金额、状态。聊天消息限制阅读宽度，底部固定编辑区，支持跳至最新消息及按会话保留未发送草稿。参考Chatwoot共享收件箱的会话与上下文分区，复用本项目组件和主题。
 
-conversation新增order摘要：fiatAmount/fiatCurrency、assetAmount/asset、unitPrice、status、paymentMethod、platformCreatedAt、paymentDeadline；金额和数量始终为字符串，时间为ISO字符串或null，仅投影这些字段，不返回收款账号、凭据等字段。摘要随新建/快照/会话事件提供，服务端配置扫描复用当前活动订单并按单位/商家批量补查保留的已结束订单；摘要变化发送conversation事件，不改变消息时间或延长TTL。订单详情入口使用既有merchant:order:read权限，并定位对应单位/商家的订单。
+conversation新增order摘要：fiatAmount/fiatCurrency、assetAmount/asset、unitPrice、status、paymentMethod、platformCreatedAt、paymentDeadline；金额和数量始终为字符串，时间为ISO字符串或null，仅投影这些字段，不返回收款账号、凭据等字段。摘要随新建/快照/会话事件提供，服务端配置扫描复用当前活动订单并按单位/商家批量补查保留的已结束订单；摘要变化发送conversation事件，不改变消息时间或延长TTL。
 
 - 复用现有 Socket.IO 登录会话；客户端 `merchant-chat.subscribe` 携带 tenantId、可选 merchantId，返回当前快照；`merchant-chat.unsubscribe` 取消；服务端 `merchant-chat.event` 推送 `{instanceId,sequence,type,merchantId,...}`，`merchant-chat.invalidated` 撤销订阅并清空页面。只向通过当前权限和资源范围校验的连接推送。
 - 先订阅再应用快照，按实例和序号去重。断线、实例变化或事件过载重新取当前快照，不回放历史。权限重新校验失败清除订阅；空闲订阅也定期重新鉴权。
@@ -76,3 +76,9 @@ conversation新增order摘要：fiatAmount/fiatCurrency、assetAmount/asset、un
 - 从聊天查看订单时，先清空已有状态、支付方式、金额和日期筛选，再应用单位、商家和订单号条件并返回第一页，避免旧筛选或分页遮挡目标订单。
 - 后端完整单测123套件799项、聊天HTTP契约6项、前端完整单测58文件370项通过；包含订单摘要敏感字段投影、租户/商家隔离、已结束订单摘要刷新和TTL不延长验证。前后端lint、类型检查、完整构建及后端workspace/catalog检查通过，Secret扫描与git diff --check通过。
 - 规范与需求双轴静态审查发现的订单跳转筛选与分页问题已修复。本轮按用户要求未执行UI、浏览器、Playwright或截图测试；前文首期实施中的UI验收为历史记录。未进行真实Binance账号联调。本轮无数据库迁移，先发布后端订单摘要，再发布前端。
+
+## 聊天入口与内存导航验证（2026-10-16）
+
+- 商家订单的聊天入口移入更多菜单，操作列收窄；商家账号与订单入口统一使用非持久化 Pinia 传递定位目标，路由无业务参数。发送、删除、创建结束后继续处理待定位目标，商家入口只筛选范围。聊天右侧及窄屏抽屉移除查看商家订单按钮，保留订单摘要。
+- 前端lint、完整单测59文件375项、类型检查与完整构建通过；导航单测覆盖一次消费、重复跳转、商家范围替换订单目标、刷新不恢复与退出清理。Secret扫描和git diff --check通过，规范与需求双轴静态复审通过。
+- 按用户要求未执行UI、浏览器、Playwright或截图测试，未进行真实Binance账号联调。本轮仅修改前端与契约，无后端接口或数据库迁移，部署前端即可。

@@ -10,11 +10,9 @@ import {
 import { formatChatDecimal } from './chat-state';
 
 defineProps<{
-  canViewOrder: boolean;
   conversation: MerchantChatApi.Conversation;
   merchant?: MerchantChatApi.Merchant;
 }>();
-defineEmits<{ viewOrder: [] }>();
 </script>
 
 <template>
@@ -94,8 +92,5 @@ defineEmits<{ viewOrder: [] }>();
         <dd>{{ formatBusinessTime(conversation.order.paymentDeadline) }}</dd>
       </div>
     </dl>
-    <a-button v-if="canViewOrder" block @click="$emit('viewOrder')">
-      查看商家订单
-    </a-button>
   </div>
 </template>

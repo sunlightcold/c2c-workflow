@@ -218,6 +218,7 @@ declare global {
   const useMediaQuery: typeof import('@vueuse/core')['useMediaQuery']
   const useMemoize: typeof import('@vueuse/core')['useMemoize']
   const useMemory: typeof import('@vueuse/core')['useMemory']
+  const useMerchantChatNavigationStore: typeof import('../src/store/merchant-chat-navigation')['useMerchantChatNavigationStore']
   const useModel: typeof import('vue')['useModel']
   const useMounted: typeof import('@vueuse/core')['useMounted']
   const useMouse: typeof import('@vueuse/core')['useMouse']
@@ -324,6 +325,9 @@ declare global {
   // @ts-ignore
   export type { Component, Slot, Slots, ComponentPublicInstance, ComputedRef, DirectiveBinding, ExtractDefaultPropTypes, ExtractPropTypes, ExtractPublicPropTypes, InjectionKey, PropType, Ref, MaybeRef, MaybeRefOrGetter, VNode, WritableComputedRef } from 'vue'
   import('vue')
+  // @ts-ignore
+  export type { MerchantChatTarget } from '../src/store/merchant-chat-navigation'
+  import('../src/store/merchant-chat-navigation')
   // @ts-ignore
   export type { BaseModalOptions } from '../src/hooks/useBaseModal'
   import('../src/hooks/useBaseModal')

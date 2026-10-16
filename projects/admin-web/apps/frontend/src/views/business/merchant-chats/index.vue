@@ -2,6 +2,7 @@
 import type { Socket } from 'socket.io-client';
 
 import type { MerchantChatApi } from '#/api';
+import type { MerchantChatTarget } from '#/store';
 
 import {
   computed,
@@ -11,7 +12,7 @@ import {
   ref,
   watch,
 } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute } from 'vue-router';
 
 import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
@@ -36,7 +37,7 @@ import {
   replyMerchantChatApi,
 } from '#/api';
 import { confirmResourceAction } from '#/hooks';
-import { useSocketStore } from '#/store';
+import { useMerchantChatNavigationStore, useSocketStore } from '#/store';
 
 import {
   businessEnumText,
@@ -57,7 +58,7 @@ import ChatOrderInfo from './ChatOrderInfo.vue';
 import OrderSelectModal from './OrderSelectModal.vue';
 
 const route = useRoute();
-const router = useRouter();
+const chatNavigation = useMerchantChatNavigationStore();
 const { hasAccessByCodes } = useAccess();
 const { fixedTenantId, loadTenantOptions, tenantOptions } =
   useBusinessTenantFilter();
@@ -89,7 +90,10 @@ let buffered: MerchantChatApi.Event[] = [];
 let expiryTimer: ReturnType<typeof setInterval>;
 let routeReady = false;
 let defaultTenantId = '';
-let handledRouteOrder = '';
+let orderTarget: MerchantChatTarget | undefined;
+const navigationBusy = computed(
+  () => sending.value || deleting.value || creating.value,
+);
 const selected = computed(() =>
   snapshot.value?.conversations.find((c) => c.id === selectedId.value),
 );
@@ -138,8 +142,8 @@ const composerHint = computed(() => {
 });
 
 function chooseConversation(id: string) {
-  if (sending.value || deleting.value) return;
-  if (selectedId.value === id) return;
+  if (sending.value || deleting.value) return false;
+  if (selectedId.value === id) return true;
   if (selectedId.value) {
     if (text.value || image.value)
       drafts.set(selectedId.value, { text: text.value, image: image.value });
@@ -150,18 +154,7 @@ function chooseConversation(id: string) {
   image.value = drafts.get(id)?.image;
   atLatest.value = true;
   orderInfoOpen.value = false;
-}
-function viewOrder() {
-  if (!selected.value) return;
-  orderInfoOpen.value = false;
-  void router.push({
-    path: '/business/merchant-orders',
-    query: {
-      tenantId: selected.value.tenantId,
-      merchantId: selected.value.merchantId,
-      platformOrderId: selected.value.platformOrderId,
-    },
-  });
+  return true;
 }
 function onMessageScroll() {
   const panel = messagePanel.value;
@@ -251,40 +244,35 @@ async function refresh() {
       });
     if (current !== generation) return;
     if (snapshot.value?.instanceId !== result.instanceId) {
-      handledRouteOrder = '';
       selectedId.value = '';
       text.value = '';
       image.value = undefined;
     }
-    const routeOrder =
-      typeof route.query.orderId === 'string' ? route.query.orderId : '';
-    const routeMerchant =
-      typeof route.query.merchantId === 'string' ? route.query.merchantId : '';
-    const routeKey = `${tenantId.value}:${routeMerchant}:${routeOrder}`;
-    const targetsRoute =
-      routeOrder &&
-      routeMerchant &&
-      route.query.tenantId === tenantId.value &&
-      routeMerchant === merchantId.value;
-    if (targetsRoute && handledRouteOrder !== routeKey) {
+    const target = orderTarget;
+    let targetConversationId = '';
+    if (
+      target?.merchantOrderId &&
+      target.tenantId === tenantId.value &&
+      target.merchantId === merchantId.value
+    ) {
       const existing = result.conversations.find(
         (c) =>
-          c.merchantOrderId === routeOrder && c.merchantId === routeMerchant,
+          c.merchantOrderId === target.merchantOrderId &&
+          c.merchantId === target.merchantId,
       );
-      handledRouteOrder = routeKey;
-      if (existing) chooseConversation(existing.id);
+      if (existing) targetConversationId = existing.id;
       else {
         const opened = await openMerchantChatConversationApi({
-          tenantId: tenantId.value,
-          merchantId: routeMerchant,
-          merchantOrderId: routeOrder,
+          tenantId: target.tenantId,
+          merchantId: target.merchantId,
+          merchantOrderId: target.merchantOrderId,
         });
         if (current !== generation) return;
         if (opened.instanceId !== result.instanceId)
           throw new Error('聊天运行窗口已变化');
         if (!result.conversations.some((c) => c.id === opened.conversation.id))
           result.conversations.push(opened.conversation);
-        chooseConversation(opened.conversation.id);
+        targetConversationId = opened.conversation.id;
       }
     }
     snapshot.value = result;
@@ -294,14 +282,14 @@ async function refresh() {
         throw new Error('聊天运行窗口已变化，请刷新');
     }
     buffered = [];
-    if (!selectedId.value && targetsRoute)
-      selectedId.value =
-        result.conversations.find(
-          (c) => c.merchantOrderId === route.query.orderId,
-        )?.id ?? '';
+    if (
+      targetConversationId &&
+      chooseConversation(targetConversationId) &&
+      orderTarget === target
+    )
+      orderTarget = undefined;
   } catch {
     if (current === generation) {
-      handledRouteOrder = '';
       clearWindow();
       connected.value = false;
       error.value = '无法加载实时聊天，请检查权限或稍后刷新';
@@ -365,9 +353,9 @@ async function openOrderConversation(order: MerchantChatApi.Order) {
     creating.value = false;
   }
 }
-function applyRouteSelection() {
-  const requested =
-    typeof route.query.tenantId === 'string' ? route.query.tenantId : '';
+function applyNavigationTarget() {
+  const target = chatNavigation.takeTarget();
+  const requested = target?.tenantId ?? '';
   const nextTenant =
     !fixedTenantId.value &&
     tenantOptions.some(
@@ -375,15 +363,13 @@ function applyRouteSelection() {
     )
       ? requested
       : defaultTenantId;
-  const nextMerchant =
-    typeof route.query.merchantId === 'string'
-      ? route.query.merchantId
-      : undefined;
+  const acceptedTarget = target?.tenantId === nextTenant ? target : undefined;
+  orderTarget = acceptedTarget?.merchantOrderId ? acceptedTarget : undefined;
+  const nextMerchant = acceptedTarget?.merchantId;
   const changed =
     tenantId.value !== nextTenant || merchantId.value !== nextMerchant;
   tenantId.value = nextTenant;
   merchantId.value = nextMerchant;
-  handledRouteOrder = '';
   if (!changed) void refresh();
 }
 function pickImage(event: Event) {
@@ -448,6 +434,12 @@ function onComposerKeydown(event: KeyboardEvent) {
   }
 }
 watch([tenantId, merchantId], () => {
+  if (
+    orderTarget &&
+    (orderTarget.tenantId !== tenantId.value ||
+      orderTarget.merchantId !== merchantId.value)
+  )
+    orderTarget = undefined;
   generation++;
   unsubscribe();
   clearWindow();
@@ -455,10 +447,13 @@ watch([tenantId, merchantId], () => {
   void refresh();
 });
 watch(
-  () => [route.query.tenantId, route.query.merchantId, route.query.orderId],
-  () => {
-    if (routeReady && route.path === '/business/merchant-chats')
-      applyRouteSelection();
+  [() => route.path, () => chatNavigation.pendingTarget, navigationBusy],
+  ([path, target, busy], [previousPath, , wasBusy]) => {
+    if (routeReady && path === '/business/merchant-chats' && !busy) {
+      if (target) applyNavigationTarget();
+      else if (orderTarget && (wasBusy || path !== previousPath))
+        void refresh();
+    }
   },
 );
 watch(selected, (conversation) => {
@@ -492,7 +487,7 @@ onMounted(async () => {
   try {
     defaultTenantId = await loadTenantOptions();
     routeReady = true;
-    applyRouteSelection();
+    applyNavigationTarget();
   } catch {
     error.value = '无法加载所属单位，请稍后刷新页面';
     return;
@@ -933,8 +928,6 @@ onBeforeUnmount(() => {
           <ChatOrderInfo
             :conversation="selected"
             :merchant="selectedMerchant"
-            :can-view-order="hasAccessByCodes(['merchant:order:read'])"
-            @view-order="viewOrder"
           />
         </aside>
       </div>
@@ -958,8 +951,6 @@ onBeforeUnmount(() => {
         v-if="selected"
         :conversation="selected"
         :merchant="selectedMerchant"
-        :can-view-order="hasAccessByCodes(['merchant:order:read'])"
-        @view-order="viewOrder"
       />
     </a-drawer>
   </Page>
