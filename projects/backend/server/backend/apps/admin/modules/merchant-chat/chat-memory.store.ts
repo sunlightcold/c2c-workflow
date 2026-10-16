@@ -8,6 +8,8 @@ import {
   type ChatEvent,
   type ChatInbound,
   type ChatMessage,
+  type ChatOrderContext,
+  type ChatOrderSummary,
   type ChatScope,
 } from './chat.types'
 
@@ -15,6 +17,19 @@ interface Window {
   conversation: ChatConversation
   messages: ChatMessage[]
   expiresAt: number
+}
+function orderSummary(order: ChatOrderContext): ChatOrderSummary {
+  return {
+    fiatAmount: order.fiatAmount,
+    fiatCurrency: order.fiatCurrency,
+    asset: order.asset,
+    assetAmount: order.assetAmount,
+    unitPrice: order.unitPrice,
+    status: order.status,
+    paymentMethod: order.paymentMethod,
+    platformCreatedAt: order.platformCreatedAt.toISOString(),
+    paymentDeadline: order.paymentDeadline?.toISOString() ?? null,
+  }
 }
 @Injectable()
 export class ChatMemoryStore {
@@ -57,12 +72,33 @@ export class ChatMemoryStore {
       throw new ChatError('CHAT_CONVERSATION_BUSY', '会话正在发送消息，请稍后删除')
     this.remove(id)
   }
-  open(
-    scope: ChatScope,
-    order: { id: string; platformOrderId: string; counterpartyName: string | null },
-    canReply: boolean,
-    buyerName = '买家',
-  ) {
+  orderIds(scope: ChatScope) {
+    this.sweep()
+    return [...this.windows.values()]
+      .filter(
+        (w) =>
+          w.conversation.tenantId === scope.tenantId &&
+          w.conversation.merchantId === scope.merchantId,
+      )
+      .map((w) => w.conversation.merchantOrderId)
+  }
+  syncOrders(scope: ChatScope, orders: ChatOrderContext[]) {
+    const byId = new Map(orders.map((order) => [order.id, order]))
+    for (const window of this.windows.values()) {
+      if (
+        window.conversation.tenantId !== scope.tenantId ||
+        window.conversation.merchantId !== scope.merchantId
+      )
+        continue
+      const order = byId.get(window.conversation.merchantOrderId)
+      if (!order) continue
+      const summary = orderSummary(order)
+      if (JSON.stringify(window.conversation.order) === JSON.stringify(summary)) continue
+      window.conversation.order = summary
+      this.publish({ ...scope, type: 'conversation', conversation: { ...window.conversation } })
+    }
+  }
+  open(scope: ChatScope, order: ChatOrderContext, canReply: boolean, buyerName = '买家') {
     this.sweep()
     let window = [...this.windows.values()].find(
       (w) =>
@@ -80,6 +116,7 @@ export class ChatMemoryStore {
         buyerName: order.counterpartyName || buyerName,
         updatedAt: new Date().toISOString(),
         canReply,
+        order: orderSummary(order),
       }
       window = { conversation, messages: [], expiresAt: Date.now() + CHAT_TTL_MS }
       this.windows.set(conversation.id, window)
@@ -87,11 +124,7 @@ export class ChatMemoryStore {
     }
     return { ...window.conversation }
   }
-  receive(
-    scope: ChatScope,
-    order: { id: string; platformOrderId: string; counterpartyName: string | null },
-    input: ChatInbound,
-  ) {
+  receive(scope: ChatScope, order: ChatOrderContext, input: ChatInbound) {
     const conversation = this.open(scope, order, true, input.buyerName)
     const window = this.windows.get(conversation.id)!
     if (window.messages.some((m) => m.sourceMessageId === input.sourceMessageId)) return

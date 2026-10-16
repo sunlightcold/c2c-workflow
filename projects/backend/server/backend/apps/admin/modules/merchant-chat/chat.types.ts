@@ -1,4 +1,5 @@
 import { HttpException } from '@nestjs/common'
+import type { MerchantOrderEntity } from '@admin/database'
 
 export const CHAT_TTL_MS = 2 * 60 * 60 * 1000
 export const CHAT_MAX_IMAGE_BYTES = 10 * 1024 * 1024
@@ -27,6 +28,32 @@ export interface ChatMerchant extends ChatScope {
   reasonCode?: string
   capabilities: ChatCapabilities
 }
+export type ChatOrderContext = Pick<
+  MerchantOrderEntity,
+  | 'id'
+  | 'platformOrderId'
+  | 'counterpartyName'
+  | 'fiatAmount'
+  | 'fiatCurrency'
+  | 'asset'
+  | 'assetAmount'
+  | 'unitPrice'
+  | 'status'
+  | 'paymentMethod'
+  | 'platformCreatedAt'
+  | 'paymentDeadline'
+>
+export interface ChatOrderSummary {
+  fiatAmount: string
+  fiatCurrency: string
+  asset: string
+  assetAmount: string
+  unitPrice: string | null
+  status: string
+  paymentMethod: string | null
+  platformCreatedAt: string
+  paymentDeadline: string | null
+}
 export interface ChatConversation extends ChatScope {
   id: string
   merchantOrderId: string
@@ -34,6 +61,7 @@ export interface ChatConversation extends ChatScope {
   buyerName: string
   updatedAt: string
   canReply: boolean
+  order: ChatOrderSummary
 }
 export interface ChatMessage {
   id: string

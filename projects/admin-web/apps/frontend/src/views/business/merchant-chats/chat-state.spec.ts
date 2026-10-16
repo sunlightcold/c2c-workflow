@@ -2,7 +2,11 @@ import type { MerchantChatApi } from '#/api';
 
 import { describe, expect, it } from 'vitest';
 
-import { applyChatEvent } from './chat-state';
+import {
+  applyChatEvent,
+  chatConversationItems,
+  formatChatDecimal,
+} from './chat-state';
 
 describe('chat live state', () => {
   const snapshot = (): MerchantChatApi.Snapshot => ({
@@ -31,6 +35,17 @@ describe('chat live state', () => {
       buyerName: 'Buyer',
       updatedAt: new Date().toISOString(),
       canReply: true,
+      order: {
+        fiatAmount: '117.35',
+        fiatCurrency: 'CNY',
+        assetAmount: '16.500000000000000000',
+        asset: 'USDT',
+        unitPrice: '7.11',
+        status: 'PENDING_PAYMENT',
+        paymentMethod: 'ALIPAY',
+        platformCreatedAt: '2026-10-16T01:00:00Z',
+        paymentDeadline: null,
+      },
     },
     message: {
       id: 'message',
@@ -54,6 +69,34 @@ describe('chat live state', () => {
       false,
     );
     expect(state.sequence).toBe(2);
+  });
+  it('searches conversation context and previews the latest received message', () => {
+    const state = snapshot();
+    applyChatEvent(state, event(1));
+    const message = event(2).message;
+    if (!message) throw new Error('Missing message fixture');
+    applyChatEvent(state, {
+      ...event(2),
+      message: {
+        ...message,
+        id: 'image',
+        type: 'IMAGE',
+        text: undefined,
+        receivedAt: '2099-01-01T00:00:00Z',
+      },
+    });
+    expect(chatConversationItems(state, 'buyer')[0]?.preview).toBe(
+      '商家：[图片]',
+    );
+    expect(chatConversationItems(state, '20476365073825144832')).toHaveLength(
+      1,
+    );
+    expect(chatConversationItems(state, 'missing')).toEqual([]);
+    expect(formatChatDecimal('16.500000000000000000')).toBe('16.5');
+    expect(formatChatDecimal('1000')).toBe('1000');
+    expect(formatChatDecimal('0.000000000000000001')).toBe(
+      '0.000000000000000001',
+    );
   });
   it('removes expired conversations and their messages', () => {
     const state = snapshot();

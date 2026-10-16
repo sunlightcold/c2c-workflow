@@ -24,6 +24,17 @@ export namespace MerchantChatApi {
       'PENDING' | 'SUPPORTED'
     >;
   }
+  export interface OrderSummary {
+    fiatAmount: string;
+    fiatCurrency: string;
+    asset: string;
+    assetAmount: string;
+    unitPrice: null | string;
+    status: string;
+    paymentMethod: null | string;
+    platformCreatedAt: string;
+    paymentDeadline: null | string;
+  }
   export interface Conversation {
     id: string;
     tenantId: string;
@@ -33,6 +44,7 @@ export namespace MerchantChatApi {
     buyerName: string;
     updatedAt: string;
     canReply: boolean;
+    order: OrderSummary;
   }
   export interface Message {
     id: string;

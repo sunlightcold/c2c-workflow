@@ -7,6 +7,7 @@ import {
   TenantEntity,
   MerchantPlatform,
   BusinessStatus,
+  MerchantOrderStatus,
 } from '@admin/database'
 import { CHAT_TTL_MS, type ChatInbound } from './chat.types'
 
@@ -17,6 +18,15 @@ describe('Merchant live chat', () => {
     id: 'local-order',
     platformOrderId: '20476365073825144832',
     counterpartyName: 'Buyer',
+    fiatAmount: '117.35',
+    fiatCurrency: 'CNY',
+    assetAmount: '16.500000000000000000',
+    asset: 'USDT',
+    unitPrice: '7.11',
+    status: MerchantOrderStatus.PENDING_PAYMENT,
+    paymentMethod: 'ALIPAY',
+    platformCreatedAt: new Date('2026-10-16T01:00:00Z'),
+    paymentDeadline: null,
   }
   let callbacks: {
     opened: () => void
@@ -107,6 +117,20 @@ describe('Merchant live chat', () => {
     )
   })
   afterEach(() => service.onModuleDestroy())
+  it('refreshes retained completed orders in the same tenant and merchant without fetching chat history again', async () => {
+    await connected()
+    const opened = await service.openConversation(scope, order.id)
+    const completed = { ...order, status: MerchantOrderStatus.COMPLETED }
+    orders.find.mockImplementation(async ({ select }) => (select ? [completed] : []))
+    const snapshot = await service.snapshot(scope.tenantId, scope.merchantId)
+    expect(
+      snapshot.conversations.find((conversation) => conversation.id === opened.conversation.id),
+    ).toMatchObject({ canReply: false, order: { status: MerchantOrderStatus.COMPLETED } })
+    const retainedQuery = orders.find.mock.calls.find(([query]) => query.select)?.[0]
+    expect(retainedQuery.where).toEqual({ ...scope, id: expect.anything() })
+    expect(Object.keys(retainedQuery.select)).not.toContain('payeeIdentity')
+    expect(adapter.messages).toHaveBeenCalledTimes(1)
+  })
   it('requires the current instance and scoped conversation when deleting without calling the platform', () => {
     const conversation = memory.open(scope, order, false)
     expect(() => service.deleteConversation(scope, 'old-instance', conversation.id)).toThrow(

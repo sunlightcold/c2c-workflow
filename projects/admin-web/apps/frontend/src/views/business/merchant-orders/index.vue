@@ -3,8 +3,8 @@ import type { VbenFormProps } from '#/adapter/form';
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { BusinessApi } from '#/api';
 
-import { computed, onMounted, reactive, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 
 import { useAccess } from '@vben/access';
 import { JsonViewer, Page } from '@vben/common-ui';
@@ -93,6 +93,9 @@ const upstream = ref<BusinessApi.MerchantOrderUpstreamQueryResult>();
 const upstreamError = ref('');
 const { hasAccessByCodes } = useAccess();
 const router = useRouter();
+const route = useRoute();
+let routeReady = false;
+let defaultTenantId = '';
 
 function getActionPopupContainer() {
   return window.document.body;
@@ -528,11 +531,55 @@ function merchantName(merchantId: string) {
   return merchantNameById.value.get(merchantId) ?? '-';
 }
 
+async function applyRouteFilters() {
+  const requestedTenant = route.query.tenantId;
+  const tenantId =
+    !fixedTenantId.value &&
+    typeof requestedTenant === 'string' &&
+    tenantOptions.some(
+      (option) => option.value === requestedTenant && !option.disabled,
+    )
+      ? requestedTenant
+      : defaultTenantId;
+  if (!tenantId) return;
+  await selectTenant(tenantId, false);
+  const merchantId = route.query.merchantId;
+  const platformOrderId = route.query.platformOrderId;
+  if (
+    requestedTenant === tenantId &&
+    typeof merchantId === 'string' &&
+    merchantOptions.some((option) => option.value === merchantId)
+  ) {
+    await gridApi.formApi.resetForm();
+    await gridApi.formApi.setValues({
+      merchantId,
+      platformOrderId:
+        typeof platformOrderId === 'string' ? platformOrderId : undefined,
+      tenantId,
+    });
+    gridApi.formApi.setLatestSubmissionValues(
+      (await gridApi.formApi.getValues()) as SearchValues,
+    );
+  }
+  await gridApi.reload();
+}
+
+watch(
+  () => [
+    route.query.tenantId,
+    route.query.merchantId,
+    route.query.platformOrderId,
+  ],
+  () => {
+    if (routeReady && route.path === '/business/merchant-orders')
+      void applyRouteFilters();
+  },
+);
+
 onMounted(async () => {
-  selectedTenantId.value = await loadTenantOptions();
-  if (!selectedTenantId.value) return;
-  await selectTenant(selectedTenantId.value, false);
-  await gridApi.query();
+  defaultTenantId = await loadTenantOptions();
+  routeReady = true;
+  await applyRouteFilters();
 });
 </script>
 

@@ -11,14 +11,17 @@ import {
   ref,
   watch,
 } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 
 import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
 
 import {
+  ArrowDownOutlined,
   ArrowLeftOutlined,
   DeleteOutlined,
+  DownOutlined,
+  InfoCircleOutlined,
   PictureOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -36,15 +39,25 @@ import { confirmResourceAction } from '#/hooks';
 import { useSocketStore } from '#/store';
 
 import {
+  businessEnumText,
+  businessStateColor,
   formatBusinessTime,
   merchantPlatformText,
 } from '../shared/business-ui';
 import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
-import { applyChatEvent, chatConnectionText, chatSendText } from './chat-state';
+import {
+  applyChatEvent,
+  chatConnectionText,
+  chatConversationItems,
+  chatSendText,
+  formatChatDecimal,
+} from './chat-state';
 import ChatImage from './ChatImage.vue';
+import ChatOrderInfo from './ChatOrderInfo.vue';
 import OrderSelectModal from './OrderSelectModal.vue';
 
 const route = useRoute();
+const router = useRouter();
 const { hasAccessByCodes } = useAccess();
 const { fixedTenantId, loadTenantOptions, tenantOptions } =
   useBusinessTenantFilter();
@@ -64,6 +77,10 @@ const connected = ref(false);
 const error = ref('');
 const text = ref('');
 const image = ref<File>();
+const conversationSearch = ref('');
+const orderInfoOpen = ref(false);
+const atLatest = ref(true);
+const drafts = new Map<string, { image?: File; text: string }>();
 const imageInput = ref<HTMLInputElement>();
 const messagePanel = ref<HTMLElement>();
 let socket: Socket | undefined;
@@ -82,9 +99,9 @@ const selectedMerchant = computed(() =>
   ),
 );
 const conversations = computed(() =>
-  [...(snapshot.value?.conversations ?? [])].sort((a, b) =>
-    b.updatedAt.localeCompare(a.updatedAt),
-  ),
+  snapshot.value
+    ? chatConversationItems(snapshot.value, conversationSearch.value)
+    : [],
 );
 const messages = computed(
   () =>
@@ -122,9 +139,41 @@ const composerHint = computed(() => {
 
 function chooseConversation(id: string) {
   if (sending.value || deleting.value) return;
+  if (selectedId.value === id) return;
+  if (selectedId.value) {
+    if (text.value || image.value)
+      drafts.set(selectedId.value, { text: text.value, image: image.value });
+    else drafts.delete(selectedId.value);
+  }
   selectedId.value = id;
-  text.value = '';
-  image.value = undefined;
+  text.value = drafts.get(id)?.text ?? '';
+  image.value = drafts.get(id)?.image;
+  atLatest.value = true;
+  orderInfoOpen.value = false;
+}
+function viewOrder() {
+  if (!selected.value) return;
+  orderInfoOpen.value = false;
+  void router.push({
+    path: '/business/merchant-orders',
+    query: {
+      tenantId: selected.value.tenantId,
+      merchantId: selected.value.merchantId,
+      platformOrderId: selected.value.platformOrderId,
+    },
+  });
+}
+function onMessageScroll() {
+  const panel = messagePanel.value;
+  if (panel)
+    atLatest.value =
+      panel.scrollHeight - panel.scrollTop - panel.clientHeight < 80;
+}
+async function jumpToLatest() {
+  await nextTick();
+  if (messagePanel.value)
+    messagePanel.value.scrollTop = messagePanel.value.scrollHeight;
+  atLatest.value = true;
 }
 function unsubscribe() {
   socket?.emit('merchant-chat.unsubscribe');
@@ -135,6 +184,9 @@ function clearWindow() {
   text.value = '';
   image.value = undefined;
   buffered = [];
+  drafts.clear();
+  conversationSearch.value = '';
+  orderInfoOpen.value = false;
 }
 function eventReceived(event: MerchantChatApi.Event) {
   if (
@@ -374,6 +426,7 @@ async function send() {
       text.value = '';
       image.value = undefined;
     }
+    drafts.delete(conversation.id);
     if (result.messages.some((m) => m.status === 'UNKNOWN'))
       toast.warning('部分发送结果未知，请先到交易平台核实，勿重复发送');
     else if (result.messages.some((m) => m.status === 'FAILED'))
@@ -413,19 +466,20 @@ watch(selected, (conversation) => {
     selectedId.value = '';
     text.value = '';
     image.value = undefined;
+    orderInfoOpen.value = false;
   }
 });
 watch(
   [selectedId, () => messages.value.at(-1)?.id],
   async ([conversationId], [previousId]) => {
-    const panel = messagePanel.value;
-    const atBottom =
-      conversationId !== previousId ||
-      !panel ||
-      panel.scrollHeight - panel.scrollTop - panel.clientHeight < 120;
-    await nextTick();
-    if (messagePanel.value && atBottom)
-      messagePanel.value.scrollTop = messagePanel.value.scrollHeight;
+    if (conversationId !== previousId || atLatest.value) await jumpToLatest();
+  },
+);
+watch(
+  () => snapshot.value?.conversations.map((conversation) => conversation.id),
+  (ids) => {
+    const active = new Set(ids);
+    for (const id of drafts.keys()) if (!active.has(id)) drafts.delete(id);
   },
 );
 onMounted(async () => {
@@ -529,32 +583,48 @@ onBeforeUnmount(() => {
         class="bg-card flex min-h-0 flex-1 overflow-hidden rounded-lg border"
       >
         <aside
-          class="chat-sidebar flex min-h-0 w-80 shrink-0 flex-col border-r"
+          class="chat-sidebar flex min-h-0 shrink-0 flex-col border-r"
           :class="{ 'chat-hidden-mobile': selected }"
         >
-          <div class="flex items-center justify-between border-b p-4">
+          <div class="flex items-center justify-between px-4 pb-3 pt-4">
             <span class="font-medium">当前会话</span>
             <span class="text-muted-foreground text-xs">
               {{ conversations.length }} 个
             </span>
           </div>
+          <div class="border-b px-4 pb-4">
+            <a-input-search
+              v-model:value="conversationSearch"
+              allow-clear
+              placeholder="搜索买家、商家或订单号"
+              aria-label="搜索当前会话"
+            />
+          </div>
           <a-spin v-if="loading && !snapshot" class="p-8" />
           <div v-else class="min-h-0 flex-1 overflow-y-auto">
             <a-empty
               v-if="conversations.length === 0"
-              description="暂无实时会话"
+              :description="
+                conversationSearch ? '没有匹配的会话' : '暂无实时会话'
+              "
               class="my-12"
             >
               <p class="text-muted-foreground px-4 text-xs">
-                可新增订单会话，或等待买家消息
+                {{
+                  conversationSearch
+                    ? '试试其他买家、商家或订单号'
+                    : '点击新增会话，选择订单开始沟通'
+                }}
               </p>
             </a-empty>
             <button
               v-for="conversation in conversations"
               :key="conversation.id"
               type="button"
-              class="hover:bg-accent focus-visible:ring-ring w-full border-b p-4 text-left outline-none focus-visible:ring-2"
-              :class="{ 'bg-accent': selectedId === conversation.id }"
+              class="chat-conversation hover:bg-accent focus-visible:ring-ring w-full border-b p-4 text-left outline-none focus-visible:ring-2"
+              :class="{
+                'chat-conversation-active': selectedId === conversation.id,
+              }"
               :aria-pressed="selectedId === conversation.id"
               @click="chooseConversation(conversation.id)"
             >
@@ -569,37 +639,63 @@ onBeforeUnmount(() => {
                 </span>
               </div>
               <div class="text-muted-foreground truncate text-xs">
-                {{
-                  snapshot?.merchants.find(
-                    (m) => m.merchantId === conversation.merchantId,
-                  )?.name
-                }}
+                {{ conversation.merchantName }}
               </div>
-              <div class="text-muted-foreground mt-1 break-all text-xs">
-                订单 {{ conversation.platformOrderId }}
+              <div
+                class="my-2 flex flex-wrap items-center justify-between gap-1"
+              >
+                <span class="text-sm font-semibold tabular-nums">
+                  {{ conversation.order.fiatAmount }}
+                  {{ conversation.order.fiatCurrency }}
+                </span>
+                <a-tag
+                  class="!m-0"
+                  :color="businessStateColor(conversation.order.status)"
+                >
+                  {{ businessEnumText(conversation.order.status) }}
+                </a-tag>
+              </div>
+              <div
+                class="text-muted-foreground truncate text-xs"
+                :title="conversation.preview"
+              >
+                {{ conversation.preview }}
+              </div>
+              <div
+                class="text-muted-foreground mt-1 truncate text-xs"
+                :title="conversation.platformOrderId"
+              >
+                {{ conversation.platformOrderId }}
               </div>
             </button>
           </div>
         </aside>
         <section
-          class="flex min-h-0 min-w-0 flex-1 flex-col"
+          class="chat-main flex min-h-0 min-w-0 flex-1 flex-col"
           :class="{ 'chat-hidden-mobile': !selected }"
           aria-label="聊天消息"
         >
           <template v-if="selected">
-            <header class="flex flex-wrap items-center gap-3 border-b p-4">
+            <header
+              class="flex shrink-0 flex-wrap items-center gap-3 border-b px-5 py-4"
+            >
               <a-button
                 type="text"
                 class="chat-back"
                 aria-label="返回会话列表"
-                @click="selectedId = ''"
+                @click="chooseConversation('')"
               >
                 <ArrowLeftOutlined />
               </a-button>
               <div class="min-w-0 flex-1">
-                <div class="font-medium">{{ selected.buyerName }}</div>
-                <div class="text-muted-foreground break-all text-xs">
-                  订单 {{ selected.platformOrderId }}
+                <div class="font-semibold">{{ selected.buyerName }}</div>
+                <div class="text-muted-foreground mt-1 truncate text-xs">
+                  {{ selectedMerchant?.name }} ·
+                  {{
+                    selectedMerchant
+                      ? merchantPlatformText(selectedMerchant.platform)
+                      : '—'
+                  }}
                 </div>
               </div>
               <a-tag
@@ -616,138 +712,205 @@ onBeforeUnmount(() => {
                 }}
               </a-tag>
               <a-button
-                v-if="hasAccessByCodes(['merchant:chat:reply'])"
-                danger
+                class="chat-order-toggle"
                 type="text"
-                :loading="deleting"
-                :disabled="loading || sending || creating"
-                @click="deleteConversation"
+                @click="orderInfoOpen = true"
               >
-                <template #icon><DeleteOutlined /></template>删除会话
+                <template #icon><InfoCircleOutlined /></template>订单信息
               </a-button>
+              <a-dropdown
+                v-if="hasAccessByCodes(['merchant:chat:reply'])"
+                :trigger="['click']"
+              >
+                <a-button
+                  type="text"
+                  :loading="deleting"
+                  :disabled="loading || sending || creating"
+                >
+                  更多 <DownOutlined />
+                </a-button>
+                <template #overlay>
+                  <a-menu>
+                    <a-menu-item
+                      key="delete"
+                      danger
+                      @click="deleteConversation"
+                    >
+                      <DeleteOutlined /> 删除会话
+                    </a-menu-item>
+                  </a-menu>
+                </template>
+              </a-dropdown>
             </header>
             <div
+              class="bg-muted/30 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b px-5 py-3 text-sm"
+            >
+              <span class="font-semibold tabular-nums">
+                {{ selected.order.fiatAmount }}
+                {{ selected.order.fiatCurrency }}
+              </span>
+              <span class="text-muted-foreground tabular-nums">
+                {{ formatChatDecimal(selected.order.assetAmount) }}
+                {{ selected.order.asset }}
+              </span>
+              <a-tag
+                class="!m-0"
+                :color="businessStateColor(selected.order.status)"
+              >
+                {{ businessEnumText(selected.order.status) }}
+              </a-tag>
+            </div>
+            <div
               ref="messagePanel"
-              class="min-h-0 flex-1 space-y-4 overflow-y-auto p-4"
+              class="chat-message-panel min-h-0 flex-1 overflow-y-auto"
               role="log"
               aria-label="当前聊天消息"
               aria-live="polite"
               aria-relevant="additions"
+              @scroll="onMessageScroll"
             >
-              <a-empty
-                v-if="messages.length === 0"
-                description="暂无消息"
-                class="my-8"
-              />
               <div
-                v-for="item in messages"
-                :key="item.id"
-                class="flex"
-                :class="
-                  item.origin === 'SELF' ? 'justify-end' : 'justify-start'
-                "
+                class="chat-reading-column space-y-5 p-5"
+                :class="{
+                  'flex h-full items-center justify-center':
+                    messages.length === 0,
+                }"
               >
-                <div class="max-w-[85%] sm:max-w-[75%]">
-                  <div class="text-muted-foreground mb-1 text-xs">
+                <a-empty
+                  v-if="messages.length === 0"
+                  description="还没有聊天消息"
+                >
+                  <p class="text-muted-foreground text-xs">
                     {{
-                      item.origin === 'SELF'
-                        ? '商家'
-                        : item.origin === 'PLATFORM_AUTO'
-                          ? '平台自动消息'
-                          : selected.buyerName
+                      canReply
+                        ? '可以发送第一条消息，与买家核实订单'
+                        : composerHint
                     }}
-                    · {{ formatBusinessTime(item.occurredAt) }}
-                  </div>
-                  <div
-                    class="rounded-lg border px-3 py-2"
-                    :class="
-                      item.origin === 'SELF' ? 'bg-primary/10' : 'bg-muted/50'
-                    "
-                  >
-                    <p
-                      v-if="item.text"
-                      class="whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
-                    >
-                      {{ item.text }}
-                    </p>
-                    <ChatImage
-                      v-if="item.attachmentId && snapshot"
-                      :scope="{ tenantId, merchantId: selected.merchantId }"
-                      :instance-id="snapshot.instanceId"
-                      :message="item"
-                    />
-                    <span
-                      v-else-if="item.type === 'IMAGE'"
-                      class="text-muted-foreground text-xs"
-                    >
-                      图片{{
-                        item.status === 'SENDING' ? '发送中' : '暂不可读取'
+                  </p>
+                </a-empty>
+                <div
+                  v-for="item in messages"
+                  :key="item.id"
+                  class="flex"
+                  :class="
+                    item.origin === 'SELF' ? 'justify-end' : 'justify-start'
+                  "
+                >
+                  <div class="max-w-[90%] sm:max-w-[80%]">
+                    <div class="text-muted-foreground mb-1 text-xs">
+                      {{
+                        item.origin === 'SELF'
+                          ? '商家'
+                          : item.origin === 'PLATFORM_AUTO'
+                            ? '平台自动消息'
+                            : selected.buyerName
                       }}
-                    </span>
-                  </div>
-                  <div
-                    v-if="item.status"
-                    class="mt-1 text-xs"
-                    :class="
-                      item.status === 'FAILED' || item.status === 'UNKNOWN'
-                        ? 'text-destructive'
-                        : 'text-muted-foreground'
-                    "
-                  >
-                    {{ chatSendText[item.status] }}
+                      · {{ formatBusinessTime(item.occurredAt) }}
+                    </div>
+                    <div
+                      class="rounded-lg border px-3 py-2"
+                      :class="
+                        item.origin === 'SELF' ? 'bg-primary/10' : 'bg-muted/50'
+                      "
+                    >
+                      <p
+                        v-if="item.text"
+                        class="whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
+                      >
+                        {{ item.text }}
+                      </p>
+                      <ChatImage
+                        v-if="item.attachmentId && snapshot"
+                        :scope="{ tenantId, merchantId: selected.merchantId }"
+                        :instance-id="snapshot.instanceId"
+                        :message="item"
+                      />
+                      <span
+                        v-else-if="item.type === 'IMAGE'"
+                        class="text-muted-foreground text-xs"
+                      >
+                        图片{{
+                          item.status === 'SENDING' ? '发送中' : '暂不可读取'
+                        }}
+                      </span>
+                    </div>
+                    <div
+                      v-if="item.status"
+                      class="mt-1 text-xs"
+                      :class="
+                        item.status === 'FAILED' || item.status === 'UNKNOWN'
+                          ? 'text-destructive'
+                          : 'text-muted-foreground'
+                      "
+                    >
+                      {{ chatSendText[item.status] }}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-            <footer class="border-t p-4">
-              <p class="text-muted-foreground mb-2 text-xs">
-                {{ composerHint }}
-              </p>
-              <a-textarea
-                v-model:value="text"
-                aria-label="回复内容"
-                placeholder="输入回复内容"
-                :maxlength="4000"
-                :auto-size="{ minRows: 2, maxRows: 5 }"
-                :disabled="!canReply || sending"
-                @keydown="onComposerKeydown"
-              />
-              <div
-                class="mt-3 flex flex-wrap items-center justify-between gap-2"
-              >
-                <div class="flex min-w-0 items-center gap-2">
-                  <input
-                    ref="imageInput"
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    class="hidden"
-                    aria-label="选择聊天图片"
-                    @change="pickImage"
-                  />
-                  <a-button
-                    :disabled="!canReply || sending"
-                    @click="imageInput?.click()"
-                  >
-                    <template #icon><PictureOutlined /></template>图片
-                  </a-button>
-                  <a-tag
-                    v-if="image"
-                    closable
-                    :title="image.name"
-                    class="max-w-40 truncate"
-                    @close="image = undefined"
-                  >
-                    {{ image.name }}
-                  </a-tag>
-                </div>
-                <a-button
-                  type="primary"
-                  :loading="sending"
-                  :disabled="!canReply || (!text.trim() && !image)"
-                  @click="send"
+            <div
+              v-if="!atLatest && messages.length > 0"
+              class="flex justify-center pb-2"
+            >
+              <a-button size="small" @click="jumpToLatest">
+                <ArrowDownOutlined /> 回到最新消息
+              </a-button>
+            </div>
+            <footer class="shrink-0 border-t">
+              <div class="chat-reading-column px-5 py-4">
+                <a-textarea
+                  v-model:value="text"
+                  aria-label="回复内容"
+                  placeholder="输入回复内容"
+                  :maxlength="4000"
+                  :auto-size="{ minRows: 3, maxRows: 6 }"
+                  :disabled="!canReply || sending"
+                  @keydown="onComposerKeydown"
+                />
+                <div
+                  class="mt-3 flex flex-wrap items-center justify-between gap-2"
                 >
-                  <template #icon><SendOutlined /></template>发送
-                </a-button>
+                  <div class="flex min-w-0 items-center gap-2">
+                    <input
+                      ref="imageInput"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      class="hidden"
+                      aria-label="选择聊天图片"
+                      @change="pickImage"
+                    />
+                    <a-button
+                      :disabled="!canReply || sending"
+                      @click="imageInput?.click()"
+                    >
+                      <template #icon><PictureOutlined /></template>图片
+                    </a-button>
+                    <a-tag
+                      v-if="image"
+                      closable
+                      :title="image.name"
+                      class="max-w-40 truncate"
+                      @close="image = undefined"
+                    >
+                      {{ image.name }}
+                    </a-tag>
+                  </div>
+                  <span
+                    class="text-muted-foreground ml-auto text-xs"
+                    role="status"
+                  >
+                    {{ composerHint }}
+                  </span>
+                  <a-button
+                    type="primary"
+                    :loading="sending"
+                    :disabled="!canReply || (!text.trim() && !image)"
+                    @click="send"
+                  >
+                    <template #icon><SendOutlined /></template>发送
+                  </a-button>
+                </div>
               </div>
             </footer>
           </template>
@@ -761,6 +924,19 @@ onBeforeUnmount(() => {
             class="m-auto p-6"
           />
         </section>
+        <aside
+          v-if="selected"
+          class="chat-order-sidebar min-h-0 shrink-0 overflow-y-auto border-l"
+          aria-label="订单信息"
+        >
+          <div class="border-b px-5 py-4 font-semibold">订单信息</div>
+          <ChatOrderInfo
+            :conversation="selected"
+            :merchant="selectedMerchant"
+            :can-view-order="hasAccessByCodes(['merchant:order:read'])"
+            @view-order="viewOrder"
+          />
+        </aside>
       </div>
     </div>
     <OrderSelectModal
@@ -773,12 +949,52 @@ onBeforeUnmount(() => {
       @close="orderModalOpen = false"
       @select="openOrderConversation"
     />
+    <a-drawer
+      v-model:open="orderInfoOpen"
+      title="订单信息"
+      width="min(360px, 94vw)"
+    >
+      <ChatOrderInfo
+        v-if="selected"
+        :conversation="selected"
+        :merchant="selectedMerchant"
+        :can-view-order="hasAccessByCodes(['merchant:order:read'])"
+        @view-order="viewOrder"
+      />
+    </a-drawer>
   </Page>
 </template>
 
 <style scoped>
 .chat-workspace {
   min-height: 420px;
+}
+
+.chat-sidebar {
+  width: 304px;
+}
+
+.chat-order-sidebar {
+  width: 292px;
+}
+
+.chat-conversation-active {
+  background-color: hsl(var(--primary) / 8%);
+  box-shadow: inset 3px 0 0 hsl(var(--primary));
+}
+
+.chat-reading-column {
+  width: 100%;
+  max-width: 880px;
+  margin-inline: auto;
+}
+
+.chat-message-panel {
+  background-color: hsl(var(--muted) / 20%);
+}
+
+.chat-order-toggle {
+  display: none;
 }
 
 .chat-back {
@@ -795,7 +1011,7 @@ onBeforeUnmount(() => {
 }
 
 .chat-filter-field {
-  width: 320px;
+  width: 260px;
   min-width: 0;
   max-width: 100%;
 }
@@ -803,6 +1019,16 @@ onBeforeUnmount(() => {
 .chat-filters :deep(.ant-form-item-control) {
   flex: 1;
   min-width: 0;
+}
+
+@media (width <= 1279px) {
+  .chat-order-sidebar {
+    display: none;
+  }
+
+  .chat-order-toggle {
+    display: inline-flex;
+  }
 }
 
 @media (width <= 767px) {

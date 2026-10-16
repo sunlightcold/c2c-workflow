@@ -1,5 +1,51 @@
 import type { MerchantChatApi } from '#/api';
 
+export function formatChatDecimal(value: string) {
+  return value.includes('.')
+    ? value.replace(/0+$/, '').replace(/\.$/, '')
+    : value;
+}
+
+export function chatConversationItems(
+  snapshot: MerchantChatApi.Snapshot,
+  search: string,
+) {
+  const merchants = new Map(
+    snapshot.merchants.map((merchant) => [merchant.merchantId, merchant]),
+  );
+  const latest = new Map<string, MerchantChatApi.Message>();
+  for (const message of snapshot.messages) {
+    const previous = latest.get(message.conversationId);
+    if (!previous || previous.receivedAt <= message.receivedAt)
+      latest.set(message.conversationId, message);
+  }
+  const query = search.trim().toLocaleLowerCase();
+  return snapshot.conversations
+    .map((conversation) => {
+      const message = latest.get(conversation.id);
+      const merchantName =
+        merchants.get(conversation.merchantId)?.name ?? '商家';
+      const content = message?.type === 'IMAGE' ? '[图片]' : message?.text;
+      return {
+        ...conversation,
+        merchantName,
+        preview: content
+          ? `${message?.origin === 'SELF' ? '商家：' : ''}${content}`
+          : '暂无消息',
+      };
+    })
+    .filter(
+      (conversation) =>
+        !query ||
+        [
+          conversation.buyerName,
+          conversation.platformOrderId,
+          conversation.merchantName,
+        ].some((value) => value.toLocaleLowerCase().includes(query)),
+    )
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
 export function applyChatEvent(
   snapshot: MerchantChatApi.Snapshot,
   event: MerchantChatApi.Event,

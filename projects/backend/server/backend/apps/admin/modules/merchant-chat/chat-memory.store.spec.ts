@@ -1,9 +1,23 @@
 import { ChatMemoryStore } from './chat-memory.store'
-import { CHAT_TTL_MS, type ChatInbound } from './chat.types'
+import { MerchantOrderStatus } from '@admin/database'
+import { CHAT_TTL_MS, type ChatInbound, type ChatOrderContext } from './chat.types'
 
 describe('Chat memory window', () => {
   const scope = { tenantId: 'tenant', merchantId: 'merchant' }
-  const order = { id: 'order', platformOrderId: '9223372036854775807', counterpartyName: 'Buyer' }
+  const order: ChatOrderContext = {
+    id: 'order',
+    platformOrderId: '9223372036854775807',
+    counterpartyName: 'Buyer',
+    fiatAmount: '117.35',
+    fiatCurrency: 'CNY',
+    assetAmount: '16.500000000000000000',
+    asset: 'USDT',
+    unitPrice: '7.11',
+    status: MerchantOrderStatus.PENDING_PAYMENT,
+    paymentMethod: 'ALIPAY',
+    platformCreatedAt: new Date('2026-10-16T01:00:00Z'),
+    paymentDeadline: null,
+  }
   const input = (id: string): ChatInbound => ({
     orderNo: order.platformOrderId,
     sourceMessageId: id,
@@ -20,6 +34,37 @@ describe('Chat memory window', () => {
   afterEach(() => {
     store.clear()
     jest.useRealTimers()
+  })
+  it('projects order context without sensitive fields and refreshes it within scope without extending TTL', () => {
+    const context = { ...order, payeeIdentity: 'private-account' }
+    const first = store.open(scope, context, true)
+    const other = { ...scope, merchantId: 'other-merchant' }
+    const otherConversation = store.open(other, order, true)
+    expect(first.order).toEqual({
+      fiatAmount: order.fiatAmount,
+      fiatCurrency: order.fiatCurrency,
+      assetAmount: order.assetAmount,
+      asset: order.asset,
+      unitPrice: order.unitPrice,
+      status: order.status,
+      paymentMethod: order.paymentMethod,
+      platformCreatedAt: order.platformCreatedAt.toISOString(),
+      paymentDeadline: null,
+    })
+    const events = jest.fn()
+    store.events.subscribe(events)
+    jest.advanceTimersByTime(CHAT_TTL_MS - 1000)
+    store.syncOrders(scope, [{ ...order, status: MerchantOrderStatus.COMPLETED }])
+    expect(store.conversation(scope, first.id)).toMatchObject({
+      updatedAt: first.updatedAt,
+      order: { status: MerchantOrderStatus.COMPLETED },
+    })
+    expect(store.conversation(other, otherConversation.id).order.status).toBe(order.status)
+    expect(events).toHaveBeenCalledTimes(1)
+    store.syncOrders(scope, [{ ...order, status: MerchantOrderStatus.COMPLETED }])
+    expect(events).toHaveBeenCalledTimes(1)
+    jest.advanceTimersByTime(1001)
+    expect(store.snapshot(scope).conversations).toEqual([])
   })
   it('opens an empty conversation once, publishes availability, and expires it after the window', () => {
     const events: string[] = []

@@ -483,6 +483,30 @@ export class MerchantChatService implements OnApplicationBootstrap, OnModuleDest
       throw new ChatError('CHAT_ORDER_LIMIT', '当前活动订单超出聊天窗口容量')
     }
     session.orders = new Map(orders.map((order) => [order.platformOrderId, order]))
+    const activeIds = new Set(orders.map((order) => order.id))
+    const retainedIds = this.memory.orderIds(scope).filter((id) => !activeIds.has(id))
+    const retained = retainedIds.length
+      ? await this.database.getRepository(MerchantOrderEntity).find({
+          where: { ...scope, id: In(retainedIds) },
+          select: {
+            id: true,
+            platformOrderId: true,
+            counterpartyName: true,
+            fiatAmount: true,
+            fiatCurrency: true,
+            asset: true,
+            assetAmount: true,
+            unitPrice: true,
+            status: true,
+            paymentMethod: true,
+            platformCreatedAt: true,
+            paymentDeadline: true,
+          },
+        })
+      : []
+    this.requireSessionLoad(token)
+    if (session.stopped) throw new ChatError('CHAT_CONTEXT_UNAVAILABLE', '商家配置已变化')
+    this.memory.syncOrders(scope, [...orders, ...retained])
     for (const id of session.initializedOrders)
       if (!session.orders.has(id)) session.initializedOrders.delete(id)
     if (session.connection?.ready() && !session.connecting) await this.initializeOrders(session)
