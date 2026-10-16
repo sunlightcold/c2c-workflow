@@ -72,7 +72,10 @@ describe('MerchantService', () => {
       expect.objectContaining({ code: expect.stringMatching(/^MCH\d{20}$/) }),
     )
     expect(cipher.encrypt).toHaveBeenCalledWith(
-      JSON.stringify({ apiKey: 'binance-api-key', secretKey: 'binance-secret-key' }),
+      JSON.stringify({
+        apiKey: 'binance-api-key',
+        secretKey: 'binance-secret-key',
+      }),
     )
     expect(credentialTxRepository.save).toHaveBeenCalledWith(
       expect.objectContaining({

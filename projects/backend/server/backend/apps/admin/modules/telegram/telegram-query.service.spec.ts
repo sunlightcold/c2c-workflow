@@ -1,3 +1,4 @@
+import type { ProxyNetworkService } from '@/apps/admin/modules/proxy/proxy-network.service'
 import { MerchantPlatform, PaymentBatchStatus, PaymentOrderStatus } from '@admin/database'
 import { TelegramQueryService } from './telegram-query.service'
 import {
@@ -333,7 +334,10 @@ describe('TelegramQueryService', () => {
         }),
       }
       const client = new C2cPlatformClient(
-        new BinanceC2cClient(http as never),
+        new BinanceC2cClient(
+          http as never,
+          { forMerchant: jest.fn() } as unknown as ProxyNetworkService,
+        ),
         new OkxWebPrivateClient(http as never),
       )
       const merchantRepo = { findOne: jest.fn().mockResolvedValue({ id: 'merchant-1', platform }) }

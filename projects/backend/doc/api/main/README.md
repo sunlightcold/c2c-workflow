@@ -14,3 +14,5 @@
 | [c2c-dashboard.md](c2c-dashboard.md)             | 经营工作台汇总、趋势、分布、平台与商家排行             | `/v1/sys/dashboard`                                          |
 
 接口文档必须与 Controller、DTO、权限码、响应包装和 contract test 同步。
+
+- [IP 代理管理](c2c-proxies.md)：`/v1/sys/proxies`。

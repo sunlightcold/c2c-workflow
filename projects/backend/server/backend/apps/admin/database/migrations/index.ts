@@ -1,4 +1,5 @@
 import type { MigrationInterface } from 'typeorm'
+import { C2cIpProxies1789030000000 } from './c2c-ip-proxies.migration'
 import { SystemFoundation1784000000000 } from './system-foundation.migration'
 import { TutorialCenter1785000000000 } from './tutorial-center.migration'
 import { TutorialContentStoragePurpose1785005000000 } from './tutorial-content-storage-purpose.migration'
@@ -81,4 +82,5 @@ export const adminMigrations: AdminMigrationConstructor[] = [
   C2cAutomationScanCorrectness1789027000000,
   C2cTelegramOtc1789028000000,
   C2cMerchantAds1789029000000,
+  C2cIpProxies1789030000000,
 ]

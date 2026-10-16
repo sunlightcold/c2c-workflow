@@ -1,3 +1,7 @@
+import type { AddressInfo } from 'node:net'
+import { WebSocketServer } from 'ws'
+import { once } from 'node:events'
+import { createProxyAgents, ProxyNetworkService } from '../proxy/proxy-network.service'
 import { Test } from '@nestjs/testing'
 import { BinanceC2cClient } from './binance-c2c.client'
 import { C2cPlatformClient } from './c2c-platform.client'
@@ -12,17 +16,20 @@ import { generateKeyPairSync, verify } from 'node:crypto'
 
 describe('C2C buy-order clients', () => {
   const http = { request: jest.fn() }
+  const network = { forMerchant: jest.fn() }
   let binance: BinanceC2cClient
   let okx: OkxWebPrivateClient
 
   beforeEach(async () => {
     jest.clearAllMocks()
     http.request.mockReset()
+    network.forMerchant.mockReset().mockResolvedValue(null)
     const module = await Test.createTestingModule({
       providers: [
         BinanceC2cClient,
         OkxWebPrivateClient,
         { provide: C2C_HTTP_TRANSPORT, useValue: http },
+        { provide: ProxyNetworkService, useValue: network },
       ],
     }).compile()
     binance = module.get(BinanceC2cClient)
@@ -303,73 +310,76 @@ describe('C2C buy-order clients', () => {
     ).rejects.toThrow('仅支持 BUY')
   })
 
-  it('retrieves Binance chat credentials and sends the pfa-pay text message shape', async () => {
-    const originalWebSocket = globalThis.WebSocket
-    const sent: string[] = []
-    class FakeWebSocket {
-      bufferedAmount = 0
-      private readonly listeners = new Map<string, Array<() => void>>()
-
-      constructor(readonly url: string) {
-        queueMicrotask(() => this.emit('open'))
-      }
-
-      addEventListener(type: string, listener: () => void) {
-        this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener])
-      }
-
-      send(message: string) {
-        sent.push(message)
-      }
-
-      close() {
-        this.emit('close')
-      }
-
-      private emit(type: string) {
-        for (const listener of this.listeners.get(type) ?? []) listener()
-      }
-    }
-    Object.defineProperty(globalThis, 'WebSocket', { configurable: true, value: FakeWebSocket })
+  it.each([false, true])('sends the Binance chat frame with proxy=%s', async (useProxy) => {
+    const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
+    await once(server, 'listening')
+    const port = (server.address() as AddressInfo).port
+    const received = once(server, 'connection').then(async ([socket, request]) => {
+      const [message] = await once(socket, 'message')
+      return { content: message.toString(), auth: request.headers['proxy-authorization'] }
+    })
+    if (useProxy)
+      network.forMerchant.mockImplementation(async () =>
+        createProxyAgents(
+          {
+            protocol: 'http',
+            host: '127.0.0.1',
+            port,
+            username: 'user',
+          },
+          'p@ss',
+        ),
+      )
     http.request.mockResolvedValue({
       success: true,
       code: '000000',
       data: {
-        chatWssUrl: 'wss://im.binance.test/chat',
+        chatWssUrl: useProxy ? 'ws://chat.invalid/chat' : `ws://127.0.0.1:${port}/chat`,
         listenKey: 'listen-key',
         listenToken: 'listen-token',
       },
     })
-
+    const proxyScope = { tenantId: 'tenant-1', merchantId: 'merchant-1' }
     try {
       await expect(
         binance.sendChatText(
-          { apiKey: 'key', secretKey: 'secret', clientType: 'WEB', timeoutMs: 5000 },
+          {
+            apiKey: 'key',
+            secretKey: 'secret',
+            clientType: 'WEB',
+            timeoutMs: 1000,
+            ...(useProxy ? { proxyScope } : {}),
+          },
           'BIN-CHAT-1',
           '订单已付款',
         ),
       ).resolves.toEqual({ supported: true })
+      const frame = await received
+      expect(JSON.parse(frame.content)).toMatchObject({
+        orderNo: 'BIN-CHAT-1',
+        type: 'text',
+        content: '订单已付款',
+        self: true,
+        clientType: 'web',
+        sendStatus: 0,
+      })
+      expect(frame.auth).toBe(
+        useProxy ? `Basic ${Buffer.from('user:p@ss').toString('base64')}` : undefined,
+      )
+      if (useProxy) expect(network.forMerchant).toHaveBeenCalledWith(proxyScope)
+      else expect(network.forMerchant).not.toHaveBeenCalled()
     } finally {
-      Object.defineProperty(globalThis, 'WebSocket', {
-        configurable: true,
-        value: originalWebSocket,
+      for (const socket of server.clients) socket.terminate()
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve())
       })
     }
-
     expect(http.request).toHaveBeenCalledWith(
       expect.objectContaining({
         method: 'GET',
         url: expect.stringContaining('/sapi/v1/c2c/chat/retrieveChatCredential?'),
       }),
     )
-    expect(JSON.parse(sent[0])).toMatchObject({
-      orderNo: 'BIN-CHAT-1',
-      type: 'text',
-      content: '订单已付款',
-      self: true,
-      clientType: 'web',
-      sendStatus: 0,
-    })
   })
 
   it('keeps OKX private requests on the configured origin and fixed paths', async () => {
@@ -1346,6 +1356,7 @@ describe('C2C buy-order clients', () => {
 
   it('uses the Binance complaint reason, upload and submission contracts', async () => {
     const credentials = {
+      proxyScope: { tenantId: 'tenant-1', merchantId: 'merchant-1' },
       apiKey: 'key',
       secretKey: 'secret',
       clientType: 'WEB',
@@ -1374,7 +1385,7 @@ describe('C2C buy-order clients', () => {
       { reasonCode: 6, reasonDesc: '卖家收款后未放行' },
     ])
     const upload = await binance.getComplaintUploadUrl(credentials, 'receipt.png')
-    await binance.uploadComplaintFile(upload.uploadUrl, Buffer.from('receipt'))
+    await binance.uploadComplaintFile(credentials, upload.uploadUrl, Buffer.from('receipt'))
     await expect(
       binance.submitComplaint(credentials, {
         description: '我已付款给卖家，卖家未放行',
@@ -1390,8 +1401,12 @@ describe('C2C buy-order clients', () => {
       expect.objectContaining({
         method: 'PUT',
         url: 'http://127.0.0.1:13002/upload',
+        proxyScope: credentials.proxyScope,
         body: Buffer.from('receipt'),
       }),
     )
+    for (const [request] of http.request.mock.calls) {
+      expect(request.proxyScope).toEqual(credentials.proxyScope)
+    }
   })
 })

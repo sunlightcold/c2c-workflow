@@ -25,6 +25,7 @@ import type { C2cAdMarketQuery, C2cAdMarketSnapshot } from './c2c-ad.types'
 import { adId, adText, normalizeOkxAd, normalizeOkxMarketQuote } from './c2c-ad-normalizer'
 
 export interface OkxWebPrivateCredentials {
+  proxyScope?: { tenantId: string; merchantId: string }
   cookie: string
   authorization: string
   signaturePrivateKey?: string
@@ -472,6 +473,7 @@ export class OkxWebPrivateClient implements C2cPlatformAdapter<OkxWebPrivateCred
         params,
         body,
         timeoutMs: credentials.timeoutMs,
+        ...(credentials.proxyScope ? { proxyScope: credentials.proxyScope } : {}),
         headers: {
           Accept: 'application/json',
           'User-Agent':

@@ -1,3 +1,4 @@
+import type { ProxyNetworkService } from '@/apps/admin/modules/proxy/proxy-network.service'
 import { createHmac } from 'node:crypto'
 import { MerchantPlatform } from '@admin/database'
 import { BinanceC2cClient } from './binance-c2c.client'
@@ -54,7 +55,9 @@ const query: C2cAdMarketQuery = {
 
 describe('C2C advertisement protocol adapters', () => {
   const http = { request: jest.fn() }
-  const binance = new BinanceC2cClient(http)
+  const binance = new BinanceC2cClient(http, {
+    forMerchant: jest.fn(),
+  } as unknown as ProxyNetworkService)
   const okx = new OkxWebPrivateClient(http)
   const client = new C2cPlatformClient(binance, okx)
 

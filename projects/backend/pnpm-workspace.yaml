@@ -6,6 +6,11 @@ onlyBuiltDependencies:
   - esbuild
   - sharp
 catalog:
+  "http-proxy-agent": ^7.0.2
+  "https-proxy-agent": ^7.0.6
+  "socks-proxy-agent": ^8.0.5
+  "ws": ^8.18.3
+  "@types/ws": ^8.18.1
   "@aws-sdk/client-s3": ^3.999.0
   "@aws-sdk/s3-request-presigner": ^3.999.0
   "@eslint/eslintrc": ^3.2.0

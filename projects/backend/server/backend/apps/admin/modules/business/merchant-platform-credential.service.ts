@@ -36,6 +36,8 @@ export interface MerchantPlatformCredentialView {
 }
 
 export interface ActiveMerchantPlatformCredentialReference {
+  tenantId?: string
+  merchantId?: string
   credentialRef: string
   apiBaseUrl: string
   clientType: string | null
@@ -134,6 +136,8 @@ export class MerchantPlatformCredentialService {
     if (!credential) throw new BadRequestException('商家未配置生效的平台凭据')
     return {
       credentialRef: credential.credentialRef,
+      tenantId,
+      merchantId,
       apiBaseUrl: credential.apiBaseUrl,
       clientType: credential.clientType,
       xUserId: credential.xUserId,

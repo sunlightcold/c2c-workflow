@@ -193,7 +193,7 @@ describe('MerchantPlatformCredentialService', () => {
         merchantId,
         connectionRepository as unknown as Repository<MerchantPlatformCredentialEntity>,
       ),
-    ).resolves.toEqual(reference)
+    ).resolves.toEqual({ ...reference, tenantId, merchantId })
     expect(credentialRepository.createQueryBuilder).not.toHaveBeenCalled()
     expect(query.where).toHaveBeenCalledWith('credential.tenantId = :tenantId', { tenantId })
     expect(query.andWhere).toHaveBeenCalledWith('credential.merchantId = :merchantId', {

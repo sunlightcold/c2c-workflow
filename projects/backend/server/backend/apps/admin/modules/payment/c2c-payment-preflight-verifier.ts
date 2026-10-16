@@ -200,7 +200,11 @@ export class C2cPaymentPreflightVerifier {
       const secret = await this.secretResolver.resolve(context.credential.credentialRef)
       const credentials = this.credentialFactory.create(
         context.merchant.platform,
-        context.credential,
+        {
+          ...context.credential,
+          tenantId: context.merchant.tenantId,
+          merchantId: context.merchant.id,
+        },
         secret,
       )
       platformOrder = await this.getPlatformOrder(context, credentials)

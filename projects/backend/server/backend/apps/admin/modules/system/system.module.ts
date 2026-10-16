@@ -1,5 +1,6 @@
 /* eslint-disable no-use-before-define */
 import { Module } from '@nestjs/common'
+import { ProxyModule } from '../proxy/proxy.module'
 
 import { RouterModule } from '@nestjs/core'
 import { MenuModule } from './menu'
@@ -21,6 +22,7 @@ import { TelegramModule } from '../telegram'
 import { DashboardModule } from '../dashboard'
 
 const routedModules = [
+  ProxyModule,
   CredentialModule,
   MenuModule,
   RoleModule,

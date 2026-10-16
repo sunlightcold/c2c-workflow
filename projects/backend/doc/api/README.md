@@ -56,4 +56,6 @@
 
 ## Contract Test
 
+- [IP 代理管理](main/c2c-proxies.md)：代理、原格式导入导出、探测与商家绑定。
+
 API/e2e contract 测试位于 `server/backend/test/e2e/`，用于验证路由、DTO 校验、统一响应包装和错误语义。新增或修改接口时，必须同步检查对应 API 文档和 contract test。

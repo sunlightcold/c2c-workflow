@@ -23,6 +23,7 @@ import type {
   C2cHttpTransport,
 } from '@/apps/admin/modules/c2c-platform/c2c-platform.types'
 import { OkxWebPrivateClient } from '@/apps/admin/modules/c2c-platform/okx-web-private.client'
+import type { ProxyNetworkService } from '@/apps/admin/modules/proxy/proxy-network.service'
 import developmentConfig from '@/config/development'
 import { ConflictException } from '@nestjs/common'
 import Big from 'big.js'
@@ -57,7 +58,9 @@ class ObservedAdTransport implements C2cHttpTransport {
   readonly writes: string[] = []
   beforeWrite?: () => Promise<void>
   loseNextWriteResponse = false
-  private readonly http = new AxiosC2cHttpTransport()
+  private readonly http = new AxiosC2cHttpTransport({
+    forMerchant: jest.fn().mockResolvedValue(null),
+  } as unknown as ProxyNetworkService)
 
   async request<T>(request: C2cHttpRequest): Promise<T> {
     const path = new URL(request.url).pathname
@@ -145,7 +148,9 @@ describe('Unified merchant advertisement pricing database integration', () => {
     )
     transport = new ObservedAdTransport()
     platformClient = new C2cPlatformClient(
-      new BinanceC2cClient(transport),
+      new BinanceC2cClient(transport, {
+        forMerchant: jest.fn().mockResolvedValue(null),
+      } as unknown as ProxyNetworkService),
       new OkxWebPrivateClient(transport),
     )
     const credentials = {

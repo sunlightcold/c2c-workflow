@@ -19,6 +19,7 @@ import {
 } from './system'
 import {
   AutomaticPaymentFailureNoticeEntity,
+  IpProxyEntity,
   MerchantEntity,
   MerchantPaymentPlanEntity,
   PaymentAccountChannelEntity,
@@ -66,6 +67,7 @@ const sysEntities = [
 
 const entities = [
   ...sysEntities,
+  IpProxyEntity,
   AutomaticPaymentFailureNoticeEntity,
   TenantEntity,
   MerchantEntity,

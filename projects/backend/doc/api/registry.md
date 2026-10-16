@@ -12,5 +12,6 @@
 | C2C 商家订单           | `c2c-order`                                                  | `/v1/sys/merchant-orders/*`（含只读 `/{id}/upstream-query`）、`/v1/sys/merchants/*/orders/sync` | [main/c2c-merchant-orders.md](main/c2c-merchant-orders.md) |
 | C2C 买币广告           | `c2c-ad` / `C2cAdController`                                 | `/v1/sys/merchant-ads/*`、`/v1/sys/merchant-ad-runs/*`、`/v1/sys/merchant-ad-options/merchants`、`/v1/sys/merchants/*/ads/sync` | [main/merchant-ads.md](main/merchant-ads.md) |
 | C2C 经营工作台         | `dashboard`                                                  | `/v1/sys/dashboard/overview`                                                                    | [main/c2c-dashboard.md](main/c2c-dashboard.md)             |
+| C2C IP 代理 | `proxy` / `ProxyController` | `/v1/sys/proxies/*` | [main/c2c-proxies.md](main/c2c-proxies.md) |
 
 新增 Controller 时必须同步更新本表、对应契约文档和 contract test。

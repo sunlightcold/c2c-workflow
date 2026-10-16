@@ -2,10 +2,14 @@
 import type { VbenFormProps } from '#/adapter/form';
 import type { VxeTableGridOptions } from '#/adapter/vxe-table';
 import type { BusinessApi } from '#/api';
+import type { IpProxy } from '#/api/business/proxies';
 
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 
+import { useAccess } from '@vben/access';
 import { Page } from '@vben/common-ui';
+
+import { DownOutlined } from '@ant-design/icons-vue';
 
 import {
   createMerchantApi,
@@ -28,6 +32,7 @@ import {
   updateMerchantApi,
   updatePaymentPlanApi,
 } from '#/api';
+import { allProxies, bindMerchantProxy } from '#/api/business/proxies';
 import { AsyncStatusSwitch } from '#/components';
 import {
   confirmResourceAction,
@@ -36,6 +41,7 @@ import {
   useResourceGrid,
 } from '#/hooks';
 
+import ProxySelector from '../proxies/proxy-selector.vue';
 import { createEmptyBusinessPage } from '../shared/business-grid';
 import {
   businessStatusOptions,
@@ -81,6 +87,63 @@ const paymentBatchPolicies = ref<BusinessApi.PaymentBatchPolicy[]>([]);
 const testingId = ref<string>();
 const syncingId = ref<string>();
 const editingId = ref<string>();
+const { hasAccessByCodes } = useAccess();
+const proxies = ref<IpProxy[]>([]);
+const proxiesLoading = ref(false);
+const proxySavingIds = ref(new Set<string>());
+let proxyRequestVersion = 0;
+
+watch(selectedTenantId, async (tenantId) => {
+  const version = ++proxyRequestVersion;
+  proxies.value = [];
+  proxiesLoading.value = false;
+  if (!tenantId || !hasAccessByCodes(['system:proxy:read'])) return;
+  proxiesLoading.value = true;
+  try {
+    const result = await allProxies(tenantId);
+    if (version === proxyRequestVersion) proxies.value = result;
+  } catch {
+    // The request client displays the error; merchant rows remain available.
+  } finally {
+    if (version === proxyRequestVersion) proxiesLoading.value = false;
+  }
+});
+
+function getActionPopupContainer() {
+  return window.document.body;
+}
+
+async function saveProxy(
+  merchant: BusinessApi.Merchant,
+  proxyId: null | string,
+) {
+  if (
+    proxySavingIds.value.has(merchant.id) ||
+    proxyId === (merchant.proxyId ?? null)
+  )
+    return;
+  proxySavingIds.value.add(merchant.id);
+  try {
+    await runResourceAction({
+      action: () => bindMerchantProxy(merchant.tenantId, merchant.id, proxyId),
+      onSuccess: () => {
+        const previous = proxies.value.find(
+          (proxy) => proxy.id === merchant.proxyId,
+        );
+        const next = proxies.value.find((proxy) => proxy.id === proxyId);
+        if (previous)
+          previous.account_count = Math.max(0, previous.account_count - 1);
+        if (next) next.account_count++;
+        merchant.proxyId = proxyId;
+      },
+      successMessage: '商家代理已更新',
+    });
+  } catch {
+    // Preserve the binding on failure; the request client displays the error.
+  } finally {
+    proxySavingIds.value.delete(merchant.id);
+  }
+}
 
 type MerchantGroupBinding = {
   bot: BusinessApi.TelegramBot;
@@ -163,6 +226,13 @@ const gridOptions: VxeTableGridOptions<BusinessApi.Merchant> = {
       width: 110,
     },
     {
+      field: 'proxyId',
+      slots: { default: 'proxy' },
+      title: '代理',
+      width: 200,
+      showOverflow: false,
+    },
+    {
       field: 'status',
       slots: { default: 'status' },
       title: '状态',
@@ -180,7 +250,7 @@ const gridOptions: VxeTableGridOptions<BusinessApi.Merchant> = {
       fixed: 'right',
       slots: { default: 'action' },
       title: '操作',
-      width: 320,
+      width: 150,
     },
   ],
 };
@@ -229,8 +299,8 @@ function normalizeCreateForm(
 ): BusinessApi.CreateMerchantInput {
   const payload = cleanOptionalStrings({ ...data });
   if (payload.platform === 'BINANCE') {
-    delete payload.authorization;
     delete payload.sessionCookie;
+    delete payload.authorization;
     delete payload.signaturePrivateKey;
   } else {
     delete payload.apiKey;
@@ -722,59 +792,88 @@ onMounted(async () => {
           :request="(checked) => changeStatus(row, checked)"
         />
       </template>
+      <template #proxy="{ row }">
+        <ProxySelector
+          :model-value="row.proxyId ?? null"
+          :tenant-id="row.tenantId"
+          :options="proxies"
+          :options-loading="proxiesLoading"
+          :disabled="
+            proxySavingIds.has(row.id) ||
+            !hasAccessByCodes(['system:proxy:bind']) ||
+            !hasAccessByCodes(['system:proxy:read']) ||
+            !hasAccessByCodes(['merchant:account:update'])
+          "
+          :saving="proxySavingIds.has(row.id)"
+          :label="`${row.name}代理`"
+          size="small"
+          @update:model-value="(value) => saveProxy(row, value)"
+        />
+      </template>
       <template #action="{ row }">
-        <div
-          class="flex w-full flex-nowrap items-center justify-center gap-1 px-1"
-        >
-          <AButton
-            v-access:code="['merchant:account:test']"
-            class="px-1"
-            :loading="testingId === row.id"
-            size="small"
-            type="link"
-            @click="testConnection(row)"
-          >
-            测试
-          </AButton>
-          <AButton
-            v-access:code="['merchant:order:sync']"
-            class="px-1"
-            :loading="syncingId === row.id"
-            size="small"
-            type="link"
-            @click="syncOrders(row)"
-          >
-            同步
-          </AButton>
-          <AButton
-            class="px-1"
-            size="small"
-            type="link"
-            @click="openConfig(row)"
-          >
+        <ASpace size="small" class="whitespace-nowrap">
+          <AButton size="small" type="primary" @click="openConfig(row)">
             配置
           </AButton>
-          <AButton
-            v-access:code="['merchant:account:update']"
-            class="px-1"
-            :loading="editingId === row.id"
-            size="small"
-            type="link"
-            @click="editMerchant(row)"
+          <ADropdown
+            v-if="
+              hasAccessByCodes(['merchant:account:test']) ||
+              hasAccessByCodes(['merchant:order:sync']) ||
+              hasAccessByCodes(['merchant:account:update']) ||
+              hasAccessByCodes(['merchant:account:delete'])
+            "
+            :get-popup-container="getActionPopupContainer"
           >
-            编辑
-          </AButton>
-          <AButton
-            v-access:code="['merchant:account:delete']"
-            class="px-1"
-            danger
-            size="small"
-            type="link"
-            @click="removeMerchant(row)"
-          >
-            删除
-          </AButton>
-        </div>
+            <AButton
+              size="small"
+              type="text"
+              :loading="
+                testingId === row.id ||
+                syncingId === row.id ||
+                editingId === row.id
+              "
+            >
+              更多
+              <DownOutlined :style="{ fontSize: '12px' }" aria-hidden="true" />
+            </AButton>
+            <template #overlay>
+              <AMenu>
+                <AMenuItem
+                  v-if="hasAccessByCodes(['merchant:account:test'])"
+                  key="test"
+                  :disabled="testingId === row.id"
+                  @click="testConnection(row)"
+                >
+                  测试
+                </AMenuItem>
+                <AMenuItem
+                  v-if="hasAccessByCodes(['merchant:order:sync'])"
+                  key="sync"
+                  :disabled="syncingId === row.id"
+                  @click="syncOrders(row)"
+                >
+                  同步
+                </AMenuItem>
+                <AMenuItem
+                  v-if="hasAccessByCodes(['merchant:account:update'])"
+                  key="edit"
+                  :disabled="editingId === row.id"
+                  @click="editMerchant(row)"
+                >
+                  编辑
+                </AMenuItem>
+                <AMenuItem
+                  v-if="hasAccessByCodes(['merchant:account:delete'])"
+                  key="delete"
+                  danger
+                  @click="removeMerchant(row)"
+                >
+                  删除
+                </AMenuItem>
+              </AMenu>
+            </template>
+          </ADropdown>
+        </ASpace>
       </template>
     </Grid>
 

@@ -1,5 +1,7 @@
 import { createHmac } from 'node:crypto'
 import { Inject, Injectable } from '@nestjs/common'
+import Ws from 'ws'
+import { ProxyNetworkService, type ProxyScope } from '../proxy/proxy-network.service'
 import {
   C2C_HTTP_TRANSPORT,
   C2cRequestRejectedError,
@@ -23,6 +25,7 @@ import type { C2cAd, C2cAdMarketQuery, C2cAdMarketSnapshot } from './c2c-ad.type
 import { normalizeBinanceAd, normalizeBinanceMarketQuote } from './c2c-ad-normalizer'
 
 export interface BinanceCredentials {
+  proxyScope?: ProxyScope
   apiKey: string
   baseUrl?: string
   secretKey: string
@@ -55,7 +58,10 @@ export type BinanceComplaintPayload = C2cComplaintPayload
 
 @Injectable()
 export class BinanceC2cClient implements C2cPlatformAdapter<BinanceCredentials> {
-  constructor(@Inject(C2C_HTTP_TRANSPORT) private readonly http: C2cHttpTransport) {}
+  constructor(
+    @Inject(C2C_HTTP_TRANSPORT) private readonly http: C2cHttpTransport,
+    private readonly network: ProxyNetworkService,
+  ) {}
 
   async listAds(credentials: BinanceCredentials) {
     const ads: C2cAd[] = []
@@ -108,6 +114,7 @@ export class BinanceC2cClient implements C2cPlatformAdapter<BinanceCredentials> 
       url: `${marketOrigin.replace(/\/$/, '')}/bapi/c2c/v2/friendly/c2c/adv/search`,
       headers: { 'Content-Type': 'application/json' },
       timeoutMs: credentials.timeoutMs,
+      ...(credentials.proxyScope ? { proxyScope: credentials.proxyScope } : {}),
       body: {
         fiat: query.fiatCurrency,
         page: 1,
@@ -229,55 +236,55 @@ export class BinanceC2cClient implements C2cPlatformAdapter<BinanceCredentials> 
     if (!chat?.chatWssUrl || !chat.listenKey || !chat.listenToken) {
       throw new Error('币安 C2C 聊天凭据返回无效')
     }
-    const WebSocketConstructor = globalThis.WebSocket
-    if (!WebSocketConstructor) throw new Error('当前 Node.js 不支持 WebSocket')
+    const proxyAgents = credentials.proxyScope
+      ? await this.network.forMerchant(credentials.proxyScope)
+      : null
     const url = `${chat.chatWssUrl.replace(/\/+$/, '')}/${encodeURIComponent(chat.listenKey)}?token=${encodeURIComponent(chat.listenToken)}&clientType=web`
-    await new Promise<void>((resolve, reject) => {
-      const socket = new WebSocketConstructor(url)
-      const timer = setTimeout(() => {
-        socket.close()
-        reject(new Error('币安 C2C 聊天发送超时'))
-      }, credentials.timeoutMs)
-      timer.unref?.()
-      let opened = false
-      socket.addEventListener('open', () => {
-        opened = true
-        socket.send(
-          JSON.stringify({
-            uuid: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-            orderNo: orderNumber,
-            createTime: Date.now(),
-            type: 'text',
-            content,
-            self: true,
-            clientType: 'web',
-            sendStatus: 0,
-          }),
-        )
-        this.waitForChatBuffer(socket, credentials.timeoutMs)
-          .then(() => {
-            clearTimeout(timer)
-            socket.close()
-            resolve()
-          })
-          .catch((error) => {
-            clearTimeout(timer)
-            socket.close()
-            reject(error instanceof Error ? error : new Error(String(error)))
-          })
-      })
-      socket.addEventListener('error', () => {
-        clearTimeout(timer)
-        socket.close()
-        reject(new Error('币安 C2C 聊天连接失败'))
-      })
-      socket.addEventListener('close', () => {
-        if (!opened) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const socket = new Ws(url, {
+          ...(proxyAgents
+            ? { agent: url.startsWith('wss:') ? proxyAgents.httpsAgent : proxyAgents.httpAgent }
+            : {}),
+        })
+        const timer = setTimeout(() => {
+          socket.terminate()
+          reject(new Error('币安 C2C 聊天发送超时'))
+        }, credentials.timeoutMs)
+        timer.unref()
+        socket.once('open', () => {
+          socket.send(
+            JSON.stringify({
+              uuid: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+              orderNo: orderNumber,
+              createTime: Date.now(),
+              type: 'text',
+              content,
+              self: true,
+              clientType: 'web',
+              sendStatus: 0,
+            }),
+            (error) => {
+              clearTimeout(timer)
+              socket.close()
+              if (error) reject(new Error('币安 C2C 聊天发送失败'))
+              else resolve()
+            },
+          )
+        })
+        socket.once('error', () => {
+          clearTimeout(timer)
+          socket.terminate()
+          reject(new Error('币安 C2C 聊天连接失败'))
+        })
+        socket.once('close', () => {
           clearTimeout(timer)
           reject(new Error('币安 C2C 聊天连接已关闭'))
-        }
+        })
       })
-    })
+    } finally {
+      proxyAgents?.destroy()
+    }
     return { supported: true }
   }
 
@@ -299,12 +306,13 @@ export class BinanceC2cClient implements C2cPlatformAdapter<BinanceCredentials> 
     return response.data
   }
 
-  uploadComplaintFile(uploadUrl: string, content: Buffer) {
+  uploadComplaintFile(credentials: BinanceCredentials, uploadUrl: string, content: Buffer) {
     return this.http.request<unknown>({
       method: 'PUT',
       url: uploadUrl,
       headers: { 'Content-Type': 'application/octet-stream' },
       timeoutMs: 30_000,
+      ...(credentials.proxyScope ? { proxyScope: credentials.proxyScope } : {}),
       body: content,
     })
   }
@@ -384,6 +392,7 @@ export class BinanceC2cClient implements C2cPlatformAdapter<BinanceCredentials> 
       url: `${(credentials.baseUrl ?? 'https://api.binance.com').replace(/\/$/, '')}${path}?${query}&signature=${signature}`,
       headers,
       timeoutMs: credentials.timeoutMs,
+      ...(credentials.proxyScope ? { proxyScope: credentials.proxyScope } : {}),
       body,
     })
     if ((!response.success || response.code !== '000000') && path.startsWith('/sapi/v1/c2c/ads/')) {
@@ -392,17 +401,5 @@ export class BinanceC2cClient implements C2cPlatformAdapter<BinanceCredentials> 
     if (!response.success || response.code !== '000000')
       throw new Error(`[${response.code}] ${response.message ?? '币安 C2C 请求失败'}`)
     return response
-  }
-
-  private waitForChatBuffer(socket: WebSocket, timeoutMs: number): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const startedAt = Date.now()
-      const check = () => {
-        if (socket.bufferedAmount === 0) return resolve()
-        if (Date.now() - startedAt >= timeoutMs) return reject(new Error('币安 C2C 聊天发送超时'))
-        setTimeout(check, 25)
-      }
-      check()
-    })
   }
 }

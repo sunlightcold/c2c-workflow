@@ -48,6 +48,7 @@ export namespace BusinessApi {
   }
 
   export interface Merchant {
+    proxyId?: null | string;
     apiBaseUrl: string;
     authMode: 'API_KEY' | 'WEB_COOKIE' | null;
     autoAppealDelayMinutes: number;

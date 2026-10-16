@@ -348,7 +348,10 @@ export class MerchantService {
   private encryptedReference(platform: MerchantPlatform, input: CreateMerchantInput): string {
     const secret =
       platform === MerchantPlatform.BINANCE
-        ? { apiKey: input.apiKey!.trim(), secretKey: input.secretKey!.trim() }
+        ? {
+            apiKey: input.apiKey!.trim(),
+            secretKey: input.secretKey!.trim(),
+          }
         : {
             cookie: input.sessionCookie!.trim(),
             authorization: input.authorization!.trim(),

@@ -39,6 +39,7 @@ const menuGroups = [
 ] as const;
 
 const pages = [
+  ['代理管理', '/business/proxies', '/business/proxies', 'system:proxy', '100'],
   [
     '广告列表',
     '/business/merchant-ads',
@@ -133,6 +134,15 @@ const pages = [
 ] as const;
 
 const permissions = [
+  'system:proxy:read',
+  'system:proxy:create',
+  'system:proxy:update',
+  'system:proxy:delete',
+  'system:proxy:test',
+  'system:proxy:quality',
+  'system:proxy:import',
+  'system:proxy:export',
+  'system:proxy:bind',
   'dashboard',
   'dashboard:workspace',
   'merchantManagement',
@@ -777,6 +787,14 @@ test.beforeEach(async ({ page }) => {
             status: 'active',
           },
         ];
+        break;
+      }
+      case '/sys/proxies': {
+        data = { items: [], total: 0, page: 1, page_size: 20, pages: 0 };
+        break;
+      }
+      case '/sys/proxies/all': {
+        data = [];
         break;
       }
       case '/sys/tenants': {
@@ -2254,7 +2272,8 @@ test('selects a bound robot group and restores default merchant chat messages', 
   await page.goto('/business/merchants');
   await selectHeadquartersTenant(page);
   await page.getByRole('button', { name: /搜\s*索/ }).click();
-  await page.getByRole('button', { name: /编\s*辑/ }).click();
+  await page.getByRole('button', { name: '更多' }).last().click();
+  await page.getByRole('menuitem', { name: '编辑', exact: true }).click();
 
   const dialog = page.getByRole('dialog', { name: '编辑商家账号' });
   await expect(dialog.getByText('支付机器人编码', { exact: true })).toHaveCount(
@@ -3042,3 +3061,507 @@ test('shows linked ads as followers and manages unlinking only through the main 
     page.getByRole('button', { name: '策略', exact: true }).last(),
   ).toBeVisible();
 });
+
+test('proxy forms follow resource layout and preserve sub2api batch interactions', async ({
+  page,
+}, testInfo) => {
+  const requests: Array<{ body: Record<string, unknown>; path: string }> = [];
+  await page.route(/\/v1\/sys\/proxies(?:[/?]|$)/, async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const body = request.postDataJSON() as null | Record<string, unknown>;
+    let data: unknown = { items: [], total: 0 };
+    if (body) requests.push({ path, body });
+    if (path.endsWith('/batch')) data = { created: 2, skipped: 0 };
+    if (path.endsWith('/all')) data = [];
+    await route.fulfill({ json: ok(data) });
+  });
+  await page.goto('/business/proxies');
+  await page.getByRole('button', { name: '添加代理', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '添加代理', exact: true });
+  await expect(dialog.getByRole('tab', { name: '标准添加' })).toBeVisible();
+  await dialog.getByPlaceholder('请输入代理名称').fill('standard-proxy');
+  await dialog.getByPlaceholder('proxy.example.com').fill('proxy.example.com');
+  await expectDialogWithoutHorizontalOverflow(dialog);
+  await dialog.getByPlaceholder('请选择到期日期').click();
+  await dialog.getByPlaceholder('请选择到期日期').fill('2026-11-16');
+  await dialog.getByPlaceholder('请选择到期日期').press('Enter');
+  await dialog.getByPlaceholder('请输入代理名称').click();
+  await page.screenshot({
+    animations: 'disabled',
+    fullPage: true,
+    path: `node_modules/.e2e/screenshots/proxy-create-${testInfo.project.name}.png`,
+  });
+  await dialog.getByRole('button', { name: /保\s*存/ }).click();
+  await expect(dialog).toBeHidden();
+  expect(
+    requests.find((r) => r.path === '/v1/sys/proxies')?.body,
+  ).toMatchObject({
+    tenantId,
+    name: 'standard-proxy',
+    expires_at: Date.UTC(2026, 10, 16) / 1000,
+    fallback_mode: 'none',
+    backup_proxy_id: null,
+  });
+  await page.getByRole('button', { name: '添加代理', exact: true }).click();
+  await dialog.getByRole('tab', { name: '批量添加' }).click();
+  await dialog
+    .locator('textarea')
+    .fill(
+      'http://user:pass@host:80\nhttps://user:pass@host:80\nsocks5h://[::1]:1080\nhttp://bad host:80\nhttp://host/path:80\ninvalid',
+    );
+  await expect(dialog.getByText('有效 2', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('无效 3', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('重复 1', { exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: '添加 2 个代理' }).click();
+  await expect(dialog).toBeHidden();
+  const batchBody = requests.find((r) => r.path.endsWith('/batch'))?.body;
+  expect(batchBody).toMatchObject({
+    tenantId,
+    proxies: [
+      {
+        protocol: 'http',
+        host: 'host',
+        port: 80,
+        username: 'user',
+        password: 'pass',
+      },
+      { protocol: 'socks5h', host: '::1', port: 1080 },
+    ],
+  });
+  await expect(
+    page.getByRole('button', { name: '数据导入', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: /数据导出|导出选中/ }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: '批量质量检测', exact: true }),
+  ).toBeVisible();
+  await expect(page.locator('.vxe-grid')).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: `node_modules/.e2e/screenshots/proxy-list-${testInfo.project.name}.png`,
+  });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test('proxy grid keeps paging, selection, expiry, quality and fallback editing', async ({
+  page,
+}, testInfo) => {
+  page.setDefaultTimeout(10_000);
+  const proxyId = '00000000-0000-4000-8000-000000000301';
+  const backupId = '00000000-0000-4000-8000-000000000302';
+  const report = {
+    score: 88,
+    grade: 'A',
+    summary: '出口连接正常',
+    checked_at: Math.floor(Date.now() / 1000),
+    items: [
+      { target: 'OpenAI', status: 'pass', latency_ms: 32, message: '检测通过' },
+    ],
+  };
+  const primary = {
+    id: proxyId,
+    name: 'edge-proxy',
+    protocol: 'http',
+    host: 'proxy.example.com',
+    port: 8080,
+    username: 'operator',
+    password_configured: true,
+    status: 'active',
+    expires_at: Math.floor(Date.now() / 1000) + 3 * 86_400,
+    expiry_warn_days: 7,
+    fallback_mode: 'none',
+    backup_proxy_id: null,
+    account_count: 1,
+    created_at: '2026-10-16T00:00:00Z',
+    last_test: {
+      success: true,
+      country: '新加坡',
+      ip_address: '192.0.2.1',
+      latency_ms: 32,
+      message: '连接成功',
+    },
+    last_quality: report,
+  };
+  const backup = {
+    ...primary,
+    id: backupId,
+    name: 'backup-proxy',
+    username: '',
+    password_configured: false,
+    expires_at: null,
+    account_count: 0,
+    last_quality: null,
+  };
+  const listRequests: URL[] = [];
+  const mutations: Array<{ body: null | Record<string, unknown>; url: URL }> =
+    [];
+  await page.route(/\/v1\/sys\/proxies(?:[/?]|$)/, async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const path = url.pathname;
+    let data: unknown;
+    if (request.method() !== 'GET')
+      mutations.push({ body: request.postDataJSON(), url });
+    if (path.endsWith('/all')) data = [primary, backup];
+    else if (path.endsWith('/quality-check')) data = report;
+    else if (path.endsWith('/test')) data = primary.last_test;
+    else if (path.endsWith('/accounts'))
+      data = [
+        {
+          id: 'merchant-1',
+          name: '币安主账号',
+          platform: 'BINANCE',
+          status: 'active',
+        },
+      ];
+    else if (request.method() === 'PUT') data = primary;
+    else {
+      listRequests.push(url);
+      const selectedOnly = Boolean(url.searchParams.get('ids'));
+      let items = [primary, backup];
+      if (url.searchParams.get('page') === '2') items = [backup];
+      if (selectedOnly) items = [primary];
+      data = {
+        items,
+        total: selectedOnly ? 1 : 42,
+      };
+    }
+    await route.fulfill({ json: ok(data) });
+  });
+  await page.goto('/business/proxies');
+  await expect(
+    page.locator('.vxe-grid').getByText('edge-proxy', { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator('.vxe-grid')
+      .getByText(/天后到期/)
+      .first(),
+  ).toBeAttached();
+  const row = page.locator('.vxe-table--main-wrapper .vxe-body--row').first();
+  await row.locator('.vxe-cell--checkbox').click();
+  await expect(page.getByText('已选 1 个', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '2', exact: true }).click();
+  await expect
+    .poll(() => listRequests.at(-1)?.searchParams.get('page'))
+    .toBe('2');
+  await expect(page.getByText('已选 1 个', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '连接测试', exact: true }).click();
+  await expect
+    .poll(
+      () =>
+        mutations.filter((item) => item.url.pathname.endsWith('/test')).length,
+    )
+    .toBe(1);
+  expect(
+    listRequests.some((url) => url.searchParams.get('ids') === proxyId),
+  ).toBe(true);
+  await expect(
+    page.getByRole('button', { name: '连接测试', exact: true }),
+  ).toBeEnabled();
+  await page.getByRole('button', { name: '1', exact: true }).last().click();
+  await page.getByRole('button', { name: '清空选择' }).click();
+  await page.getByPlaceholder('搜索名称或地址').fill('edge');
+  await page.getByRole('button', { name: /搜\s*索/, exact: true }).click();
+  await expect
+    .poll(() => listRequests.at(-1)?.searchParams.get('search'))
+    .toBe('edge');
+  await page
+    .locator('.vxe-table--main-wrapper .vxe-header--column')
+    .filter({ hasText: /^名称/ })
+    .locator('.vxe-sort--asc-btn')
+    .click();
+  await expect
+    .poll(() => listRequests.at(-1)?.searchParams.get('sort_by'))
+    .toBe('name');
+  expect(listRequests.at(-1)?.searchParams.get('sort_order')).toBe('asc');
+  await page.screenshot({
+    fullPage: true,
+    path: `node_modules/.e2e/screenshots/proxy-data-${testInfo.project.name}.png`,
+  });
+  await page.getByRole('button', { name: '质量', exact: true }).first().click();
+  const qualityDialog = page.getByRole('dialog', {
+    name: 'edge-proxy · 质量检测报告',
+  });
+  await expect(qualityDialog.getByText('A · 88 分')).toBeVisible();
+  await expectDialogWithoutHorizontalOverflow(qualityDialog);
+  await qualityDialog
+    .getByRole('button', { name: 'Close', exact: true })
+    .click();
+  await expect(qualityDialog).toBeHidden();
+  await page.getByRole('button', { name: '编辑', exact: true }).first().click();
+  const editDialog = page.getByRole('dialog', {
+    name: '编辑代理',
+    exact: true,
+  });
+  await expect(editDialog.getByPlaceholder('请输入代理名称')).toHaveValue(
+    'edge-proxy',
+  );
+  await expect(editDialog.getByPlaceholder('留空保留原密码')).toHaveValue('');
+  await editDialog
+    .getByRole('combobox', { name: '到期策略', exact: true })
+    .press('ArrowDown');
+  await page.getByTitle('切换备用代理', { exact: true }).click();
+  await editDialog.getByRole('button', { name: /保\s*存/ }).click();
+  await expect(editDialog).toBeVisible();
+  expect(
+    mutations.filter(
+      (item) => item.url.pathname === `/v1/sys/proxies/${proxyId}`,
+    ),
+  ).toHaveLength(0);
+  await editDialog
+    .getByRole('combobox', { name: /备用代理/ })
+    .press('ArrowDown');
+  await page
+    .getByTitle('backup-proxy (proxy.example.com:8080)', { exact: true })
+    .click();
+  await expectDialogWithoutHorizontalOverflow(editDialog);
+  await page.screenshot({
+    animations: 'disabled',
+    fullPage: true,
+    path: `node_modules/.e2e/screenshots/proxy-edit-${testInfo.project.name}.png`,
+  });
+  await editDialog.getByRole('button', { name: /保\s*存/ }).click();
+  await expect(editDialog).toBeHidden();
+  const update = mutations.find(
+    (item) => item.url.pathname === `/v1/sys/proxies/${proxyId}`,
+  )?.body;
+  expect(update).toMatchObject({
+    tenantId,
+    fallback_mode: 'proxy',
+    backup_proxy_id: backupId,
+    expiry_warn_days: 7,
+  });
+  expect(update).not.toHaveProperty('password');
+  // Renewing a derived expired status must preserve the stored enabled/disabled state.
+  primary.status = 'expired';
+  primary.expires_at = 1;
+  await page.reload();
+  await page.getByRole('button', { name: '编辑', exact: true }).first().click();
+  await expect(
+    editDialog.getByText('保留原启停状态', { exact: true }),
+  ).toBeVisible();
+  await editDialog.getByPlaceholder('请选择到期日期').click();
+  await editDialog.getByPlaceholder('请选择到期日期').fill('2099-11-16');
+  await editDialog.getByPlaceholder('请选择到期日期').press('Enter');
+  await editDialog.getByPlaceholder('请输入代理名称').click();
+  await editDialog.getByRole('button', { name: /保\s*存/ }).click();
+  await expect(editDialog).toBeHidden();
+  const renewal = mutations.findLast(
+    (item) => item.url.pathname === `/v1/sys/proxies/${proxyId}`,
+  )?.body;
+  expect(renewal).not.toHaveProperty('status');
+  expect(renewal?.expires_at).toBe(Date.UTC(2099, 10, 16) / 1000);
+
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test('proxy binding uses its own column and merchant actions stay compact', async ({
+  page,
+}, testInfo) => {
+  const proxyId = '00000000-0000-4000-8000-000000000301';
+  const merchantId = '00000000-0000-4000-8000-000000000020';
+  const bindings: Array<Record<string, unknown>> = [];
+  let boundProxyId: null | string = null;
+  let listRequests = 0;
+  let merchantListRequests = 0;
+  let releaseBinding = () => {};
+  const pendingBinding = new Promise<void>((resolve) => {
+    releaseBinding = resolve;
+  });
+  await page.route(/\/v1\/sys\/merchants(?:\?|$)/, async (route) => {
+    merchantListRequests++;
+    await route.fulfill({
+      json: ok({
+        items: [
+          {
+            id: merchantId,
+            tenantId,
+            name: '币安主账号',
+            platform: 'BINANCE',
+            status: 'active',
+            credentialConfigured: true,
+            proxyId: boundProxyId,
+          },
+        ],
+        page: 1,
+        pageSize: 20,
+        total: 1,
+      }),
+    });
+  });
+  await page.route(/\/v1\/sys\/proxies(?:[/?]|$)/, async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.includes('/bindings/')) {
+      const body = route.request().postDataJSON();
+      bindings.push(body);
+      if (bindings.length === 1) await pendingBinding;
+      if (bindings.length === 3) {
+        await route.fulfill({
+          status: 400,
+          json: { code: 400, message: '代理已过期', data: null },
+        });
+        return;
+      }
+      boundProxyId = body.proxyId;
+    }
+    if (path.endsWith('/all')) listRequests++;
+    const data = path.endsWith('/all')
+      ? [
+          {
+            id: proxyId,
+            name: 'edge-proxy',
+            protocol: 'http',
+            host: 'proxy.example.com',
+            port: 8080,
+            account_count: 0,
+            last_test: null,
+          },
+        ]
+      : null;
+    await route.fulfill({ json: ok(data) });
+  });
+  await page.goto('/business/merchants');
+  const selector = page.getByRole('button', {
+    name: '币安主账号代理',
+    exact: true,
+  });
+  await expect(selector).toContainText('无代理（直连）');
+  await expect(selector).toBeEnabled();
+  const assertSelectorLayout = async () => {
+    const bounds = await selector.evaluate((button) => {
+      const labelElement = button.querySelector('.truncate');
+      const iconElement = button.querySelector('svg');
+      if (!labelElement || !iconElement)
+        throw new Error('Missing proxy label or icon');
+      const label = labelElement.getBoundingClientRect();
+      const icon = iconElement.getBoundingClientRect();
+      const control = button.getBoundingClientRect();
+      return {
+        labelY: label.y + label.height / 2,
+        iconY: icon.y + icon.height / 2,
+        iconBottom: icon.bottom,
+        bottom: control.bottom,
+        iconRight: icon.right,
+        right: control.right,
+      };
+    });
+    expect(Math.abs(bounds.labelY - bounds.iconY)).toBeLessThan(2);
+    expect(bounds.iconBottom).toBeLessThanOrEqual(bounds.bottom);
+    expect(bounds.iconRight).toBeLessThanOrEqual(bounds.right);
+  };
+  await selector.click();
+  await assertSelectorLayout();
+  const rowHeight = () =>
+    selector.evaluate(
+      (button) => button.closest('tr')?.getBoundingClientRect().height,
+    );
+  const initialRowHeight = await rowHeight();
+  const initialMerchantListRequests = merchantListRequests;
+  const directOption = page.getByRole('option', {
+    name: '无代理（直连）',
+    exact: true,
+  });
+  const directHeight = await directOption.evaluate(
+    (element) => element.getBoundingClientRect().height,
+  );
+  expect(directHeight).toBeLessThanOrEqual(34);
+  await page
+    .getByRole('textbox', { name: '搜索代理', exact: true })
+    .fill('edge');
+  await expect(page.getByRole('option', { name: /edge-proxy/ })).toBeVisible();
+  const batchTest = page.getByRole('button', { name: '批量测试', exact: true });
+  expect(
+    await batchTest.evaluate((button) => {
+      const rect = button.getBoundingClientRect();
+      return button.contains(
+        document.elementFromPoint(
+          rect.x + rect.width / 2,
+          rect.y + rect.height / 2,
+        ),
+      );
+    }),
+  ).toBe(true);
+  await page.screenshot({
+    animations: 'disabled',
+    fullPage: true,
+    path: `node_modules/.e2e/screenshots/proxy-binding-${testInfo.project.name}.png`,
+  });
+  await page.getByRole('option', { name: /edge-proxy/ }).click();
+  await expect.poll(() => bindings.length).toBe(1);
+  await expect(selector).toBeDisabled();
+  expect(await rowHeight()).toBe(initialRowHeight);
+  releaseBinding();
+  await expect(selector).toContainText('edge-proxy');
+  await expect(selector).toBeEnabled();
+  expect(await rowHeight()).toBe(initialRowHeight);
+  expect(merchantListRequests).toBe(initialMerchantListRequests);
+  await assertSelectorLayout();
+  await selector.click();
+  await page
+    .getByRole('option', { name: '无代理（直连）', exact: true })
+    .click();
+  await expect.poll(() => bindings.length).toBe(2);
+  await expect(selector).toContainText('无代理（直连）');
+  expect(bindings).toEqual([
+    { tenantId, proxyId },
+    { tenantId, proxyId: null },
+  ]);
+  expect(listRequests).toBe(1);
+  await selector.click();
+  await page.getByRole('option', { name: /edge-proxy/ }).click();
+  await expect.poll(() => bindings.length).toBe(3);
+  await expect(selector).toBeEnabled();
+  await expect(selector).toContainText('无代理（直连）');
+  expect(await rowHeight()).toBe(initialRowHeight);
+  await page.getByRole('button', { name: '更多' }).last().click();
+  for (const name of ['测试', '同步', '编辑', '删除']) {
+    await expect(
+      page.getByRole('menuitem', { name, exact: true }),
+    ).toBeVisible();
+  }
+  await page.screenshot({
+    animations: 'disabled',
+    fullPage: true,
+    path: `node_modules/.e2e/screenshots/merchant-actions-${testInfo.project.name}.png`,
+  });
+  await page.getByRole('menuitem', { name: '编辑', exact: true }).click();
+  await expect(
+    page.getByRole('dialog', { name: '编辑商家账号' }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
+for (const missing of ['merchant:account:update', 'system:proxy:bind']) {
+  test(`disables merchant proxy binding without ${missing}`, async ({
+    page,
+  }) => {
+    await page.route('**/v1/auth/permissions', (route) =>
+      route.fulfill({
+        json: ok(permissions.filter((code) => code !== missing)),
+      }),
+    );
+    await page.route('**/v1/sys/proxies/all?*', (route) =>
+      route.fulfill({ json: ok([]) }),
+    );
+    await page.goto('/business/merchants');
+    await expect(
+      page.getByRole('button', { name: '币安主账号代理', exact: true }),
+    ).toBeDisabled();
+  });
+}

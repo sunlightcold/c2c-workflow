@@ -76,7 +76,12 @@ describe('MenuRegistryService', () => {
       visibleMenus
         .filter(({ parentKey }) => parentKey === 'merchantManagement')
         .map(({ key }) => key),
-    ).toEqual(['business.tenants', 'business.merchants', 'business.merchantOrders'])
+    ).toEqual([
+      'business.proxies',
+      'business.tenants',
+      'business.merchants',
+      'business.merchantOrders',
+    ])
     expect(
       visibleMenus
         .filter(({ parentKey }) => parentKey === 'paymentManagement')

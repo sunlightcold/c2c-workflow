@@ -4,6 +4,30 @@ import { C2cPlatformCredentialFactory } from './c2c-platform-credential.factory'
 describe('C2cPlatformCredentialFactory', () => {
   const factory = new C2cPlatformCredentialFactory()
 
+  it.each([MerchantPlatform.BINANCE, MerchantPlatform.OKX])(
+    'retains merchant scope for %s requests',
+    (platform) => {
+      const proxyScope = { tenantId: 'tenant-1', merchantId: 'merchant-1' }
+      const credentials = factory.create(
+        platform,
+        {
+          ...proxyScope,
+          clientType: 'WEB',
+          xUserId: null,
+          requestTimeoutMs: 5000,
+        },
+        {
+          apiKey: 'key',
+          secretKey: 'secret',
+          cookie: 'session',
+          authorization: 'token',
+          signaturePrivateKey: 'key',
+        },
+      )
+      expect(credentials.proxyScope).toEqual(proxyScope)
+    },
+  )
+
   it('builds platform-specific credentials without retaining the Secret object', () => {
     expect(
       factory.create(

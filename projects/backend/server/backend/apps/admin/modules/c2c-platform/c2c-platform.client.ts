@@ -231,7 +231,11 @@ export class C2cPlatformClient {
         image.fileName,
       )
       if (!upload.uploadUrl || !upload.filePath) throw new Error('币安申诉材料上传地址无效')
-      await this.binance.uploadComplaintFile(upload.uploadUrl, image.content)
+      await this.binance.uploadComplaintFile(
+        credentials as BinanceCredentials,
+        upload.uploadUrl,
+        image.content,
+      )
       filePaths.push(upload.filePath)
     }
     return filePaths

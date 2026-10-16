@@ -8,6 +8,7 @@ import type {
 export const C2C_HTTP_TRANSPORT = Symbol('C2C_HTTP_TRANSPORT')
 
 export interface C2cHttpRequest {
+  proxyScope?: { tenantId: string; merchantId: string }
   method: 'GET' | 'POST' | 'PUT'
   url: string
   headers: Record<string, string>

@@ -1,6 +1,8 @@
 /// <reference types="jest" />
 
+import { migrateC2cIpProxies } from '@/apps/admin/database/migrations/c2c-ip-proxies.migration'
 import {
+  IpProxyEntity,
   MerchantEntity,
   MerchantOrderEntity,
   MerchantOrderStatus,
@@ -53,6 +55,8 @@ import { C2cReceiptImageService } from '@/apps/admin/modules/c2c-order/c2c-recei
 import { EnvironmentC2cSecretResolver } from '@/apps/admin/modules/c2c-order/c2c-secret-resolver'
 import { ReceiptDocumentDownloader } from '@/apps/admin/modules/c2c-order/receipt-document-downloader'
 import { TypeOrmC2cOrderSyncStore } from '@/apps/admin/modules/c2c-order/typeorm-c2c-order-sync.store'
+import { CredentialCipherService } from '@/apps/admin/modules/system/credential/credential-cipher.service'
+import { ProxyNetworkService } from '@/apps/admin/modules/proxy/proxy-network.service'
 import { AxiosC2cHttpTransport } from '@/apps/admin/modules/c2c-platform/axios-c2c-http.transport'
 import {
   BinanceC2cClient,
@@ -133,6 +137,7 @@ describe('Automatic C2C payment workflow database integration', () => {
       logging: false,
       entities: [
         TenantEntity,
+        IpProxyEntity,
         MerchantEntity,
         MerchantPlatformCredentialEntity,
         MerchantOrderEntity,
@@ -156,6 +161,7 @@ describe('Automatic C2C payment workflow database integration', () => {
     await dataSource.initialize()
     await dataSource.transaction(async (manager) => {
       await migrateC2cBusinessFoundation(manager)
+      await migrateC2cIpProxies(manager)
       await migrateC2cPaymentOrders(manager)
       await migrateTelegramAdministration(manager)
       await migrateC2cPaymentRouting(manager)
@@ -571,8 +577,13 @@ function createHarness(dataSource: DataSource): WorkflowHarness {
       .toString('base64'),
     skipPaymentProofUpload: true,
   })
-  const transport = new AxiosC2cHttpTransport()
-  const binance = new BinanceC2cClient(transport)
+  const network = new ProxyNetworkService(
+    dataSource.getRepository(IpProxyEntity),
+    dataSource.getRepository(MerchantEntity),
+    new CredentialCipherService(),
+  )
+  const transport = new AxiosC2cHttpTransport(network)
+  const binance = new BinanceC2cClient(transport, network)
   const okx = new OkxWebPrivateClient(transport)
   const platformClient = new C2cPlatformClient(binance, okx)
   const credentialFactory = new C2cPlatformCredentialFactory()
@@ -709,9 +720,10 @@ async function resetDatabase(dataSource: DataSource): Promise<void> {
 async function makeBatchReconciliationDue(dataSource: DataSource): Promise<void> {
   await dataSource.query(
     `UPDATE payment_batch
-     SET "nextReconcileAt" = NOW() - INTERVAL '1 second'
+     SET "nextReconcileAt" = $1
      WHERE status IN ('SUBMITTING', 'PROCESSING', 'UNKNOWN')
        AND "nextReconcileAt" IS NOT NULL`,
+    [new Date(0)],
   )
 }
 

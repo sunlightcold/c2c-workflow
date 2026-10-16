@@ -1,9 +1,12 @@
+import type { ProxyNetworkService } from '@/apps/admin/modules/proxy/proxy-network.service'
 import axios, { AxiosError } from 'axios'
 import { Logger } from '@nestjs/common'
 import { AxiosC2cHttpTransport } from './axios-c2c-http.transport'
 
 describe('AxiosC2cHttpTransport appeal logging', () => {
-  const transport = new AxiosC2cHttpTransport()
+  const transport = new AxiosC2cHttpTransport({
+    forMerchant: jest.fn(),
+  } as unknown as ProxyNetworkService)
   const request = {
     method: 'POST' as const,
     url: 'https://api.binance.com/sapi/v1/c2c/complaint/submit-complaint?signature=private-signature',

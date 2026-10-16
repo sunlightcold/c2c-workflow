@@ -4,6 +4,8 @@ import type { BinanceCredentials } from './binance-c2c.client'
 import type { OkxWebPrivateCredentials } from './okx-web-private.client'
 
 export interface C2cCredentialReference {
+  tenantId?: string
+  merchantId?: string
   apiBaseUrl?: string
   clientType: string | null
   xUserId: string | null
@@ -17,12 +19,17 @@ export class C2cPlatformCredentialFactory {
     reference: C2cCredentialReference,
     secret: Record<string, unknown>,
   ): BinanceCredentials | OkxWebPrivateCredentials {
+    const proxyScope =
+      reference.tenantId && reference.merchantId
+        ? { tenantId: reference.tenantId, merchantId: reference.merchantId }
+        : undefined
     if (platform === MerchantPlatform.BINANCE) {
       const apiKey = this.text(secret.apiKey)
       const secretKey = this.text(secret.secretKey)
       if (!apiKey || !secretKey || !reference.clientType)
         throw new Error('币安 Secret 缺少 apiKey、secretKey 或 clientType')
       return {
+        ...(proxyScope ? { proxyScope } : {}),
         apiKey,
         baseUrl: reference.apiBaseUrl ?? 'https://api.binance.com',
         secretKey,
@@ -39,6 +46,7 @@ export class C2cPlatformCredentialFactory {
         throw new Error('欧易 Secret 缺少 cookie、authorization 或 signaturePrivateKey')
       return {
         cookie,
+        ...(proxyScope ? { proxyScope } : {}),
         authorization,
         signaturePrivateKey,
         ...(typeof secret.skipPaymentProofUpload === 'boolean'

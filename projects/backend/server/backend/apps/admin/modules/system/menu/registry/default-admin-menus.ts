@@ -26,6 +26,24 @@ interface BusinessMenuGroupDefinition {
 
 const merchantPages: BusinessPageDefinition[] = [
   {
+    key: 'proxies',
+    name: '代理管理',
+    path: '/business/proxies',
+    permission: 'system:proxy',
+    icon: 'lucide:network',
+    actions: [
+      ['read', '查询'],
+      ['create', '新增'],
+      ['update', '编辑'],
+      ['delete', '删除'],
+      ['test', '连接测试'],
+      ['quality', '质量检测'],
+      ['import', '导入'],
+      ['export', '导出'],
+      ['bind', '绑定商家'],
+    ],
+  },
+  {
     key: 'tenants',
     name: '所属单位',
     path: '/business/tenants',

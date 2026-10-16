@@ -1,5 +1,6 @@
 /// <reference types="jest" />
 
+import { migrateC2cIpProxies } from '@/apps/admin/database/migrations/c2c-ip-proxies.migration'
 import {
   BusinessStatus,
   MerchantEntity,
@@ -100,6 +101,7 @@ describe('Payment routing database integration', () => {
     })
     await dataSource.initialize()
     await migrateC2cBusinessFoundation(dataSource.manager)
+    await dataSource.transaction(migrateC2cIpProxies)
     await migrateC2cPaymentOrders(dataSource.manager)
     await migrateC2cPaymentRouting(dataSource.manager)
     await migrateC2cPaymentRouting(dataSource.manager)

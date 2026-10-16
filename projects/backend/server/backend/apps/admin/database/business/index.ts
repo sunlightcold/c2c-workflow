@@ -1,4 +1,5 @@
 export * from './business.enums'
+export * from './ip-proxy.entity'
 export * from './automatic-payment-failure-notice.entity'
 export * from './merchant.entity'
 export * from './merchant-platform-credential.entity'

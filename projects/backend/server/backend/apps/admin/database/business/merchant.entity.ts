@@ -6,6 +6,9 @@ import { BusinessStatus, MerchantPlatform, PaymentExecutionMode } from './busine
 @Index('uq_merchant_tenant_code', ['tenantId', 'code'], { unique: true })
 @Index('idx_merchant_tenant', ['tenantId'])
 export class MerchantEntity extends CommonUuidEntity {
+  @Column({ type: 'uuid', nullable: true })
+  proxyId: string | null
+
   @Column({ type: 'uuid', update: false })
   tenantId: string
 

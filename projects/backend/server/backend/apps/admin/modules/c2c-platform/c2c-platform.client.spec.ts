@@ -14,6 +14,7 @@ describe('C2cPlatformClient', () => {
     orderStatusList: [1],
   }
   const binanceCredentials: BinanceCredentials = {
+    proxyScope: { tenantId: 'tenant-1', merchantId: 'binance-merchant' },
     apiKey: 'key',
     secretKey: 'secret',
     clientType: 'WEB',
@@ -315,6 +316,11 @@ describe('C2cPlatformClient', () => {
         },
       ]),
     ).resolves.toEqual(['a'])
+    expect(binance.uploadComplaintFile).toHaveBeenCalledWith(
+      binanceCredentials,
+      'https://upload',
+      Buffer.from('proof'),
+    )
     await expect(
       client.submitComplaint(MerchantPlatform.BINANCE, binanceCredentials, {
         description: '已付款',

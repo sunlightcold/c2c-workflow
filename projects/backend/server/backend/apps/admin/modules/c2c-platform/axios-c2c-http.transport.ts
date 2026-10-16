@@ -1,10 +1,13 @@
 import axios from 'axios'
 import { Injectable, Logger } from '@nestjs/common'
+import { ProxyNetworkService } from '../proxy/proxy-network.service'
 import type { C2cHttpRequest, C2cHttpTransport } from './c2c-platform.types'
 
 @Injectable()
 export class AxiosC2cHttpTransport implements C2cHttpTransport {
   private readonly logger = new Logger(AxiosC2cHttpTransport.name)
+
+  constructor(private readonly network: ProxyNetworkService) {}
 
   async request<T>(request: C2cHttpRequest): Promise<T> {
     const endpoint = new URL(request.url)
@@ -13,6 +16,7 @@ export class AxiosC2cHttpTransport implements C2cHttpTransport {
     const startedAt = Date.now()
     this.logRequestDetails(request, context, shouldLog)
 
+    const agents = request.proxyScope ? await this.network.forMerchant(request.proxyScope) : null
     try {
       const response = await axios.request<T>({
         method: request.method,
@@ -21,13 +25,20 @@ export class AxiosC2cHttpTransport implements C2cHttpTransport {
         timeout: request.timeoutMs,
         data: request.body,
         params: request.params,
+        proxy: false,
+        ...(agents
+          ? { httpAgent: agents.httpAgent, httpsAgent: agents.httpsAgent, maxRedirects: 0 }
+          : {}),
       })
       this.logResponse(response.data, response.status, context, shouldLog, Date.now() - startedAt)
       return response.data
     } catch (error) {
+      if (agents && error instanceof Error) error.message = '代理出口请求失败'
       this.logFailure(error, context, Date.now() - startedAt)
       // Preserve Axios status and response for adapter credential/error handling.
       throw error
+    } finally {
+      agents?.destroy()
     }
   }
 
@@ -104,7 +115,7 @@ export class AxiosC2cHttpTransport implements C2cHttpTransport {
       return Object.fromEntries(
         Object.entries(value).map(([key, item]) => [
           key,
-          /^(authorization|cookie|token|accessToken|refreshToken|apiKey|secretKey|privateKey|signature)$/i.test(
+          /^(authorization|proxy-authorization|password|cookie|token|accessToken|refreshToken|apiKey|secretKey|privateKey|signature)$/i.test(
             key,
           )
             ? '<REDACTED>'
@@ -114,6 +125,8 @@ export class AxiosC2cHttpTransport implements C2cHttpTransport {
     }
     if (typeof value === 'string' && /^https?:\/\//i.test(value)) {
       const url = new URL(value)
+      url.username = ''
+      url.password = ''
       for (const key of [...url.searchParams.keys()]) {
         if (/signature|credential|token|secret|api.?key/i.test(key)) url.searchParams.delete(key)
       }

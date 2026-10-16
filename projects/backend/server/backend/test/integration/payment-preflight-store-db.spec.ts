@@ -1,5 +1,6 @@
 /// <reference types="jest" />
 
+import { migrateC2cIpProxies } from '@/apps/admin/database/migrations/c2c-ip-proxies.migration'
 import {
   MerchantEntity,
   MerchantOrderEntity,
@@ -91,6 +92,7 @@ describe('Payment preflight store database integration', () => {
     await dataSource.initialize()
     await dataSource.transaction(async (manager) => {
       await migrateC2cBusinessFoundation(manager)
+      await migrateC2cIpProxies(manager)
       await migratePaymentAccountCredentials(manager)
       await migrateC2cPaymentOrders(manager)
       await migrateC2cPaymentRouting(manager)

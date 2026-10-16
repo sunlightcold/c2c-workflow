@@ -42,6 +42,7 @@ describe('admin migration registry', () => {
       'C2cAutomationScanCorrectness1789027000000',
       'C2cTelegramOtc1789028000000',
       'C2cMerchantAds1789029000000',
+      'C2cIpProxies1789030000000',
     ])
   })
 })
