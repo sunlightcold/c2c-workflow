@@ -346,33 +346,33 @@ onBeforeUnmount(() => {
   <Page auto-content-height>
     <div class="chat-workspace flex h-full min-h-0 flex-col gap-3">
       <div class="bg-card rounded-lg border p-4">
-        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 class="text-base font-semibold">实时聊天</h2>
-          <span class="text-muted-foreground text-xs" role="status">
-            {{ connected ? '实时订阅已连接' : '实时订阅未连接' }} ·
-            仅保留当前运行窗口内消息
-          </span>
-        </div>
+        <h2 class="mb-3 text-base font-semibold">实时聊天</h2>
         <a-form layout="inline" class="chat-filters">
-          <a-form-item v-if="!fixedTenantId" label="所属单位">
+          <a-form-item
+            v-if="!fixedTenantId"
+            label="所属单位"
+            class="chat-filter-field"
+          >
             <a-select
               v-model:value="tenantId"
               :options="tenantOptions"
               aria-label="所属单位"
-              class="w-48"
               :disabled="sending"
             />
           </a-form-item>
-          <a-form-item label="商家">
+          <a-form-item label="商家" class="chat-filter-field">
             <a-select
               v-model:value="merchantId"
               :options="merchantOptions"
               allow-clear
               placeholder="全部商家"
               aria-label="商家"
-              class="w-64"
               :disabled="sending"
-            />
+            >
+              <template #option="{ label }">
+                <span class="whitespace-normal break-words">{{ label }}</span>
+              </template>
+            </a-select>
           </a-form-item>
           <a-form-item>
             <a-button :loading="loading" @click="refresh">
@@ -623,6 +623,26 @@ onBeforeUnmount(() => {
   display: none;
 }
 
+.chat-filters {
+  gap: 12px;
+  align-items: center;
+}
+
+.chat-filters :deep(.ant-form-item) {
+  margin-inline-end: 0;
+}
+
+.chat-filter-field {
+  width: 320px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.chat-filters :deep(.ant-form-item-control) {
+  flex: 1;
+  min-width: 0;
+}
+
 @media (width <= 767px) {
   .chat-sidebar {
     width: 100%;
@@ -641,12 +661,12 @@ onBeforeUnmount(() => {
     gap: 8px;
   }
 
-  .chat-filters :deep(.ant-form-item) {
-    margin-inline-end: 0;
+  .chat-filter-field {
+    width: 100%;
   }
 
-  .chat-filters :deep(.ant-select) {
-    width: min(240px, 100%);
+  .chat-filter-field :deep(.ant-form-item-control) {
+    flex: 0 0 100%;
   }
 }
 </style>
