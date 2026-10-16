@@ -3,6 +3,7 @@ import type { BinanceC2cMockOrder, BinanceC2cSettings } from './types'
 import { BINANCE_C2C_PATHS } from './types'
 import { getBinanceC2cState } from './state'
 import { handleBinanceAds } from './ads'
+import { chatCredential, fixedChatMessages } from './chat'
 
 interface BinanceRequest {
   path: string
@@ -44,6 +45,36 @@ export class BinanceC2cMockPlugin {
     try {
       if (request.path === '/bapi/c2c/v2/friendly/c2c/adv/search') return handleBinanceAds(request)
       this.verify(request)
+      if (request.path === BINANCE_C2C_PATHS.chatCredential) {
+        const merchantId = requiredString(request.headers.get('x-user-id'), 'x-user-id')
+        return {
+          status: 200,
+          body: {
+            code: '000000',
+            success: true,
+            data: chatCredential(merchantId, this.getSettings().secretKey),
+          },
+        }
+      }
+      if (request.path === BINANCE_C2C_PATHS.chatMessages) {
+        requiredString(request.headers.get('x-user-id'), 'x-user-id')
+        const orderNo = requiredString(request.query.orderNo, 'orderNo')
+        if (!this.findFor(request, orderNo)) return errorResponse('400002', '订单不存在', 404)
+        const page = Number(request.query.page)
+        const rows = Number(request.query.rows)
+        if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(rows) || rows < 1)
+          throw new Error('分页参数错误')
+        const messages = fixedChatMessages(orderNo)
+        return {
+          status: 200,
+          body: {
+            code: '000000',
+            success: true,
+            total: messages.length,
+            data: messages.slice((page - 1) * rows, page * rows),
+          },
+        }
+      }
       if (request.path.startsWith('/sapi/v1/c2c/ads/')) return handleBinanceAds(request)
       if (request.path === BINANCE_C2C_PATHS.listOrders) return this.listOrders(request)
       if (request.path === BINANCE_C2C_PATHS.reportOrders) return this.reportOrders(request)

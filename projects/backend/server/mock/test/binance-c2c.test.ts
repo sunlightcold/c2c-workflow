@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { addOrder } from '@mock/upstreams/binance-c2c/control'
 import { getBinanceC2cPlugin } from '@mock/upstreams/binance-c2c/plugin-registry'
 import { getBinanceC2cState } from '@mock/upstreams/binance-c2c/state'
+import { chatMerchant, mockChatReply } from '@mock/upstreams/binance-c2c/chat'
 
 const secretKey = 'mock-binance-secret-key'
 
@@ -31,6 +32,39 @@ function request(
 describe('Binance C2C mock', () => {
   beforeEach(() => {
     getBinanceC2cState().reset()
+  })
+
+  it('serves signed fixed chat messages and echoes text before a fixed reply, isolated by merchant', () => {
+    const merchantId = 'mock-hq-binance'
+    const orderNo = '20476365073825144832'
+    addOrder({ orderNumber: orderNo, externalMerchantId: merchantId })
+    const plugin = getBinanceC2cPlugin()
+    const credentialResponse = plugin.handle(request('/sapi/v1/c2c/chat/retrieveChatCredential', {}, {}, merchantId))
+    expect(credentialResponse.body).toMatchObject({ success: true })
+    const credential = credentialResponse.body.data as { chatWssUrl: string; listenKey: string; listenToken: string }
+    const url = `${credential.chatWssUrl}/${credential.listenKey}?token=${credential.listenToken}`
+    expect(chatMerchant(url)).toBe(merchantId)
+    expect(() => chatMerchant(`${credential.chatWssUrl}/${credential.listenKey}?token=invalid`)).toThrow()
+    const messages = plugin.handle(request('/sapi/v1/c2c/chat/retrieveChatMessagesWithPagination', {}, { orderNo, page: '1', rows: '100' }, merchantId))
+    expect(messages.body).toMatchObject({ success: true, total: 2, data: [
+      { orderNo, content: '你好，请问这笔订单什么时候付款？', self: false },
+      { orderNo, content: '收款信息已确认，有问题请联系我。', self: false },
+    ] })
+    expect(plugin.handle(request('/sapi/v1/c2c/chat/retrieveChatMessagesWithPagination', {}, { orderNo, page: '2', rows: '100' }, merchantId)).body.data).toEqual([])
+    expect(plugin.handle(request('/sapi/v1/c2c/chat/retrieveChatMessagesWithPagination', {}, { orderNo, page: '1', rows: '100' }, 'mock-agent-binance')).status).toBe(404)
+    expect(plugin.handle(request('/sapi/v1/c2c/chat/retrieveChatCredential', {})).body.success).toBe(false)
+    const frame = { orderNo, uuid: 'reply-id', type: 'text', content: '马上处理' }
+    expect(mockChatReply(merchantId, frame)).toEqual([
+      { ...frame, self: true },
+      expect.objectContaining({ orderNo, content: '收到，请稍等，我正在核实订单。', self: false }),
+    ])
+    expect(() => mockChatReply('mock-agent-binance', frame)).toThrow()
+    expect(() => mockChatReply(merchantId, { ...frame, type: 'image' })).toThrow()
+    getBinanceC2cState().orders.update(orderNo, (order) => ({ ...order, orderStatus: 4 }))
+    expect(() => mockChatReply(merchantId, frame)).toThrow()
+    const invalid = request('/sapi/v1/c2c/chat/retrieveChatCredential', {}, {}, merchantId)
+    invalid.query.signature = 'invalid'
+    expect(plugin.handle(invalid).body.success).toBe(false)
   })
 
   it('lists only matching BUY orders and returns fiat totalPrice', () => {

@@ -16,7 +16,11 @@ jest.mock('ws', () => {
   return { __esModule: true, default: MockSocket }
 })
 import Ws from 'ws'
-import { BinanceChatAdapter, type BinanceChatConnection } from './binance-chat.adapter'
+import {
+  BinanceChatAdapter,
+  requireBinanceChatUrl,
+  type BinanceChatConnection,
+} from './binance-chat.adapter'
 import type { BinanceCredentials } from '../c2c-platform/binance-c2c.client'
 
 describe('Binance chat protocol transport', () => {
@@ -123,5 +127,31 @@ describe('Binance chat protocol transport', () => {
     handlers.active.mockReturnValue(false)
     await expect(adapter.connect(credentials, handlers)).rejects.toThrow('配置已变化')
     expect(sockets.instances).toHaveLength(1)
+  })
+})
+
+describe('Binance chat endpoint isolation', () => {
+  afterEach(() => jest.restoreAllMocks())
+  it('allows only the local Mock pair in development', () => {
+    jest.replaceProperty(process, 'env', { ...process.env, NODE_ENV: 'development' })
+    expect(
+      requireBinanceChatUrl('ws://127.0.0.1:13002/chat', 'http://127.0.0.1:13002').protocol,
+    ).toBe('ws:')
+    expect(() =>
+      requireBinanceChatUrl('ws://127.0.0.1:13002/chat', 'https://api.binance.com'),
+    ).toThrow()
+    expect(() =>
+      requireBinanceChatUrl('ws://127.0.0.1:13003/chat', 'http://127.0.0.1:13002'),
+    ).toThrow()
+    expect(() =>
+      requireBinanceChatUrl('ws://evil.example/chat', 'http://127.0.0.1:13002'),
+    ).toThrow()
+  })
+  it.each(['production', 'test', undefined])('rejects local Mock in %s', (mode) => {
+    jest.replaceProperty(process, 'env', { ...process.env, NODE_ENV: mode })
+    expect(() =>
+      requireBinanceChatUrl('ws://127.0.0.1:13002/chat', 'http://127.0.0.1:13002'),
+    ).toThrow()
+    expect(requireBinanceChatUrl('wss://im.binance.com:443/chat').hostname).toBe('im.binance.com')
   })
 })

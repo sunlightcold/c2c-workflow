@@ -16,7 +16,13 @@ export interface BinanceChatConnection {
   close: () => void
   send: (orderNo: string, payload: Record<string, unknown>) => Promise<ChatSendStatus>
 }
-export function requireBinanceChatUrl(value: string) {
+export function requireBinanceChatUrl(value: string, baseUrl?: string) {
+  if (
+    process.env.NODE_ENV === 'development' &&
+    baseUrl?.replace(/\/$/, '') === 'http://127.0.0.1:13002' &&
+    value === 'ws://127.0.0.1:13002/chat'
+  )
+    return new URL(value)
   const url = new URL(value)
   if (
     url.protocol !== 'wss:' ||
@@ -92,7 +98,7 @@ export class BinanceChatAdapter {
     const chat = response.data
     if (!chat?.listenKey || !chat.listenToken || !chat.chatWssUrl)
       throw new ChatError('CHAT_CONTEXT_UNAVAILABLE', '平台聊天凭据无效')
-    const url = requireBinanceChatUrl(chat.chatWssUrl)
+    const url = requireBinanceChatUrl(chat.chatWssUrl, credentials.baseUrl)
     url.pathname += `/${encodeURIComponent(chat.listenKey)}`
     url.searchParams.set('token', chat.listenToken)
     url.searchParams.set('clientType', 'web')
@@ -106,7 +112,7 @@ export class BinanceChatAdapter {
     let socket: Ws
     try {
       socket = new Ws(url, {
-        agent: agents?.httpsAgent,
+        agent: url.protocol === 'ws:' ? agents?.httpAgent : agents?.httpsAgent,
         handshakeTimeout: credentials.timeoutMs,
         maxPayload: 1024 * 1024,
         followRedirects: false,

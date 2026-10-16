@@ -1,4 +1,6 @@
 export const BINANCE_C2C_PATHS = {
+  chatCredential: '/sapi/v1/c2c/chat/retrieveChatCredential',
+  chatMessages: '/sapi/v1/c2c/chat/retrieveChatMessagesWithPagination',
   listAds: '/sapi/v1/c2c/ads/listWithPagination',
   adDetail: '/sapi/v1/c2c/ads/getDetailByNo',
   updateAd: '/sapi/v1/c2c/ads/update',
