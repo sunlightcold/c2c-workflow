@@ -30,6 +30,7 @@ describe('Merchant live chat HTTP contract', () => {
     attachment: jest.fn(),
     listOrders: jest.fn(),
     openConversation: jest.fn(),
+    deleteConversation: jest.fn(),
   }
   const access = { authorize: jest.fn() }
   const images = { acquire: jest.fn(), release: jest.fn() }
@@ -51,6 +52,41 @@ describe('Merchant live chat HTTP contract', () => {
     access.authorize.mockResolvedValue(tenantId)
   })
   afterAll(() => app.close())
+  it('deletes a scoped window with reply access, validating IDs and preserving conflict errors', async () => {
+    const path = `/v1/sys/merchant-chats/live/conversations/${conversationId}`
+    const query = { tenantId, merchantId, instanceId }
+    chat.deleteConversation.mockReturnValue({ conversationId })
+    const response = await request(app.getHttpServer()).delete(path).query(query).expect(200)
+    expectWrappedSuccess(response.body)
+    expect(response.body.data).toEqual({ conversationId })
+    expect(chat.deleteConversation).toHaveBeenCalledWith(
+      { tenantId, merchantId },
+      instanceId,
+      conversationId,
+    )
+    expect(access.authorize).toHaveBeenLastCalledWith(
+      expect.objectContaining({ uid: 7 }),
+      tenantId,
+      true,
+    )
+    await request(app.getHttpServer())
+      .delete(path)
+      .query({ ...query, instanceId: 'invalid' })
+      .expect(400)
+    await request(app.getHttpServer())
+      .delete('/v1/sys/merchant-chats/live/conversations/invalid')
+      .query(query)
+      .expect(400)
+    expect(chat.deleteConversation).toHaveBeenCalledTimes(1)
+    chat.deleteConversation.mockImplementation(() => {
+      throw new ChatError('CHAT_CONVERSATION_BUSY', '正在发送')
+    })
+    const busy = await request(app.getHttpServer()).delete(path).query(query).expect(409)
+    expect(busy.body.data.reasonCode).toBe('CHAT_CONVERSATION_BUSY')
+    access.authorize.mockRejectedValue(new ForbiddenException('无聊天操作权限'))
+    await request(app.getHttpServer()).delete(path).query(query).expect(403)
+    expect(chat.deleteConversation).toHaveBeenCalledTimes(2)
+  })
   it('filters order candidates, validates pagination and opens an empty scoped conversation with read access', async () => {
     chat.listOrders.mockResolvedValue({ items: [], total: 0, page: 2, pageSize: 10 })
     const response = await request(app.getHttpServer())

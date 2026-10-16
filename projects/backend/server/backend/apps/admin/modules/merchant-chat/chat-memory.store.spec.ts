@@ -58,6 +58,44 @@ describe('Chat memory window', () => {
     expect(store.snapshot({ ...scope, tenantId: 'other' }).messages).toEqual([])
     expect(store.snapshot({ ...scope, merchantId: 'other' }).conversations).toEqual([])
   })
+  it('deletes only a scoped window, revokes its attachments and allows a new message to reopen it', () => {
+    store.receive(scope, order, {
+      ...input('image'),
+      type: 'IMAGE',
+      imageUrl: 'https://private.example/image',
+    })
+    const { conversations, messages } = store.snapshot(scope)
+    const id = conversations[0].id
+    const image = messages[0]
+    const other = store.open(scope, { ...order, id: 'other-order' }, false)
+    const events: string[] = []
+    store.events.subscribe((event) => events.push(event.type))
+    expect(() => store.deleteConversation({ ...scope, tenantId: 'other' }, id)).toThrow(
+      '会话已失效',
+    )
+    expect(() => store.deleteConversation({ ...scope, merchantId: 'other' }, id)).toThrow(
+      '会话已失效',
+    )
+    expect(store.snapshot(scope).conversations).toHaveLength(2)
+    store.deleteConversation(scope, id)
+    expect(store.snapshot(scope)).toEqual({ conversations: [other], messages: [] })
+    expect(() => store.attachment(scope, image.id, image.attachmentId!)).toThrow('图片已过期')
+    expect(events).toEqual(['expired'])
+    expect(() => store.deleteConversation(scope, id)).toThrow('会话已失效')
+    store.receive(scope, order, input('new-message'))
+    const reopened = store.snapshot(scope)
+    expect(reopened.conversations.find((c) => c.merchantOrderId === order.id)?.id).not.toBe(id)
+    expect(reopened.messages.map((message) => message.sourceMessageId)).toEqual(['new-message'])
+  })
+  it('keeps a sending window until its send result is known', () => {
+    const conversation = store.open(scope, order, true)
+    const message = store.outbound(scope, conversation.id, 'request', 'TEXT', 'hello')
+    expect(() => store.deleteConversation(scope, conversation.id)).toThrow('正在发送')
+    expect(store.snapshot(scope).messages[0].status).toBe('SENDING')
+    store.update(message, 'UNKNOWN')
+    store.deleteConversation(scope, conversation.id)
+    expect(store.snapshot(scope)).toEqual({ conversations: [], messages: [] })
+  })
   it('bounds each conversation and expires messages, conversation IDs, and private attachment URLs', () => {
     store.receive(scope, order, {
       ...input('image'),

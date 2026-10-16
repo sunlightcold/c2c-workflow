@@ -119,6 +119,15 @@ export function getMerchantChatApi(params: MerchantChatApi.Scope) {
     { params },
   );
 }
+export function deleteMerchantChatConversationApi(
+  conversationId: string,
+  params: { instanceId: string; merchantId: string; tenantId: string },
+) {
+  return requestClient.delete<{ conversationId: string }>(
+    `/sys/merchant-chats/live/conversations/${conversationId}`,
+    { params },
+  );
+}
 export function replyMerchantChatApi(
   scope: MerchantChatApi.Scope,
   data: {

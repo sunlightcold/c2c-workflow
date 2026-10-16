@@ -13,7 +13,7 @@ export class ChatReplyDto extends TenantContextDto {
   @IsUUID('4') requestId: string
   @IsOptional() @IsString() @MaxLength(4000) text?: string
 }
-export class ChatAttachmentDto extends TenantContextDto {
+export class ChatWindowDto extends TenantContextDto {
   @IsUUID() merchantId: string
   @IsUUID() instanceId: string
 }

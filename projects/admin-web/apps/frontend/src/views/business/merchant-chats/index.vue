@@ -18,6 +18,7 @@ import { Page } from '@vben/common-ui';
 
 import {
   ArrowLeftOutlined,
+  DeleteOutlined,
   PictureOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -26,10 +27,12 @@ import {
 import { message as toast } from 'ant-design-vue';
 
 import {
+  deleteMerchantChatConversationApi,
   getMerchantChatApi,
   openMerchantChatConversationApi,
   replyMerchantChatApi,
 } from '#/api';
+import { confirmResourceAction } from '#/hooks';
 import { useSocketStore } from '#/store';
 
 import {
@@ -55,6 +58,7 @@ const selectedId = ref('');
 const loading = ref(false);
 const sending = ref(false);
 const creating = ref(false);
+const deleting = ref(false);
 const orderModalOpen = ref(false);
 const connected = ref(false);
 const error = ref('');
@@ -102,6 +106,7 @@ const canReply = computed(
   () =>
     hasAccessByCodes(['merchant:chat:read']) &&
     hasAccessByCodes(['merchant:chat:reply']) &&
+    !deleting.value &&
     connected.value &&
     selected.value?.canReply &&
     selectedMerchant.value?.status === 'CONNECTED',
@@ -116,7 +121,7 @@ const composerHint = computed(() => {
 });
 
 function chooseConversation(id: string) {
-  if (sending.value) return;
+  if (sending.value || deleting.value) return;
   selectedId.value = id;
   text.value = '';
   image.value = undefined;
@@ -253,6 +258,34 @@ async function refresh() {
     if (current === generation) loading.value = false;
   }
 }
+function deleteConversation() {
+  const conversation = selected.value;
+  const instanceId = snapshot.value?.instanceId;
+  if (!conversation || !instanceId || sending.value || deleting.value) return;
+  confirmResourceAction({
+    title: '删除会话？',
+    content:
+      '将清理该订单在后台的当前会话和消息，其他在线后台也会同步移除。交易平台记录不受影响，新消息到达后可重新生成会话。',
+    okText: '删除',
+    okType: 'danger',
+    action: async () => {
+      deleting.value = true;
+      try {
+        return await deleteMerchantChatConversationApi(conversation.id, {
+          tenantId: conversation.tenantId,
+          merchantId: conversation.merchantId,
+          instanceId,
+        });
+      } finally {
+        deleting.value = false;
+      }
+    },
+    onSuccess: async () => {
+      if (snapshot.value?.instanceId === instanceId) await refresh();
+    },
+    successMessage: '会话已删除',
+  });
+}
 async function openOrderConversation(order: MerchantChatApi.Order) {
   if (creating.value) return;
   const scopeTenant = tenantId.value;
@@ -375,6 +408,13 @@ watch(
       applyRouteSelection();
   },
 );
+watch(selected, (conversation) => {
+  if (!conversation && selectedId.value) {
+    selectedId.value = '';
+    text.value = '';
+    image.value = undefined;
+  }
+});
 watch(
   [selectedId, () => messages.value.at(-1)?.id],
   async ([conversationId], [previousId]) => {
@@ -442,7 +482,7 @@ onBeforeUnmount(() => {
               v-model:value="tenantId"
               :options="tenantOptions"
               aria-label="所属单位"
-              :disabled="sending || creating"
+              :disabled="sending || creating || deleting"
               @change="merchantId = undefined"
             />
           </a-form-item>
@@ -453,7 +493,7 @@ onBeforeUnmount(() => {
               allow-clear
               placeholder="全部商家"
               aria-label="商家"
-              :disabled="sending || creating"
+              :disabled="sending || creating || deleting"
             >
               <template #option="{ label }">
                 <span class="whitespace-normal break-words">{{ label }}</span>
@@ -468,7 +508,9 @@ onBeforeUnmount(() => {
           <a-form-item>
             <a-button
               type="primary"
-              :disabled="!tenantId || loading || sending || creating"
+              :disabled="
+                !tenantId || loading || sending || creating || deleting
+              "
               @click="orderModalOpen = true"
             >
               <template #icon><PlusOutlined /></template>新增会话
@@ -573,6 +615,16 @@ onBeforeUnmount(() => {
                     : '未连接'
                 }}
               </a-tag>
+              <a-button
+                v-if="hasAccessByCodes(['merchant:chat:reply'])"
+                danger
+                type="text"
+                :loading="deleting"
+                :disabled="loading || sending || creating"
+                @click="deleteConversation"
+              >
+                <template #icon><DeleteOutlined /></template>删除会话
+              </a-button>
             </header>
             <div
               ref="messagePanel"

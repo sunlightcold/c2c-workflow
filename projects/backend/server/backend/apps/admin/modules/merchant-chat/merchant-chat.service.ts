@@ -286,6 +286,11 @@ export class MerchantChatService implements OnApplicationBootstrap, OnModuleDest
     )
     return { instanceId: this.memory.instanceId, conversation }
   }
+  deleteConversation(scope: ChatScope, instanceId: string, conversationId: string) {
+    this.requireInstance(instanceId)
+    this.memory.deleteConversation(scope, conversationId)
+    return { conversationId }
+  }
   requireInstance(instanceId: string) {
     if (instanceId !== this.memory.instanceId)
       throw new ChatError('CHAT_INSTANCE_CHANGED', '聊天运行窗口已变化，请刷新后重试')

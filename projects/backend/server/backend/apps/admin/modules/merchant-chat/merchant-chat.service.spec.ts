@@ -107,6 +107,26 @@ describe('Merchant live chat', () => {
     )
   })
   afterEach(() => service.onModuleDestroy())
+  it('requires the current instance and scoped conversation when deleting without calling the platform', () => {
+    const conversation = memory.open(scope, order, false)
+    expect(() => service.deleteConversation(scope, 'old-instance', conversation.id)).toThrow(
+      '运行窗口已变化',
+    )
+    expect(() =>
+      service.deleteConversation(
+        { ...scope, merchantId: 'other' },
+        memory.instanceId,
+        conversation.id,
+      ),
+    ).toThrow('会话已失效')
+    expect(memory.snapshot(scope).conversations).toHaveLength(1)
+    expect(service.deleteConversation(scope, memory.instanceId, conversation.id)).toEqual({
+      conversationId: conversation.id,
+    })
+    expect(memory.snapshot(scope).conversations).toEqual([])
+    expect(adapter.connect).not.toHaveBeenCalled()
+    expect(connection.send).not.toHaveBeenCalled()
+  })
   it('opens an order without buyer messages, reuses it, and can send the first message', async () => {
     await connected()
     const opened = await service.openConversation(scope, order.id)

@@ -51,6 +51,12 @@ export class ChatMemoryStore {
       throw new ChatError('CHAT_CONTEXT_UNAVAILABLE', '聊天会话已失效', 404)
     return window.conversation
   }
+  deleteConversation(scope: ChatScope, id: string) {
+    this.conversation(scope, id)
+    if (this.windows.get(id)!.messages.some((message) => message.status === 'SENDING'))
+      throw new ChatError('CHAT_CONVERSATION_BUSY', '会话正在发送消息，请稍后删除')
+    this.remove(id)
+  }
   open(
     scope: ChatScope,
     order: { id: string; platformOrderId: string; counterpartyName: string | null },

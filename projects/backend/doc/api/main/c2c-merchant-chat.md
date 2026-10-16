@@ -4,7 +4,7 @@
 
 ## 权限与作用域
 
-所有接口沿用登录鉴权。读取与订阅要求 `merchant:chat:read`；发送同时要求 `merchant:chat:read`、`merchant:chat:reply`。平台账号必须传 `tenantId`，单位账号只允许本单位。商家与会话归属由服务器检查。
+所有接口沿用登录鉴权。读取与订阅要求 `merchant:chat:read`；发送与删除会话同时要求 `merchant:chat:read`、`merchant:chat:reply`。平台账号必须传 `tenantId`，单位账号只允许本单位。商家与会话归属由服务器检查。
 
 ## 接口
 
@@ -13,6 +13,7 @@
 | GET `/v1/sys/merchant-chats/live` | 可选 tenantId、merchantId | 当前 instanceId、sequence、retentionSeconds、merchants、conversations、messages |
 | GET `/v1/sys/merchant-chats/live/orders` | tenantId、可选merchantId/platformOrderId/counterpartyName/status、page/pageSize（默认1/20，最多100） | items、total、page、pageSize；启用币安商家的活动BUY订单，包含订单/商家标识、商家名称、对方姓名、状态、金额字符串、币种、下单时间 |
 | POST `/v1/sys/merchant-chats/live/conversations` | tenantId、merchantId、merchantOrderId（本地UUID） | instanceId、conversation；按本单位/商家的活动BUY订单创建或复用内存会话，允许无消息，不发送平台消息、不读取运行前历史 |
+| DELETE `/v1/sys/merchant-chats/live/conversations/:conversationId` | query：tenantId、merchantId、instanceId；路径ID为UUID | conversationId；删除当前后台窗口的会话、消息与附件引用，通知所有订阅者，不调用平台删除接口 |
 | POST `/v1/sys/merchant-chats/live/reply` | multipart：tenantId、merchantId、instanceId、conversationId、requestId，text 和 image 至少一项 | instanceId、requestId、每条消息的 id/type/status/reasonCode |
 | GET `/v1/sys/merchant-chats/live/messages/:messageId/attachments/:attachmentId` | tenantId、merchantId、instanceId | 鉴权图片流；private/no-store、nosniff，不返回平台原始 URL |
 
@@ -35,6 +36,8 @@ HTTP JSON 继续使用 `{code,msg,data,timestamp}` 包装；失败的 `data.reas
 
 筛选订单和打开会话仅要求read权限；发送仍要求read+reply。不存在、跨商家、跨单位或已结束订单返回CHAT_ORDER_NOT_FOUND；商家停用/配置失效返回CHAT_CONTEXT_UNAVAILABLE。相同订单重复打开复用同一会话，空会话按2小时TTL清理。聊天页新增会话弹窗支持四项筛选、分页和单选；商家订单操作列的“聊天”直接创建或定位对应会话。
 
+删除会话要求read+reply，使用会话面板右上角按钮并确认。服务器校验当前instanceId及单位/商家归属，发送中的会话拒绝删除，错误CHAT_CONVERSATION_BUSY（409）。不存在或越权返回CHAT_CONTEXT_UNAVAILABLE（404）；删除成功沿用expired事件移除所有后台中的对应会话和消息。不会修改交易平台记录、订单或上游去重记录；新消息到达或手动选择订单可重新创建会话，已删除消息不恢复。
+
 ## 错误与运行限制
 
 | 错误码 | 语义 |
@@ -44,6 +47,7 @@ HTTP JSON 继续使用 `{code,msg,data,timestamp}` 包装；失败的 `data.reas
 | CHAT_INSTANCE_CHANGED | 请求不属于当前运行实例，刷新后核实 |
 | CHAT_SOCKET_UNAVAILABLE / CHAT_SEND_BUSY | 平台连接不可用或发送繁忙 |
 | CHAT_DUPLICATE_MESSAGE | 请求标识已用于其他内容 |
+| CHAT_CONVERSATION_BUSY | 会话正在发送消息，稍后删除 |
 | CHAT_SEND_FAILED / CHAT_SEND_UNKNOWN | 发送失败 / 结果未知 |
 | CHAT_ATTACHMENT_UNSUPPORTED / CHAT_ATTACHMENT_TOO_LARGE | 图片地址、格式、解码或大小不受支持 |
 | CHAT_ATTACHMENT_REDIRECT_FORBIDDEN | 图片请求被重定向，已拒绝跟随 |

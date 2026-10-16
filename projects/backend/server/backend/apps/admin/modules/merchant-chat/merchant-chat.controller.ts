@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   Param,
@@ -22,7 +23,7 @@ import { ChatAccessService } from './chat-access.service'
 import { ChatImageLimitInterceptor } from './chat-image.service'
 import { CHAT_MAX_IMAGE_BYTES } from './chat.types'
 import {
-  ChatAttachmentDto,
+  ChatWindowDto,
   ChatLiveDto,
   ChatReplyDto,
   ChatOrderQueryDto,
@@ -59,6 +60,21 @@ export class MerchantChatController {
     const tenantId = await this.access.authorize(actor, dto.tenantId)
     return this.chat.openConversation({ tenantId, merchantId: dto.merchantId }, dto.merchantOrderId)
   }
+  @Delete('conversations/:conversationId')
+  @Permission([P.READ, P.REPLY])
+  @ApiOperation({ summary: '删除当前后台窗口中的聊天会话' })
+  async remove(
+    @Query() dto: ChatWindowDto,
+    @Param('conversationId', ParseUUIDPipe) conversationId: string,
+    @User() actor: AuthUser,
+  ) {
+    const tenantId = await this.access.authorize(actor, dto.tenantId, true)
+    return this.chat.deleteConversation(
+      { tenantId, merchantId: dto.merchantId },
+      dto.instanceId,
+      conversationId,
+    )
+  }
   @Post('reply')
   @Permission([P.READ, P.REPLY])
   @ApiOperation({ summary: '后台发送文字或图片' })
@@ -85,7 +101,7 @@ export class MerchantChatController {
   @Header('Cache-Control', 'private, no-store')
   @Header('X-Content-Type-Options', 'nosniff')
   async attachment(
-    @Query() dto: ChatAttachmentDto,
+    @Query() dto: ChatWindowDto,
     @Param('messageId', ParseUUIDPipe) messageId: string,
     @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
     @User() actor: AuthUser,
