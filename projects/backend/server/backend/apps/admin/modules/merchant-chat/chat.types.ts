@@ -85,6 +85,7 @@ export interface ChatOrderOption {
   platformOrderId: string
   counterpartyName: string | null
   status: string
+  paymentStatus: PaymentOrderStatus | null
   fiatAmount: string
   fiatCurrency: string
   platformCreatedAt: Date

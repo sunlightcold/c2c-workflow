@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { MerchantChatApi } from '#/api';
 
-import { onBeforeUnmount, ref, watch } from 'vue';
+import { h, onBeforeUnmount, ref, watch } from 'vue';
+
+import { Button } from 'ant-design-vue';
 
 import { queryMerchantOrderUpstreamApi } from '#/api';
 import { BaseModal } from '#/components/base-modal';
@@ -151,7 +153,8 @@ onBeforeUnmount(closePaymentCode);
   <BaseModal
     v-model="paymentCodeOpen"
     v-bind="businessModalProps('用户付款码', 420)"
-    :footer="null"
+    closable
+    :footer="h(Button, { onClick: closePaymentCode }, () => '关闭')"
     @cancel="closePaymentCode"
   >
     <div class="flex min-h-64 items-center justify-center p-4">

@@ -10,6 +10,8 @@ import { migrateC2cMerchantOrders } from '@/apps/admin/database/migrations/c2c-m
 import { migrateC2cMerchantOrderAppeals } from '@/apps/admin/database/migrations/c2c-merchant-order-appeals.migration'
 import { migrateC2cMerchantAccountOperations } from '@/apps/admin/database/migrations/c2c-merchant-account-operations.migration'
 import { migrateC2cFullProviderParity } from '@/apps/admin/database/migrations/c2c-full-provider-parity.migration'
+import { migrateC2cPaymentOrders } from '@/apps/admin/database/migrations/c2c-payment-orders.migration'
+import { migrateC2cPaymentRouting } from '@/apps/admin/database/migrations/c2c-payment-routing.migration'
 import { DataSource, type QueryRunner } from 'typeorm'
 import { TypeOrmC2cOrderSyncStore } from '@/apps/admin/modules/c2c-order/typeorm-c2c-order-sync.store'
 import { TypeOrmC2cOrderAppealStore } from '@/apps/admin/modules/c2c-order/typeorm-c2c-order-appeal.store'
@@ -20,6 +22,8 @@ import {
   MerchantOrderStatusHistoryEntity,
   MerchantOrderSyncCheckpointEntity,
   MerchantPlatform,
+  PaymentOrderEntity,
+  PaymentOrderStatus,
 } from '@/apps/admin/database'
 import { C2cBuyOrderStatus } from '@/apps/admin/modules/c2c-platform'
 import { MerchantChatService } from '@/apps/admin/modules/merchant-chat/merchant-chat.service'
@@ -48,6 +52,7 @@ describe('Merchant orders database integration', () => {
         MerchantOrderEntity,
         MerchantOrderStatusHistoryEntity,
         MerchantOrderSyncCheckpointEntity,
+        PaymentOrderEntity,
       ],
     })
     await dataSource.initialize()
@@ -56,6 +61,8 @@ describe('Merchant orders database integration', () => {
     await queryRunner.startTransaction()
     await queryRunner.query(`SET LOCAL search_path TO "${schema}", public`)
     await migrateC2cBusinessFoundation(queryRunner.manager)
+    await migrateC2cPaymentOrders(queryRunner.manager)
+    await migrateC2cPaymentRouting(queryRunner.manager)
     await migrateC2cMerchantPlatformCredentials(queryRunner.manager)
     await migrateC2cMerchantOrders(queryRunner.manager)
     await migrateC2cMerchantOrders(queryRunner.manager)
@@ -109,6 +116,16 @@ describe('Merchant orders database integration', () => {
           `INSERT INTO merchant_order ("tenantId", "merchantId", platform, "platformOrderId", side, "platformStatus", status, asset, "assetAmount", "fiatCurrency", "fiatAmount", "counterpartyName", "platformCreatedAt", "lastSyncedAt") VALUES ($1, $2, $3, $4, 'BUY', '1', $5, 'USDT', 10, 'CNY', 70.01, '聊天买家', now(), now())`,
           [tenant, merchant, platform, orderNo, status],
         )
+      for (const [merchant, tenant, source, orderNo, status] of [
+        [merchantId, tenantId, 'C2C_BUY', 'CHAT-ONE', 'SUCCESS'],
+        [sibling, tenantId, 'C2C_BUY', 'CHAT-ONE', 'FAILED'],
+        [merchantId, tenantId, 'BOT_MANUAL', 'CHAT-TWO', 'SUCCESS'],
+        [outside, otherTenant, 'C2C_BUY', 'CHAT-TWO', 'SUCCESS'],
+      ])
+        await queryRunner.query(
+          `INSERT INTO payment_order ("tenantId", "merchantId", "sourceType", "sourceBusinessNo", "paymentNo", amount, currency, "payeeIdentity", "payeeName", status) VALUES ($1, $2, $3, $4, $5, 70.01, 'CNY', 'test-payee', 'Test', $6)`,
+          [tenant, merchant, source, orderNo, `${merchant}-${source}-${orderNo}`, status],
+        )
       const database = { getRepository: (entity) => queryRunner.manager.getRepository(entity) }
       const memory = new ChatMemoryStore()
       const chat = new MerchantChatService(
@@ -149,6 +166,26 @@ describe('Merchant orders database integration', () => {
         'CHAT-SIBLING',
         'CHAT-TWO',
       ])
+      expect(all.items.find((item) => item.platformOrderId === 'CHAT-ONE')?.paymentStatus).toBe(
+        PaymentOrderStatus.SUCCESS,
+      )
+      expect(
+        all.items.find((item) => item.platformOrderId === 'CHAT-TWO')?.paymentStatus,
+      ).toBeNull()
+      const paid = await chat.listOrders(tenantId, {
+        ...query,
+        paymentStatus: PaymentOrderStatus.SUCCESS,
+      })
+      expect(paid.total).toBe(1)
+      expect(paid.items.map((item) => item.platformOrderId)).toEqual(['CHAT-ONE'])
+      expect(
+        (await chat.listOrders(tenantId, { ...query, paymentStatus: PaymentOrderStatus.FAILED }))
+          .total,
+      ).toBe(0)
+      const uncreated = await chat.listOrders(tenantId, { ...query, paymentStatus: 'NOT_CREATED' })
+      expect(uncreated.total).toBe(1)
+      expect(uncreated.items.map((item) => item.platformOrderId)).toEqual(['CHAT-TWO'])
+      expect(uncreated.items[0].paymentStatus).toBeNull()
       memory.clear()
     } finally {
       await queryRunner.query('ROLLBACK TO SAVEPOINT chat_candidates')

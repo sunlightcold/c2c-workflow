@@ -11,7 +11,7 @@
 | 方法与路径 | 输入 | 输出 |
 | --- | --- | --- |
 | GET `/v1/sys/merchant-chats/live` | 可选 tenantId、merchantId | 当前 instanceId、sequence、retentionSeconds、merchants、conversations、messages |
-| GET `/v1/sys/merchant-chats/live/orders` | tenantId、可选merchantId/platformOrderId/counterpartyName/status、page/pageSize（默认1/20，最多100） | items、total、page、pageSize；启用币安商家的活动BUY订单，包含订单/商家标识、商家名称、对方姓名、状态、金额字符串、币种、下单时间 |
+| GET `/v1/sys/merchant-chats/live/orders` | tenantId、可选merchantId/platformOrderId/counterpartyName/status/paymentStatus、page/pageSize（默认1/20，最多100） | items、total、page、pageSize；启用币安商家的活动BUY订单，包含订单/商家标识、商家名称、对方姓名、商家订单状态、paymentStatus（支付订单状态或null）、金额字符串、币种、下单时间 |
 | POST `/v1/sys/merchant-chats/live/conversations` | tenantId、merchantId、merchantOrderId（本地UUID） | instanceId、conversation；按本单位/商家的活动BUY订单创建或复用内存会话，允许无消息，不发送平台消息、不读取运行前历史 |
 | DELETE `/v1/sys/merchant-chats/live/conversations/:conversationId` | query：tenantId、merchantId、instanceId；路径ID为UUID | conversationId；删除当前后台窗口的会话、消息与附件引用，通知所有订阅者，不调用平台删除接口 |
 | POST `/v1/sys/merchant-chats/live/reply` | multipart：tenantId、merchantId、instanceId、conversationId、requestId，text 和 image 至少一项 | instanceId、requestId、每条消息的 id/type/status/reasonCode |
@@ -36,7 +36,9 @@ HTTP JSON 继续使用 `{code,msg,data,timestamp}` 包装；失败的 `data.reas
 
 客户端先订阅，再应用快照及之后的事件；同实例按 sequence 去重。断线或实例变化只同步当前快照，无历史回放。服务器逐次检查订阅权限，空闲连接也每15秒重查。订阅更换或取消会使尚未完成的旧订阅失效。
 
-筛选订单和打开会话仅要求read权限；发送仍要求read+reply。不存在、跨商家、跨单位或已结束订单返回CHAT_ORDER_NOT_FOUND；商家停用/配置失效返回CHAT_CONTEXT_UNAVAILABLE。相同订单重复打开复用同一会话，空会话按2小时TTL清理。聊天页新增会话弹窗支持四项筛选、分页和单选；商家订单操作列的“聊天”直接创建或定位对应会话。
+筛选订单和打开会话仅要求read权限；发送仍要求read+reply。不存在、跨商家、跨单位或已结束订单返回CHAT_ORDER_NOT_FOUND；商家停用/配置失效返回CHAT_CONTEXT_UNAVAILABLE。相同订单重复打开复用同一会话，空会话按2小时TTL清理。聊天页新增会话弹窗支持商家账号、平台订单号、对方姓名、商家订单状态、支付订单状态筛选、分页和单选；商家订单操作列的“聊天”直接创建或定位对应会话。
+
+候选订单的支付关联范围与会话一致。paymentStatus筛选接受PaymentOrderStatus或NOT_CREATED（未创建支付订单）；省略表示全部，非法值返回400。筛选在分页及总数统计之前执行，响应始终使用原始支付状态或null，不将NOT_CREATED写入业务状态。新增响应字段向后兼容，先部署后端再部署前端，无数据库迁移。
 
 删除会话要求read+reply，使用会话面板右上角按钮并确认。服务器校验当前instanceId及单位/商家归属，发送中的会话拒绝删除，错误CHAT_CONVERSATION_BUSY（409）。不存在或越权返回CHAT_CONTEXT_UNAVAILABLE（404）；删除成功沿用expired事件移除所有后台中的对应会话和消息。不会修改交易平台记录、订单或上游去重记录；新消息到达或手动选择订单可重新创建会话，已删除消息不恢复。
 

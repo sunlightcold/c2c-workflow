@@ -1,6 +1,16 @@
 import { Type } from 'class-transformer'
-import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator'
-import { MerchantOrderStatus } from '@admin/database'
+import {
+  IsEnum,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator'
+import { MerchantOrderStatus, PaymentOrderStatus } from '@admin/database'
 import { TenantContextDto } from '../business/business.dto'
 
 export class ChatLiveDto extends TenantContextDto {
@@ -21,6 +31,9 @@ export class ChatOrderQueryDto extends ChatLiveDto {
   @IsOptional() @IsString() @MaxLength(128) platformOrderId?: string
   @IsOptional() @IsString() @MaxLength(128) counterpartyName?: string
   @IsOptional() @IsEnum(MerchantOrderStatus) status?: MerchantOrderStatus
+  @IsOptional()
+  @IsIn([...Object.values(PaymentOrderStatus), 'NOT_CREATED'])
+  paymentStatus?: PaymentOrderStatus | 'NOT_CREATED'
   @Type(() => Number) @IsInt() @Min(1) page = 1
   @Type(() => Number) @IsInt() @Min(1) @Max(100) pageSize = 20
 }

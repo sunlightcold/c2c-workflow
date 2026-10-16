@@ -97,6 +97,7 @@ describe('Merchant live chat HTTP contract', () => {
         platformOrderId: '20476365073825144832',
         counterpartyName: '买家',
         status: 'PENDING_RELEASE',
+        paymentStatus: 'SUCCESS',
         page: 2,
         pageSize: 10,
       })
@@ -110,6 +111,7 @@ describe('Merchant live chat HTTP contract', () => {
         pageSize: 10,
         counterpartyName: '买家',
         status: 'PENDING_RELEASE',
+        paymentStatus: 'SUCCESS',
       }),
     )
     await request(app.getHttpServer())
@@ -121,6 +123,19 @@ describe('Merchant live chat HTTP contract', () => {
       .query({ tenantId, page: 0 })
       .expect(400)
     expect(chat.listOrders).toHaveBeenCalledTimes(1)
+    await request(app.getHttpServer())
+      .get('/v1/sys/merchant-chats/live/orders')
+      .query({ tenantId, paymentStatus: 'INVALID' })
+      .expect(400)
+    expect(chat.listOrders).toHaveBeenCalledTimes(1)
+    await request(app.getHttpServer())
+      .get('/v1/sys/merchant-chats/live/orders')
+      .query({ tenantId, paymentStatus: 'NOT_CREATED' })
+      .expect(200)
+    expect(chat.listOrders).toHaveBeenLastCalledWith(
+      tenantId,
+      expect.objectContaining({ paymentStatus: 'NOT_CREATED' }),
+    )
     chat.openConversation.mockResolvedValue({
       instanceId,
       conversation: { id: conversationId, merchantOrderId: messageId },

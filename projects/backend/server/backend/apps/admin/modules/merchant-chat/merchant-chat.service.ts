@@ -228,6 +228,12 @@ export class MerchantChatService implements OnApplicationBootstrap, OnModuleDest
     const query = this.database
       .getRepository(MerchantOrderEntity)
       .createQueryBuilder('orders')
+      .leftJoin(
+        PaymentOrderEntity,
+        'payment',
+        'payment.tenantId = orders.tenantId AND payment.merchantId = orders.merchantId AND payment.sourceType = :paymentSource AND payment.sourceBusinessNo = orders.platformOrderId',
+        { paymentSource: PaymentSourceType.C2C_BUY },
+      )
       .innerJoin(
         MerchantEntity,
         'merchant',
@@ -253,6 +259,9 @@ export class MerchantChatService implements OnApplicationBootstrap, OnModuleDest
         buyer: input.counterpartyName.trim(),
       })
     if (input.status) query.andWhere('orders.status = :status', { status: input.status })
+    if (input.paymentStatus === 'NOT_CREATED') query.andWhere('payment.id IS NULL')
+    else if (input.paymentStatus)
+      query.andWhere('payment.status = :paymentStatus', { paymentStatus: input.paymentStatus })
     const total = await query.getCount()
     const items = await query
       .select([
@@ -262,6 +271,7 @@ export class MerchantChatService implements OnApplicationBootstrap, OnModuleDest
         'orders.platformOrderId AS "platformOrderId"',
         'orders.counterpartyName AS "counterpartyName"',
         'orders.status AS "status"',
+        'payment.status AS "paymentStatus"',
         'orders.fiatAmount AS "fiatAmount"',
         'orders.fiatCurrency AS "fiatCurrency"',
         'orders.platformCreatedAt AS "platformCreatedAt"',

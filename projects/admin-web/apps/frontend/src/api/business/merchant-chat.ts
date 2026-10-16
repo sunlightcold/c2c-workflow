@@ -92,6 +92,7 @@ export namespace MerchantChatApi {
     platformOrderId: string;
     counterpartyName: null | string;
     status: string;
+    paymentStatus: null | string;
     fiatAmount: string;
     fiatCurrency: string;
     platformCreatedAt: string;
@@ -100,6 +101,7 @@ export namespace MerchantChatApi {
     platformOrderId?: string;
     counterpartyName?: string;
     status?: string;
+    paymentStatus?: string;
     page: number;
     pageSize: number;
   }

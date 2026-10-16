@@ -9,6 +9,7 @@ import { useResourceGrid } from '#/hooks';
 
 import { businessModalProps } from '../shared/business-form-layout';
 import { businessEnumText, formatBusinessTime } from '../shared/business-ui';
+import { chatPaymentStatusText } from './chat-state';
 
 const props = defineProps<{
   creating: boolean;
@@ -31,12 +32,13 @@ const visible = computed({
 type SearchValues = {
   counterpartyName?: string;
   merchantId?: string;
+  paymentStatus?: string;
   platformOrderId?: string;
   status?: string;
 };
 const [Grid, gridApi] = useResourceGrid<MerchantChatApi.Order, SearchValues>({
   formOptions: {
-    commonConfig: { labelWidth: 80 },
+    commonConfig: { labelClass: 'whitespace-nowrap', labelWidth: 112 },
     showCollapseButton: false,
     wrapperClass: 'grid-cols-1 md:grid-cols-2',
     schema: [
@@ -85,6 +87,32 @@ const [Grid, gridApi] = useResourceGrid<MerchantChatApi.Order, SearchValues>({
           ].map((value) => ({ label: businessEnumText(value), value })),
         },
       },
+      {
+        fieldName: 'paymentStatus',
+        label: '支付订单状态',
+        component: 'Select',
+        componentProps: {
+          allowClear: true,
+          placeholder: '全部支付状态',
+          options: [
+            { label: '未创建', value: 'NOT_CREATED' },
+            ...[
+              'PENDING_CONFIG',
+              'CREATED',
+              'READY',
+              'SUBMITTING',
+              'PROCESSING',
+              'UNKNOWN',
+              'SUCCESS',
+              'FAILED',
+              'CANCELLED',
+              'PLATFORM_CONFIRM_PENDING',
+              'COMPLETED',
+              'FUND_EXCEPTION',
+            ].map((value) => ({ label: businessEnumText(value), value })),
+          ],
+        },
+      },
     ],
   },
   gridOptions: {
@@ -120,6 +148,12 @@ const [Grid, gridApi] = useResourceGrid<MerchantChatApi.Order, SearchValues>({
         formatter: ({ cellValue }) => businessEnumText(cellValue),
       },
       {
+        field: 'paymentStatus',
+        title: '支付订单状态',
+        width: 140,
+        formatter: ({ cellValue }) => chatPaymentStatusText(cellValue),
+      },
+      {
         field: 'fiatAmount',
         title: '金额',
         width: 130,
@@ -141,6 +175,7 @@ const [Grid, gridApi] = useResourceGrid<MerchantChatApi.Order, SearchValues>({
       platformOrderId: params.platformOrderId,
       counterpartyName: params.counterpartyName,
       status: params.status,
+      paymentStatus: params.paymentStatus,
       page: params.pageIndex,
       pageSize: params.pageSize,
     });
