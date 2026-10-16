@@ -616,7 +616,7 @@ onBeforeUnmount(() => {
               v-for="conversation in conversations"
               :key="conversation.id"
               type="button"
-              class="chat-conversation hover:bg-accent focus-visible:ring-ring w-full border-b p-4 text-left outline-none focus-visible:ring-2"
+              class="chat-conversation hover:bg-accent focus-visible:ring-ring w-full border-b px-4 py-3 text-left outline-none focus-visible:ring-2"
               :class="{
                 'chat-conversation-active': selectedId === conversation.id,
               }"
@@ -633,11 +633,8 @@ onBeforeUnmount(() => {
                   }}
                 </span>
               </div>
-              <div class="text-muted-foreground truncate text-xs">
-                {{ conversation.merchantName }}
-              </div>
               <div
-                class="my-2 flex flex-wrap items-center justify-between gap-1"
+                class="mb-1 flex flex-wrap items-center justify-between gap-1"
               >
                 <span class="text-sm font-semibold tabular-nums">
                   {{ conversation.order.fiatAmount }}
@@ -655,12 +652,6 @@ onBeforeUnmount(() => {
                 :title="conversation.preview"
               >
                 {{ conversation.preview }}
-              </div>
-              <div
-                class="text-muted-foreground mt-1 truncate text-xs"
-                :title="conversation.platformOrderId"
-              >
-                {{ conversation.platformOrderId }}
               </div>
             </button>
           </div>
