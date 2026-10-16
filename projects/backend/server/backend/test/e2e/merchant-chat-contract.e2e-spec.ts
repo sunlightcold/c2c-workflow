@@ -24,7 +24,13 @@ describe('Merchant live chat HTTP contract', () => {
   const attachmentId = '00000000-0000-4000-8000-000000000005'
   const messageId = '00000000-0000-4000-8000-000000000006'
   const requestId = '00000000-0000-4000-8000-000000000007'
-  const chat = { snapshot: jest.fn(), reply: jest.fn(), attachment: jest.fn() }
+  const chat = {
+    snapshot: jest.fn(),
+    reply: jest.fn(),
+    attachment: jest.fn(),
+    listOrders: jest.fn(),
+    openConversation: jest.fn(),
+  }
   const access = { authorize: jest.fn() }
   const images = { acquire: jest.fn(), release: jest.fn() }
   let app: INestApplication
@@ -45,6 +51,62 @@ describe('Merchant live chat HTTP contract', () => {
     access.authorize.mockResolvedValue(tenantId)
   })
   afterAll(() => app.close())
+  it('filters order candidates, validates pagination and opens an empty scoped conversation with read access', async () => {
+    chat.listOrders.mockResolvedValue({ items: [], total: 0, page: 2, pageSize: 10 })
+    const response = await request(app.getHttpServer())
+      .get('/v1/sys/merchant-chats/live/orders')
+      .query({
+        tenantId,
+        merchantId,
+        platformOrderId: '20476365073825144832',
+        counterpartyName: '买家',
+        status: 'PENDING_RELEASE',
+        page: 2,
+        pageSize: 10,
+      })
+      .expect(200)
+    expectWrappedSuccess(response.body)
+    expect(chat.listOrders).toHaveBeenCalledWith(
+      tenantId,
+      expect.objectContaining({
+        merchantId,
+        page: 2,
+        pageSize: 10,
+        counterpartyName: '买家',
+        status: 'PENDING_RELEASE',
+      }),
+    )
+    await request(app.getHttpServer())
+      .get('/v1/sys/merchant-chats/live/orders')
+      .query({ tenantId, pageSize: 101 })
+      .expect(400)
+    await request(app.getHttpServer())
+      .get('/v1/sys/merchant-chats/live/orders')
+      .query({ tenantId, page: 0 })
+      .expect(400)
+    expect(chat.listOrders).toHaveBeenCalledTimes(1)
+    chat.openConversation.mockResolvedValue({
+      instanceId,
+      conversation: { id: conversationId, merchantOrderId: messageId },
+    })
+    const opened = await request(app.getHttpServer())
+      .post('/v1/sys/merchant-chats/live/conversations')
+      .send({ tenantId, merchantId, merchantOrderId: messageId })
+      .expect(201)
+    expect(opened.body.data.conversation.id).toBe(conversationId)
+    expect(chat.openConversation).toHaveBeenCalledWith({ tenantId, merchantId }, messageId)
+    expect(access.authorize).toHaveBeenLastCalledWith(expect.objectContaining({ uid: 7 }), tenantId)
+    await request(app.getHttpServer())
+      .post('/v1/sys/merchant-chats/live/conversations')
+      .send({ tenantId, merchantId, merchantOrderId: 'invalid' })
+      .expect(400)
+    access.authorize.mockRejectedValue(new ForbiddenException('无聊天操作权限'))
+    await request(app.getHttpServer())
+      .post('/v1/sys/merchant-chats/live/conversations')
+      .send({ tenantId, merchantId, merchantOrderId: messageId })
+      .expect(403)
+    expect(chat.openConversation).toHaveBeenCalledTimes(1)
+  })
   it('returns the bounded current snapshot and rejects revoked access', async () => {
     chat.snapshot.mockResolvedValue({
       instanceId,

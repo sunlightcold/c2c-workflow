@@ -66,6 +66,29 @@ describe('chat live state', () => {
     expect(state.conversations).toEqual([]);
     expect(state.messages).toEqual([]);
   });
+  it('receives an empty conversation and updates its availability without creating messages', () => {
+    const state = snapshot();
+    const opened = {
+      ...event(1),
+      type: 'conversation' as const,
+      message: undefined,
+    };
+    applyChatEvent(state, opened);
+    expect(state.conversations).toHaveLength(1);
+    expect(state.messages).toEqual([]);
+    const conversation = opened.conversation;
+    if (!conversation) throw new Error('Missing conversation fixture');
+    applyChatEvent(state, {
+      ...opened,
+      sequence: 2,
+      conversation: { ...conversation, canReply: false },
+    });
+    expect(state.conversations[0]?.canReply).toBe(false);
+    expect(state.conversations).toHaveLength(1);
+    applyChatEvent(state, event(3, 'SENT'));
+    expect(state.conversations).toHaveLength(1);
+    expect(state.messages).toHaveLength(1);
+  });
   it('bounds each conversation at 200 messages while retaining string platform identifiers', () => {
     const state = snapshot();
     for (let sequence = 1; sequence <= 201; sequence++) {

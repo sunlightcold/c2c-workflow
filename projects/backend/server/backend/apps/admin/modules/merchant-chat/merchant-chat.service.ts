@@ -19,6 +19,7 @@ import type { BinanceCredentials } from '../c2c-platform/binance-c2c.client'
 import { SECRET_RESOLVER, type SecretResolver } from '../system/credential/secret-resolver'
 import { BinanceChatAdapter, type BinanceChatConnection } from './binance-chat.adapter'
 import { ChatMemoryStore } from './chat-memory.store'
+import type { ChatOrderQueryDto } from './merchant-chat.dto'
 import { ChatImageService, requireChatImageUrl } from './chat-image.service'
 import {
   CHAT_TTL_MS,
@@ -28,6 +29,7 @@ import {
   type ChatMessage,
   type ChatScope,
   type ChatSnapshot,
+  type ChatOrderOption,
 } from './chat.types'
 
 const terminal = [
@@ -216,6 +218,73 @@ export class MerchantChatService implements OnApplicationBootstrap, OnModuleDest
       ),
       ...window,
     }
+  }
+  async listOrders(tenantId: string, input: ChatOrderQueryDto) {
+    const query = this.database
+      .getRepository(MerchantOrderEntity)
+      .createQueryBuilder('orders')
+      .innerJoin(
+        MerchantEntity,
+        'merchant',
+        'merchant.id = orders.merchantId AND merchant.tenantId = :tenantId AND merchant.status = :active AND merchant.platform = :platform',
+        {
+          tenantId,
+          active: BusinessStatus.ACTIVE,
+          platform: MerchantPlatform.BINANCE,
+        },
+      )
+      .where('orders.tenantId = :tenantId', { tenantId })
+      .andWhere('orders.platform = :platform', { platform: MerchantPlatform.BINANCE })
+      .andWhere('orders.side = :side', { side: MerchantOrderSide.BUY })
+      .andWhere('orders.status NOT IN (:...terminal)', { terminal })
+    if (input.merchantId)
+      query.andWhere('orders.merchantId = :merchantId', { merchantId: input.merchantId })
+    if (input.platformOrderId?.trim())
+      query.andWhere('POSITION(:orderNo IN orders.platformOrderId) > 0', {
+        orderNo: input.platformOrderId.trim(),
+      })
+    if (input.counterpartyName?.trim())
+      query.andWhere('POSITION(:buyer IN orders.counterpartyName) > 0', {
+        buyer: input.counterpartyName.trim(),
+      })
+    if (input.status) query.andWhere('orders.status = :status', { status: input.status })
+    const total = await query.getCount()
+    const items = await query
+      .select([
+        'orders.id AS "id"',
+        'orders.merchantId AS "merchantId"',
+        'merchant.name AS "merchantName"',
+        'orders.platformOrderId AS "platformOrderId"',
+        'orders.counterpartyName AS "counterpartyName"',
+        'orders.status AS "status"',
+        'orders.fiatAmount AS "fiatAmount"',
+        'orders.fiatCurrency AS "fiatCurrency"',
+        'orders.platformCreatedAt AS "platformCreatedAt"',
+      ])
+      .orderBy('orders.platformCreatedAt', 'DESC')
+      .addOrderBy('orders.id', 'DESC')
+      .offset((input.page - 1) * input.pageSize)
+      .limit(input.pageSize)
+      .getRawMany<ChatOrderOption>()
+    return { items, total, page: input.page, pageSize: input.pageSize }
+  }
+  async openConversation(scope: ChatScope, merchantOrderId: string) {
+    await this.order(scope, merchantOrderId)
+    const session = await this.ensure(scope)
+    const order = await this.order(scope, merchantOrderId)
+    if (session.stopped) throw new ChatError('CHAT_CONTEXT_UNAVAILABLE', '商家配置已变化')
+    const connected = !!session.connection?.ready()
+    this.memory.availability(
+      scope,
+      new Set([...session.orders.values()].map((o) => o.id)),
+      connected,
+    )
+    const conversation = this.memory.open(
+      scope,
+      order,
+      connected && session.orders.has(order.platformOrderId),
+    )
+    return { instanceId: this.memory.instanceId, conversation }
   }
   requireInstance(instanceId: string) {
     if (instanceId !== this.memory.instanceId)

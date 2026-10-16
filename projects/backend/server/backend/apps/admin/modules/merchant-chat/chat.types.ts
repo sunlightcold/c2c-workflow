@@ -49,6 +49,17 @@ export interface ChatMessage {
   status?: ChatSendStatus
   reasonCode?: string
 }
+export interface ChatOrderOption {
+  id: string
+  merchantId: string
+  merchantName: string
+  platformOrderId: string
+  counterpartyName: string | null
+  status: string
+  fiatAmount: string
+  fiatCurrency: string
+  platformCreatedAt: Date
+}
 export interface ChatInbound {
   orderNo: string
   sourceMessageId: string
@@ -71,7 +82,7 @@ export interface ChatSnapshot {
 export interface ChatEvent extends ChatScope {
   instanceId: string
   sequence: number
-  type: 'message' | 'merchant' | 'expired'
+  type: 'message' | 'merchant' | 'expired' | 'conversation'
   conversation?: ChatConversation
   message?: ChatMessage
   merchant?: ChatMerchant

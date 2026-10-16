@@ -19,12 +19,17 @@ import { Page } from '@vben/common-ui';
 import {
   ArrowLeftOutlined,
   PictureOutlined,
+  PlusOutlined,
   ReloadOutlined,
   SendOutlined,
 } from '@ant-design/icons-vue';
 import { message as toast } from 'ant-design-vue';
 
-import { getMerchantChatApi, replyMerchantChatApi } from '#/api';
+import {
+  getMerchantChatApi,
+  openMerchantChatConversationApi,
+  replyMerchantChatApi,
+} from '#/api';
 import { useSocketStore } from '#/store';
 
 import {
@@ -34,6 +39,7 @@ import {
 import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 import { applyChatEvent, chatConnectionText, chatSendText } from './chat-state';
 import ChatImage from './ChatImage.vue';
+import OrderSelectModal from './OrderSelectModal.vue';
 
 const route = useRoute();
 const { hasAccessByCodes } = useAccess();
@@ -48,6 +54,8 @@ let catalogTenantId = '';
 const selectedId = ref('');
 const loading = ref(false);
 const sending = ref(false);
+const creating = ref(false);
+const orderModalOpen = ref(false);
 const connected = ref(false);
 const error = ref('');
 const text = ref('');
@@ -58,6 +66,9 @@ let socket: Socket | undefined;
 let generation = 0;
 let buffered: MerchantChatApi.Event[] = [];
 let expiryTimer: ReturnType<typeof setInterval>;
+let routeReady = false;
+let defaultTenantId = '';
+let handledRouteOrder = '';
 const selected = computed(() =>
   snapshot.value?.conversations.find((c) => c.id === selectedId.value),
 );
@@ -183,9 +194,41 @@ async function refresh() {
       });
     if (current !== generation) return;
     if (snapshot.value?.instanceId !== result.instanceId) {
+      handledRouteOrder = '';
       selectedId.value = '';
       text.value = '';
       image.value = undefined;
+    }
+    const routeOrder =
+      typeof route.query.orderId === 'string' ? route.query.orderId : '';
+    const routeMerchant =
+      typeof route.query.merchantId === 'string' ? route.query.merchantId : '';
+    const routeKey = `${tenantId.value}:${routeMerchant}:${routeOrder}`;
+    const targetsRoute =
+      routeOrder &&
+      routeMerchant &&
+      route.query.tenantId === tenantId.value &&
+      routeMerchant === merchantId.value;
+    if (targetsRoute && handledRouteOrder !== routeKey) {
+      const existing = result.conversations.find(
+        (c) =>
+          c.merchantOrderId === routeOrder && c.merchantId === routeMerchant,
+      );
+      handledRouteOrder = routeKey;
+      if (existing) chooseConversation(existing.id);
+      else {
+        const opened = await openMerchantChatConversationApi({
+          tenantId: tenantId.value,
+          merchantId: routeMerchant,
+          merchantOrderId: routeOrder,
+        });
+        if (current !== generation) return;
+        if (opened.instanceId !== result.instanceId)
+          throw new Error('聊天运行窗口已变化');
+        if (!result.conversations.some((c) => c.id === opened.conversation.id))
+          result.conversations.push(opened.conversation);
+        chooseConversation(opened.conversation.id);
+      }
     }
     snapshot.value = result;
     connected.value = !!socket?.connected;
@@ -194,13 +237,14 @@ async function refresh() {
         throw new Error('聊天运行窗口已变化，请刷新');
     }
     buffered = [];
-    if (!selectedId.value && typeof route.query.orderId === 'string')
+    if (!selectedId.value && targetsRoute)
       selectedId.value =
         result.conversations.find(
           (c) => c.merchantOrderId === route.query.orderId,
         )?.id ?? '';
   } catch {
     if (current === generation) {
+      handledRouteOrder = '';
       clearWindow();
       connected.value = false;
       error.value = '无法加载实时聊天，请检查权限或稍后刷新';
@@ -208,6 +252,54 @@ async function refresh() {
   } finally {
     if (current === generation) loading.value = false;
   }
+}
+async function openOrderConversation(order: MerchantChatApi.Order) {
+  if (creating.value) return;
+  const scopeTenant = tenantId.value;
+  const current = generation;
+  creating.value = true;
+  try {
+    const opened = await openMerchantChatConversationApi({
+      tenantId: scopeTenant,
+      merchantId: order.merchantId,
+      merchantOrderId: order.id,
+    });
+    if (current !== generation || tenantId.value !== scopeTenant) return;
+    orderModalOpen.value = false;
+    if (merchantId.value && merchantId.value !== order.merchantId) {
+      merchantId.value = order.merchantId;
+      await nextTick();
+    }
+    await refresh();
+    if (
+      snapshot.value?.instanceId === opened.instanceId &&
+      snapshot.value.conversations.some((c) => c.id === opened.conversation.id)
+    )
+      chooseConversation(opened.conversation.id);
+  } finally {
+    creating.value = false;
+  }
+}
+function applyRouteSelection() {
+  const requested =
+    typeof route.query.tenantId === 'string' ? route.query.tenantId : '';
+  const nextTenant =
+    !fixedTenantId.value &&
+    tenantOptions.some(
+      (option) => option.value === requested && !option.disabled,
+    )
+      ? requested
+      : defaultTenantId;
+  const nextMerchant =
+    typeof route.query.merchantId === 'string'
+      ? route.query.merchantId
+      : undefined;
+  const changed =
+    tenantId.value !== nextTenant || merchantId.value !== nextMerchant;
+  tenantId.value = nextTenant;
+  merchantId.value = nextMerchant;
+  handledRouteOrder = '';
+  if (!changed) void refresh();
 }
 function pickImage(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0];
@@ -269,15 +361,20 @@ function onComposerKeydown(event: KeyboardEvent) {
     send();
   }
 }
-watch(tenantId, () => {
-  merchantId.value = undefined;
-});
 watch([tenantId, merchantId], () => {
   generation++;
   unsubscribe();
   clearWindow();
+  orderModalOpen.value = false;
   void refresh();
 });
+watch(
+  () => [route.query.tenantId, route.query.merchantId, route.query.orderId],
+  () => {
+    if (routeReady && route.path === '/business/merchant-chats')
+      applyRouteSelection();
+  },
+);
 watch(
   [selectedId, () => messages.value.at(-1)?.id],
   async ([conversationId], [previousId]) => {
@@ -299,33 +396,21 @@ onMounted(async () => {
   socket?.on('connect', reconnected);
   socket?.on('disconnect', disconnected);
   try {
-    const defaultTenant = await loadTenantOptions();
-    const requested =
-      typeof route.query.tenantId === 'string' ? route.query.tenantId : '';
-    tenantId.value =
-      !fixedTenantId.value &&
-      tenantOptions.some(
-        (option) => option.value === requested && !option.disabled,
-      )
-        ? requested
-        : defaultTenant;
+    defaultTenantId = await loadTenantOptions();
+    routeReady = true;
+    applyRouteSelection();
   } catch {
     error.value = '无法加载所属单位，请稍后刷新页面';
     return;
   }
-  await nextTick();
-  merchantId.value =
-    typeof route.query.merchantId === 'string'
-      ? route.query.merchantId
-      : undefined;
   expiryTimer = setInterval(() => {
     if (snapshot.value) {
       const cutoff = Date.now() - snapshot.value.retentionSeconds * 1000;
       snapshot.value.messages = snapshot.value.messages.filter(
         (m) => Date.parse(m.receivedAt) > cutoff,
       );
-      snapshot.value.conversations = snapshot.value.conversations.filter((c) =>
-        snapshot.value?.messages.some((m) => m.conversationId === c.id),
+      snapshot.value.conversations = snapshot.value.conversations.filter(
+        (c) => Date.parse(c.updatedAt) > cutoff,
       );
     }
   }, 30_000);
@@ -357,7 +442,8 @@ onBeforeUnmount(() => {
               v-model:value="tenantId"
               :options="tenantOptions"
               aria-label="所属单位"
-              :disabled="sending"
+              :disabled="sending || creating"
+              @change="merchantId = undefined"
             />
           </a-form-item>
           <a-form-item label="商家" class="chat-filter-field">
@@ -367,7 +453,7 @@ onBeforeUnmount(() => {
               allow-clear
               placeholder="全部商家"
               aria-label="商家"
-              :disabled="sending"
+              :disabled="sending || creating"
             >
               <template #option="{ label }">
                 <span class="whitespace-normal break-words">{{ label }}</span>
@@ -377,6 +463,15 @@ onBeforeUnmount(() => {
           <a-form-item>
             <a-button :loading="loading" @click="refresh">
               <template #icon><ReloadOutlined /></template>刷新
+            </a-button>
+          </a-form-item>
+          <a-form-item>
+            <a-button
+              type="primary"
+              :disabled="!tenantId || loading || sending || creating"
+              @click="orderModalOpen = true"
+            >
+              <template #icon><PlusOutlined /></template>新增会话
             </a-button>
           </a-form-item>
         </a-form>
@@ -409,7 +504,7 @@ onBeforeUnmount(() => {
               class="my-12"
             >
               <p class="text-muted-foreground px-4 text-xs">
-                收到当前买币订单的新消息后显示
+                可新增订单会话，或等待买家消息
               </p>
             </a-empty>
             <button
@@ -487,6 +582,11 @@ onBeforeUnmount(() => {
               aria-live="polite"
               aria-relevant="additions"
             >
+              <a-empty
+                v-if="messages.length === 0"
+                description="暂无消息"
+                class="my-8"
+              />
               <div
                 v-for="item in messages"
                 :key="item.id"
@@ -611,6 +711,16 @@ onBeforeUnmount(() => {
         </section>
       </div>
     </div>
+    <OrderSelectModal
+      v-if="orderModalOpen"
+      :open="orderModalOpen"
+      :tenant-id="tenantId"
+      :merchant-id="merchantId"
+      :merchants="catalog"
+      :creating="creating"
+      @close="orderModalOpen = false"
+      @select="openOrderConversation"
+    />
   </Page>
 </template>
 

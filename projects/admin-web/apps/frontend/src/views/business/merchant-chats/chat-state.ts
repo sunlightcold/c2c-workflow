@@ -14,12 +14,17 @@ export function applyChatEvent(
     if (index === -1) snapshot.merchants.push(event.merchant);
     else snapshot.merchants[index] = event.merchant;
   }
-  if (event.type === 'message' && event.conversation && event.message) {
+  if (
+    (event.type === 'message' || event.type === 'conversation') &&
+    event.conversation
+  ) {
     const index = snapshot.conversations.findIndex(
       (c) => c.id === event.conversation?.id,
     );
     if (index === -1) snapshot.conversations.push(event.conversation);
     else snapshot.conversations[index] = event.conversation;
+  }
+  if (event.type === 'message' && event.conversation && event.message) {
     const messageIndex = snapshot.messages.findIndex(
       (m) => m.id === event.message?.id,
     );

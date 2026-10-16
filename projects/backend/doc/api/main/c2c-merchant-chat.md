@@ -11,6 +11,8 @@
 | 方法与路径 | 输入 | 输出 |
 | --- | --- | --- |
 | GET `/v1/sys/merchant-chats/live` | 可选 tenantId、merchantId | 当前 instanceId、sequence、retentionSeconds、merchants、conversations、messages |
+| GET `/v1/sys/merchant-chats/live/orders` | tenantId、可选merchantId/platformOrderId/counterpartyName/status、page/pageSize（默认1/20，最多100） | items、total、page、pageSize；启用币安商家的活动BUY订单，包含订单/商家标识、商家名称、对方姓名、状态、金额字符串、币种、下单时间 |
+| POST `/v1/sys/merchant-chats/live/conversations` | tenantId、merchantId、merchantOrderId（本地UUID） | instanceId、conversation；按本单位/商家的活动BUY订单创建或复用内存会话，允许无消息，不发送平台消息、不读取运行前历史 |
 | POST `/v1/sys/merchant-chats/live/reply` | multipart：tenantId、merchantId、instanceId、conversationId、requestId，text 和 image 至少一项 | instanceId、requestId、每条消息的 id/type/status/reasonCode |
 | GET `/v1/sys/merchant-chats/live/messages/:messageId/attachments/:attachmentId` | tenantId、merchantId、instanceId | 鉴权图片流；private/no-store、nosniff，不返回平台原始 URL |
 
@@ -26,10 +28,12 @@ HTTP JSON 继续使用 `{code,msg,data,timestamp}` 包装；失败的 `data.reas
 
 - `merchant-chat.subscribe`：输入 `{tenantId?,merchantId?}`，ACK `{ok:true,snapshot}` 或 `{ok:false,reasonCode?}`。
 - `merchant-chat.unsubscribe`：取消订阅，ACK `{ok:true}`。
-- `merchant-chat.event`：服务端推送 instanceId、sequence、tenantId、merchantId、type；type 为 message、merchant、expired，分别携带 conversation/message、merchant、conversationId。
+- `merchant-chat.event`：服务端推送 instanceId、sequence、tenantId、merchantId、type；type 为 message、conversation、merchant、expired，分别携带 conversation/message、conversation（无消息的会话或状态变化）、merchant、conversationId。
 - `merchant-chat.invalidated`：服务端撤销订阅，携带 reasonCode。权限失效清空页面；`CHAT_RESYNC_REQUIRED` 重新订阅当前快照。
 
 客户端先订阅，再应用快照及之后的事件；同实例按 sequence 去重。断线或实例变化只同步当前快照，无历史回放。服务器逐次检查订阅权限，空闲连接也每15秒重查。订阅更换或取消会使尚未完成的旧订阅失效。
+
+筛选订单和打开会话仅要求read权限；发送仍要求read+reply。不存在、跨商家、跨单位或已结束订单返回CHAT_ORDER_NOT_FOUND；商家停用/配置失效返回CHAT_CONTEXT_UNAVAILABLE。相同订单重复打开复用同一会话，空会话按2小时TTL清理。聊天页新增会话弹窗支持四项筛选、分页和单选；商家订单操作列的“聊天”直接创建或定位对应会话。
 
 ## 错误与运行限制
 

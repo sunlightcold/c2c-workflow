@@ -51,10 +51,11 @@ export class ChatMemoryStore {
       throw new ChatError('CHAT_CONTEXT_UNAVAILABLE', '聊天会话已失效', 404)
     return window.conversation
   }
-  receive(
+  open(
     scope: ChatScope,
     order: { id: string; platformOrderId: string; counterpartyName: string | null },
-    input: ChatInbound,
+    canReply: boolean,
+    buyerName = '买家',
   ) {
     this.sweep()
     let window = [...this.windows.values()].find(
@@ -70,13 +71,23 @@ export class ChatMemoryStore {
         id: randomUUID(),
         merchantOrderId: order.id,
         platformOrderId: order.platformOrderId,
-        buyerName: order.counterpartyName || input.buyerName,
+        buyerName: order.counterpartyName || buyerName,
         updatedAt: new Date().toISOString(),
-        canReply: true,
+        canReply,
       }
       window = { conversation, messages: [], expiresAt: Date.now() + CHAT_TTL_MS }
       this.windows.set(conversation.id, window)
+      this.publish({ ...scope, type: 'conversation', conversation: { ...conversation } })
     }
+    return { ...window.conversation }
+  }
+  receive(
+    scope: ChatScope,
+    order: { id: string; platformOrderId: string; counterpartyName: string | null },
+    input: ChatInbound,
+  ) {
+    const conversation = this.open(scope, order, true, input.buyerName)
+    const window = this.windows.get(conversation.id)!
     if (window.messages.some((m) => m.sourceMessageId === input.sourceMessageId)) return
     const message: ChatMessage = {
       id: randomUUID(),
@@ -168,6 +179,8 @@ export class ChatMemoryStore {
           conversation: { ...window.conversation },
           message: { ...last },
         })
+      else
+        this.publish({ ...scope, type: 'conversation', conversation: { ...window.conversation } })
     }
   }
   sweep(now = Date.now()) {
@@ -177,7 +190,7 @@ export class ChatMemoryStore {
         Date.parse(window.messages[0].receivedAt) + CHAT_TTL_MS <= now
       )
         this.dropMessage(window)
-      if (window.expiresAt <= now || !window.messages.length) this.remove(id)
+      if (window.expiresAt <= now) this.remove(id)
     }
   }
   clear() {
@@ -193,9 +206,11 @@ export class ChatMemoryStore {
     window.conversation.updatedAt = message.receivedAt
     while (window.messages.length > 200) this.dropMessage(window)
     while (this.messageCount > 10_000) {
-      const oldest = [...this.windows.values()].sort(
-        (a, b) => Date.parse(a.messages[0].receivedAt) - Date.parse(b.messages[0].receivedAt),
-      )[0]
+      const oldest = [...this.windows.values()]
+        .filter((w) => w.messages.length)
+        .sort(
+          (a, b) => Date.parse(a.messages[0].receivedAt) - Date.parse(b.messages[0].receivedAt),
+        )[0]
       this.dropMessage(oldest)
       if (!oldest.messages.length) this.remove(oldest.conversation.id)
     }

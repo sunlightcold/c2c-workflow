@@ -13,6 +13,11 @@
 
 前缀 `/v1/sys/merchant-chats/live`，统一响应包装。所有接口 `@SkipLog()`，错误 `data.reasonCode`，不返回远端错误正文。
 
+- GET `/orders`：read权限，tenantId、可选merchantId/platformOrderId/counterpartyName/status、page（默认1）/pageSize（默认20，最多100）。仅返回本单位、启用币安商家的已同步活动BUY订单，按平台创建时间倒序；items仅含订单标识、商家名称、对方姓名、状态、金额字符串、币种、创建时间，返回total/page/pageSize。
+- POST `/conversations`：read权限，tenantId、merchantId、merchantOrderId（本地UUID）；校验商家及活动BUY订单归属，创建或复用当前内存会话，返回instanceId/conversation。没有消息也允许打开，不伪造消息、不主动发送平台消息、不恢复运行前历史；连接未就绪时允许查看，回复仍受既有校验限制。越权/不存在/已结束订单拒绝，不创建会话；同商家同订单重复调用返回相同会话，空会话同样2小时过期，无数据库迁移。
+- 聊天页“新增会话”弹窗提供商家、订单号、对方姓名、状态筛选及分页，单选订单生成并打开会话。订单操作的实时聊天入口携带单位/商家/订单，进入页面即创建或复用并定位会话；页面内再次跳转另一订单也必须生效。
+- 事件新增type=conversation，仅携带conversation，用于空会话创建及回复可用状态变化。已有message/merchant/expired事件兼容。
+
 - GET：可选 tenantId、merchantId，平台账号必须选所属单位；返回 `{instanceId,sequence,retentionSeconds,merchants,conversations,messages}`，仅当前内存快照，无历史分页。merchant 状态包括四项能力与连接状态。
 - POST `/reply`：multipart；tenantId、merchantId、conversationId、instanceId、requestId（UUID）、可选 text（最多4000字）和 image（单张 JPEG/PNG/WebP，最多10MiB、2500万像素）。至少文字或图片之一。身份来自当前登录用户，禁止客户端指定平台订单号、凭据或 URL。实例/会话/商家/订单失效返回409或404；越权不泄露资源存在性。
 - 每次发送的文字与图片分别返回 message 状态。发送前错误 FAILED；本地写出后等待相同 uuid 的 self 回显，收到才为 SENT（不表示已读），超时/断线为 UNKNOWN。UNKNOWN 禁止自动重发；重复 requestId 在当前窗口内返回原结果，不同内容或会话复用返回409。无平台回显证据时始终保留未知。
@@ -48,3 +53,9 @@
 - 配置失效保留消息窗口、暂停回复；只取消匹配租户/商家的在途初始化。已测试运行超过2小时后HTTP历史不会让过期消息复活，HTTP缺时间历史仅作去重基线。
 - 本地默认菜单已同步实时聊天、read与reply权限；验证码接口返回200。数据库无待执行迁移。
 - 以上外部平台行为由协议资料及模拟测试验证，未进行真实 Binance 账号收发、WSS代理出口或生产附件域名联调；OKX聊天不在本期。生产保持单一活动admin实例，先发布后端和授权，再发布前端。
+
+## 主动添加订单会话验证（2026-10-16）
+
+- 后端完整单测123套件794项、聊天HTTP契约5项、商家订单PostgreSQL隔离schema集成9项通过，覆盖空会话复用、容量与过期、订单筛选分页及租户/商家隔离。
+- 前端聊天纯状态单测4项通过；前后端lint、typecheck和完整构建通过，后端workspace/catalog检查通过。新增订单弹窗使用统一BaseModal，规范与需求审查通过。
+- 按用户要求未进行UI测试；真实Binance账号联调未执行。本次无数据库迁移，先发布后端新增接口，再发布前端。

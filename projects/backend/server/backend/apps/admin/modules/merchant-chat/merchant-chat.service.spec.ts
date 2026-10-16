@@ -107,6 +107,49 @@ describe('Merchant live chat', () => {
     )
   })
   afterEach(() => service.onModuleDestroy())
+  it('opens an order without buyer messages, reuses it, and can send the first message', async () => {
+    await connected()
+    const opened = await service.openConversation(scope, order.id)
+    expect(opened.instanceId).toBe(memory.instanceId)
+    expect(opened.conversation.merchantOrderId).toBe(order.id)
+    expect(memory.snapshot(scope).messages).toEqual([])
+    expect((await service.openConversation(scope, order.id)).conversation.id).toBe(
+      opened.conversation.id,
+    )
+    expect(orders.findOneBy).toHaveBeenCalledWith(
+      expect.objectContaining({ ...scope, id: order.id, platform: 'BINANCE', side: 'BUY' }),
+    )
+    connection.send.mockResolvedValue('SENT')
+    const reply = await service.reply(
+      scope,
+      {
+        conversationId: opened.conversation.id,
+        instanceId: memory.instanceId,
+        requestId: 'first-message',
+        text: '你好',
+      },
+      7,
+    )
+    expect(reply.messages[0].status).toBe('SENT')
+    expect(connection.send).toHaveBeenCalledWith(order.platformOrderId, {
+      type: 'text',
+      content: '你好',
+    })
+  })
+  it('rejects unavailable orders and merchants before creating a window', async () => {
+    orders.findOneBy.mockResolvedValueOnce(null)
+    await expect(service.openConversation(scope, order.id)).rejects.toThrow('订单当前不可聊天')
+    merchants.findOneBy.mockResolvedValueOnce(null)
+    await expect(service.openConversation(scope, order.id)).rejects.toThrow('商家不可用')
+    expect(memory.snapshot(scope).conversations).toEqual([])
+    expect(adapter.connect).not.toHaveBeenCalled()
+  })
+  it('opens an empty read-only window while the merchant socket is connecting', async () => {
+    connection.ready.mockReturnValue(false)
+    const result = await service.openConversation(scope, order.id)
+    expect(result.conversation.canReply).toBe(false)
+    expect(memory.snapshot(scope).conversations).toHaveLength(1)
+  })
   it('filters startup history and processes current WSS and notification HTTP messages without numeric ordering loss', async () => {
     adapter.messages.mockResolvedValueOnce([input('old', '2000-01-01T00:00:00Z')])
     await connected()

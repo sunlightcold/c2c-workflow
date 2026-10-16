@@ -21,7 +21,13 @@ import { SkipLog } from '@admin/interceptors/skip-log.decorator'
 import { ChatAccessService } from './chat-access.service'
 import { ChatImageLimitInterceptor } from './chat-image.service'
 import { CHAT_MAX_IMAGE_BYTES } from './chat.types'
-import { ChatAttachmentDto, ChatLiveDto, ChatReplyDto } from './merchant-chat.dto'
+import {
+  ChatAttachmentDto,
+  ChatLiveDto,
+  ChatReplyDto,
+  ChatOrderQueryDto,
+  ChatOpenConversationDto,
+} from './merchant-chat.dto'
 import { MerchantChatService } from './merchant-chat.service'
 
 const P = definePermission('merchant:chat', ['read', 'reply'] as const)
@@ -39,6 +45,19 @@ export class MerchantChatController {
   @ApiOperation({ summary: '当前聊天窗口快照' })
   async live(@Query() dto: ChatLiveDto, @User() actor: AuthUser) {
     return this.chat.snapshot(await this.access.authorize(actor, dto.tenantId), dto.merchantId)
+  }
+  @Get('orders')
+  @Permission(P.READ)
+  @ApiOperation({ summary: '筛选可创建聊天会话的商家订单' })
+  async orders(@Query() dto: ChatOrderQueryDto, @User() actor: AuthUser) {
+    return this.chat.listOrders(await this.access.authorize(actor, dto.tenantId), dto)
+  }
+  @Post('conversations')
+  @Permission(P.READ)
+  @ApiOperation({ summary: '按商家订单创建或打开当前聊天会话' })
+  async open(@Body() dto: ChatOpenConversationDto, @User() actor: AuthUser) {
+    const tenantId = await this.access.authorize(actor, dto.tenantId)
+    return this.chat.openConversation({ tenantId, merchantId: dto.merchantId }, dto.merchantOrderId)
   }
   @Post('reply')
   @Permission([P.READ, P.REPLY])

@@ -59,7 +59,7 @@ export namespace MerchantChatApi {
   export interface Event {
     instanceId: string;
     sequence: number;
-    type: 'expired' | 'merchant' | 'message';
+    type: 'conversation' | 'expired' | 'merchant' | 'message';
     tenantId: string;
     merchantId: string;
     conversation?: Conversation;
@@ -72,6 +72,46 @@ export namespace MerchantChatApi {
     requestId: string;
     messages: Array<Pick<Message, 'id' | 'reasonCode' | 'status' | 'type'>>;
   }
+  export interface Order {
+    id: string;
+    merchantId: string;
+    merchantName: string;
+    platformOrderId: string;
+    counterpartyName: null | string;
+    status: string;
+    fiatAmount: string;
+    fiatCurrency: string;
+    platformCreatedAt: string;
+  }
+  export interface OrderQuery extends Scope {
+    platformOrderId?: string;
+    counterpartyName?: string;
+    status?: string;
+    page: number;
+    pageSize: number;
+  }
+  export interface OpenResult {
+    instanceId: string;
+    conversation: Conversation;
+  }
+}
+export function getMerchantChatOrdersApi(params: MerchantChatApi.OrderQuery) {
+  return requestClient.get<{
+    items: MerchantChatApi.Order[];
+    page: number;
+    pageSize: number;
+    total: number;
+  }>('/sys/merchant-chats/live/orders', { params });
+}
+export function openMerchantChatConversationApi(data: {
+  merchantId: string;
+  merchantOrderId: string;
+  tenantId: string;
+}) {
+  return requestClient.post<MerchantChatApi.OpenResult>(
+    '/sys/merchant-chats/live/conversations',
+    data,
+  );
 }
 export function getMerchantChatApi(params: MerchantChatApi.Scope) {
   return requestClient.get<MerchantChatApi.Snapshot>(

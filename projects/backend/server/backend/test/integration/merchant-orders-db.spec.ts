@@ -15,11 +15,16 @@ import { TypeOrmC2cOrderSyncStore } from '@/apps/admin/modules/c2c-order/typeorm
 import { TypeOrmC2cOrderAppealStore } from '@/apps/admin/modules/c2c-order/typeorm-c2c-order-appeal.store'
 import {
   MerchantOrderEntity,
+  MerchantEntity,
+  MerchantOrderStatus,
   MerchantOrderStatusHistoryEntity,
   MerchantOrderSyncCheckpointEntity,
   MerchantPlatform,
 } from '@/apps/admin/database'
 import { C2cBuyOrderStatus } from '@/apps/admin/modules/c2c-platform'
+import { MerchantChatService } from '@/apps/admin/modules/merchant-chat/merchant-chat.service'
+import { ChatMemoryStore } from '@/apps/admin/modules/merchant-chat/chat-memory.store'
+import { ChatOrderQueryDto } from '@/apps/admin/modules/merchant-chat/merchant-chat.dto'
 
 describe('Merchant orders database integration', () => {
   const { postgres } = developmentConfig.admin
@@ -39,6 +44,7 @@ describe('Merchant orders database integration', () => {
       schema,
       synchronize: false,
       entities: [
+        MerchantEntity,
         MerchantOrderEntity,
         MerchantOrderStatusHistoryEntity,
         MerchantOrderSyncCheckpointEntity,
@@ -64,6 +70,89 @@ describe('Merchant orders database integration', () => {
         'https://api.binance.com'
       )
     `)
+  })
+
+  it('filters chat candidates by tenant, merchant, live status and literal order/buyer terms with pagination', async () => {
+    await queryRunner.query('SAVEPOINT chat_candidates')
+    try {
+      const tenantId = C2C_FOUNDATION_IDS.headquartersTenant
+      const otherTenant = '00000000-0000-4000-8000-000000000091'
+      const sibling = '00000000-0000-4000-8000-000000000092'
+      const disabled = '00000000-0000-4000-8000-000000000093'
+      const okx = '00000000-0000-4000-8000-000000000094'
+      const outside = '00000000-0000-4000-8000-000000000095'
+      await queryRunner.query(
+        `INSERT INTO tenant (id, code, name, type) VALUES ($1, 'chat_other', 'Chat Other', 'AGENT')`,
+        [otherTenant],
+      )
+      for (const [id, tenant, platform, status] of [
+        [sibling, tenantId, 'BINANCE', 'active'],
+        [disabled, tenantId, 'BINANCE', 'disabled'],
+        [okx, tenantId, 'OKX', 'active'],
+        [outside, otherTenant, 'BINANCE', 'active'],
+      ])
+        await queryRunner.query(
+          `INSERT INTO merchant (id, "tenantId", code, name, platform, status, "apiBaseUrl") VALUES ($1, $2, $5, 'Chat Test', $3, $4, 'http://127.0.0.1:13002')`,
+          [id, tenant, platform, status, `chat_${id.slice(-6)}`],
+        )
+      const fixtures = [
+        [merchantId, tenantId, 'BINANCE', 'CHAT-ONE', 'PENDING_PAYMENT'],
+        [merchantId, tenantId, 'BINANCE', 'CHAT-TWO', 'PENDING_RELEASE'],
+        [merchantId, tenantId, 'BINANCE', 'CHAT-DONE', 'COMPLETED'],
+        [sibling, tenantId, 'BINANCE', 'CHAT-SIBLING', 'PENDING_PAYMENT'],
+        [disabled, tenantId, 'BINANCE', 'CHAT-DISABLED', 'PENDING_PAYMENT'],
+        [okx, tenantId, 'OKX', 'CHAT-OKX', 'PENDING_PAYMENT'],
+        [outside, otherTenant, 'BINANCE', 'CHAT-OUTSIDE', 'PENDING_PAYMENT'],
+      ]
+      for (const [merchant, tenant, platform, orderNo, status] of fixtures)
+        await queryRunner.query(
+          `INSERT INTO merchant_order ("tenantId", "merchantId", platform, "platformOrderId", side, "platformStatus", status, asset, "assetAmount", "fiatCurrency", "fiatAmount", "counterpartyName", "platformCreatedAt", "lastSyncedAt") VALUES ($1, $2, $3, $4, 'BUY', '1', $5, 'USDT', 10, 'CNY', 70.01, '聊天买家', now(), now())`,
+          [tenant, merchant, platform, orderNo, status],
+        )
+      const database = { getRepository: (entity) => queryRunner.manager.getRepository(entity) }
+      const memory = new ChatMemoryStore()
+      const chat = new MerchantChatService(
+        database as never,
+        undefined as never,
+        undefined as never,
+        undefined as never,
+        undefined as never,
+        memory,
+        undefined as never,
+      )
+      const query = Object.assign(new ChatOrderQueryDto(), {
+        merchantId,
+        platformOrderId: 'CHAT-',
+        pageSize: 1,
+      })
+      const first = await chat.listOrders(tenantId, query)
+      expect(first.total).toBe(2)
+      expect(first.items).toHaveLength(1)
+      expect(typeof first.items[0].fiatAmount).toBe('string')
+      const second = await chat.listOrders(tenantId, { ...query, page: 2 })
+      expect(second.items[0].id).not.toBe(first.items[0].id)
+      const filtered = await chat.listOrders(tenantId, {
+        ...query,
+        counterpartyName: '买家',
+        status: MerchantOrderStatus.PENDING_RELEASE,
+      })
+      expect(filtered.items[0].platformOrderId).toBe('CHAT-TWO')
+      expect((await chat.listOrders(tenantId, { ...query, platformOrderId: '%' })).total).toBe(0)
+      expect((await chat.listOrders(otherTenant, query)).total).toBe(0)
+      const all = await chat.listOrders(tenantId, {
+        ...query,
+        merchantId: undefined,
+        pageSize: 100,
+      })
+      expect(all.items.map((item) => item.platformOrderId).sort()).toEqual([
+        'CHAT-ONE',
+        'CHAT-SIBLING',
+        'CHAT-TWO',
+      ])
+      memory.clear()
+    } finally {
+      await queryRunner.query('ROLLBACK TO SAVEPOINT chat_candidates')
+    }
   })
 
   afterAll(async () => {

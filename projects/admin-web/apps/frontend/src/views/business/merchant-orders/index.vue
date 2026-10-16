@@ -615,6 +615,29 @@ onMounted(async () => {
           <AButton size="small" type="primary" @click="openDetail(row)">
             详情
           </AButton>
+          <AButton
+            v-if="
+              hasAccessByCodes(['merchant:chat:read']) &&
+              row.platform === 'BINANCE'
+            "
+            size="small"
+            type="link"
+            :disabled="
+              ['COMPLETED', 'CANCELLED', 'EXPIRED'].includes(row.status)
+            "
+            @click="
+              router.push({
+                path: '/business/merchant-chats',
+                query: {
+                  tenantId: row.tenantId,
+                  merchantId: row.merchantId,
+                  orderId: row.id,
+                },
+              })
+            "
+          >
+            聊天
+          </AButton>
           <ADropdown :get-popup-container="getActionPopupContainer">
             <AButton
               size="small"
@@ -626,22 +649,6 @@ onMounted(async () => {
             </AButton>
             <template #overlay>
               <AMenu>
-                <AMenuItem
-                  v-if="hasAccessByCodes(['merchant:chat:read'])"
-                  key="chat"
-                  @click="
-                    router.push({
-                      path: '/business/merchant-chats',
-                      query: {
-                        tenantId: row.tenantId,
-                        merchantId: row.merchantId,
-                        orderId: row.id,
-                      },
-                    })
-                  "
-                >
-                  实时聊天
-                </AMenuItem>
                 <AMenuItem
                   v-if="hasAccessByCodes(['merchant:order:read'])"
                   key="upstream"
