@@ -71,6 +71,42 @@ describe('C2cOrderUpstreamService', () => {
     expect(platform.getOrderDetailSnapshot).not.toHaveBeenCalled()
   })
 
+  it('projects the documented Binance qrCodePath even when order normalization fails', async () => {
+    platform.getOrderDetailSnapshot.mockResolvedValue({
+      raw: { data: { qrCodePath: 'https://static.example/payment-code.png' } },
+      normalized: null,
+      normalizationError: '币安数字资产为空',
+    })
+    const result = await service.query('tenant-1', 'merchant-1', 'order-1')
+    expect(result.qrCodeUrl).toBe('https://static.example/payment-code.png')
+    expect(result.normalized).toBeNull()
+  })
+
+  it.each([
+    undefined,
+    null,
+    '',
+    'not-a-url',
+    '/payment-code.png',
+    'http://static.example/code.png',
+    'javascript:alert(1)',
+    'https://user:password@static.example/code.png',
+  ])('does not expose an unavailable or unsafe payment code address: %s', async (qrCodePath) => {
+    platform.getOrderDetailSnapshot.mockResolvedValue({ raw: { data: { qrCodePath } } })
+    const result = await service.query('tenant-1', 'merchant-1', 'order-1')
+    expect(result.qrCodeUrl).toBeNull()
+  })
+
+  it('does not apply the Binance payment code field to another platform', async () => {
+    orders.findOne.mockResolvedValue({ ...order, platform: MerchantPlatform.OKX })
+    merchants.findOne.mockResolvedValue({ platform: MerchantPlatform.OKX })
+    platform.getOrderDetailSnapshot.mockResolvedValue({
+      raw: { data: { qrCodePath: 'https://static.example/code.png' } },
+    })
+    const result = await service.query('tenant-1', 'merchant-1', 'order-1')
+    expect(result.qrCodeUrl).toBeNull()
+  })
+
   it('preserves business details while excluding nested authentication fields', async () => {
     platform.getOrderDetailSnapshot.mockResolvedValue({
       raw: { data: [{ payeeIdentity: '18516970120', apiKey: 'secret', token: 'secret-token' }] },

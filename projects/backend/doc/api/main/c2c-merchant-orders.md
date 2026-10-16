@@ -93,6 +93,7 @@ HTTP `200`，由 `ResponseInterceptor` 包装：
 ```
 
 `raw` 保留平台响应包装体及所有业务字段，不返回请求认证头、签名、Cookie、Token、API Key 或私钥。
+响应新增`qrCodeUrl: string | null`：币安从`raw.data.qrCodePath`投影可用的HTTPS付款码图片地址；未提供、非HTTPS/无效地址或其他平台返回null。字段不依赖订单归一化是否成功，不保存地址、不下载图片。聊天订单信息按钮复用本接口及merchant:order:read权限，详情查询沿用商家当前代理。无数据库迁移，先部署后端新增字段，再部署前端。
 `normalized` 成功时为 `C2cBuyOrderDetail`：平台订单号、方向、状态、资产与数量、法币与金额、
 创建时间、付款方式 ID、付款方式、收款账号、收款人、平台实名、可付款判断及可选的
 KYC、不可付款原因、付款期限、更新时间。金额与外部 ID 使用字符串，时间使用 ISO 8601。

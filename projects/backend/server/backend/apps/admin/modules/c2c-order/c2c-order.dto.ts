@@ -143,6 +143,13 @@ export class MerchantOrderUpstreamResponseDto {
   queriedAt: string
 
   @ApiProperty({
+    type: String,
+    nullable: true,
+    description: '币安订单付款码HTTPS图片地址，未提供时为null',
+  })
+  qrCodeUrl: string | null
+
+  @ApiProperty({
     type: 'object',
     additionalProperties: true,
     description: '平台完整响应，认证字段除外',

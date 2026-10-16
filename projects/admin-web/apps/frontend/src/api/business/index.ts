@@ -297,6 +297,7 @@ export namespace BusinessApi {
   }
 
   export interface MerchantOrderUpstreamQueryResult {
+    qrCodeUrl: null | string;
     normalizationError: null | string;
     normalized: null | {
       asset: string;

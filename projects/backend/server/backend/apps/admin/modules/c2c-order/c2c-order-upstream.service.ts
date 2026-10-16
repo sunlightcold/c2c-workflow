@@ -1,4 +1,4 @@
-import { MerchantEntity, MerchantOrderEntity } from '@admin/database'
+import { MerchantEntity, MerchantOrderEntity, MerchantPlatform } from '@admin/database'
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import type { Repository } from 'typeorm'
@@ -37,10 +37,23 @@ export class C2cOrderUpstreamService {
       platform: order.platform,
       platformOrderId: order.platformOrderId,
       queriedAt: new Date().toISOString(),
+      qrCodeUrl:
+        order.platform === MerchantPlatform.BINANCE ? binanceQrCodeUrl(snapshot.raw) : null,
       raw: removeCredentials(snapshot.raw),
       normalized: snapshot.normalized,
       normalizationError: snapshot.normalizationError,
     }
+  }
+}
+
+function binanceQrCodeUrl(raw: unknown): string | null {
+  const path = (raw as { data?: { qrCodePath?: unknown } } | null)?.data?.qrCodePath
+  if (typeof path !== 'string' || !path.trim()) return null
+  try {
+    const url = new URL(path)
+    return url.protocol === 'https:' && !url.username && !url.password ? url.href : null
+  } catch {
+    return null
   }
 }
 

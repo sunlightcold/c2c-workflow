@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import type { MerchantChatApi } from '#/api';
 
+import { onBeforeUnmount, ref, watch } from 'vue';
+
+import { queryMerchantOrderUpstreamApi } from '#/api';
+import { BaseModal } from '#/components/base-modal';
+
+import { businessModalProps } from '../shared/business-form-layout';
 import {
   businessEnumText,
   formatBusinessTime,
@@ -9,10 +15,53 @@ import {
 import { formatChatDecimal } from './chat-state';
 import ChatOrderStatus from './ChatOrderStatus.vue';
 
-defineProps<{
+const props = defineProps<{
   conversation: MerchantChatApi.Conversation;
   merchant?: MerchantChatApi.Merchant;
 }>();
+const paymentCodeOpen = ref(false);
+const paymentCodeLoading = ref(false);
+const paymentCodeUrl = ref('');
+const paymentCodeError = ref('');
+let paymentCodeVersion = 0;
+
+function closePaymentCode() {
+  paymentCodeVersion++;
+  paymentCodeOpen.value = false;
+  paymentCodeLoading.value = false;
+  paymentCodeUrl.value = '';
+  paymentCodeError.value = '';
+}
+
+async function openPaymentCode() {
+  const current = ++paymentCodeVersion;
+  paymentCodeOpen.value = true;
+  paymentCodeLoading.value = true;
+  paymentCodeUrl.value = '';
+  paymentCodeError.value = '';
+  const conversation = props.conversation;
+  try {
+    const result = await queryMerchantOrderUpstreamApi(
+      conversation.merchantOrderId,
+      {
+        tenantId: conversation.tenantId,
+        merchantId: conversation.merchantId,
+      },
+    );
+    if (current !== paymentCodeVersion) return;
+    paymentCodeUrl.value = result.qrCodeUrl ?? '';
+    if (!paymentCodeUrl.value)
+      paymentCodeError.value = '该订单暂未提供可用的付款码';
+  } catch {
+    if (current === paymentCodeVersion)
+      paymentCodeError.value = '付款码获取失败，请关闭后重试';
+  } finally {
+    if (current === paymentCodeVersion) paymentCodeLoading.value = false;
+  }
+}
+
+watch(() => props.conversation.id, closePaymentCode);
+onBeforeUnmount(closePaymentCode);
 </script>
 
 <template>
@@ -28,6 +77,15 @@ defineProps<{
       <div class="mt-2">
         <ChatOrderStatus :order="conversation.order" />
       </div>
+      <a-button
+        v-access:code="['merchant:order:read']"
+        block
+        class="mt-3"
+        :loading="paymentCodeLoading"
+        @click="openPaymentCode"
+      >
+        查看付款码
+      </a-button>
     </div>
     <dl class="space-y-4 text-sm">
       <div>
@@ -90,4 +148,30 @@ defineProps<{
       </div>
     </dl>
   </div>
+  <BaseModal
+    v-model="paymentCodeOpen"
+    v-bind="businessModalProps('用户付款码', 420)"
+    :footer="null"
+    @cancel="closePaymentCode"
+  >
+    <div class="flex min-h-64 items-center justify-center p-4">
+      <a-spin v-if="paymentCodeLoading" />
+      <p
+        v-else-if="paymentCodeError"
+        class="text-muted-foreground text-sm"
+        role="status"
+      >
+        {{ paymentCodeError }}
+      </p>
+      <a-image
+        v-else-if="paymentCodeUrl"
+        :src="paymentCodeUrl"
+        :width="280"
+        alt="用户付款码"
+        class="max-w-full"
+        referrerpolicy="no-referrer"
+        @error="paymentCodeError = '付款码图片加载失败，请关闭后重试'"
+      />
+    </div>
+  </BaseModal>
 </template>
