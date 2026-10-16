@@ -141,6 +141,10 @@ const composerHint = computed(() => {
   return 'Enter 换行，Ctrl / Command + Enter 发送';
 });
 
+function getActionPopupContainer() {
+  return window.document.body;
+}
+
 function chooseConversation(id: string) {
   if (sending.value || deleting.value) return false;
   if (selectedId.value === id) return true;
@@ -706,6 +710,7 @@ onBeforeUnmount(() => {
               </a-button>
               <a-dropdown
                 v-if="hasAccessByCodes(['merchant:chat:reply'])"
+                :get-popup-container="getActionPopupContainer"
                 :trigger="['click']"
               >
                 <a-button
