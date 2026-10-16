@@ -156,6 +156,10 @@ onMounted(async () => {
   <BaseModal
     v-model="visible"
     v-bind="businessModalProps('新增会话', 1000)"
+    :body-style="{
+      height: 'min(760px, calc(100dvh - 180px))',
+      overflow: 'hidden',
+    }"
     :confirm-loading="creating"
     :ok-button-props="{ disabled: !selected }"
     :cancel-button-props="{ disabled: creating }"
@@ -164,7 +168,7 @@ onMounted(async () => {
     ok-text="生成会话"
     @ok="selected && emit('select', selected)"
   >
-    <Grid class="h-[min(760px,calc(100dvh-180px))] min-h-[520px]">
+    <Grid class="min-h-0">
       <template #selection="{ row }">
         <ARadio
           :checked="selected?.id === row.id"
