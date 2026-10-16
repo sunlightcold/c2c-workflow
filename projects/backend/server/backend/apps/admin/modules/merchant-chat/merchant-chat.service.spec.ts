@@ -125,6 +125,43 @@ describe('Merchant live chat', () => {
     )
   })
   afterEach(() => service.onModuleDestroy())
+  it.each(['invalidation', 'credential-change'])(
+    'does not restore deleted messages when a session is replaced by %s',
+    async (change) => {
+      await connected()
+      const deleted = input('deleted')
+      callbacks.message(deleted)
+      const conversation = memory.snapshot(scope).conversations[0]
+      service.deleteConversation(scope, memory.instanceId, conversation.id)
+      if (change === 'invalidation') service.invalidate(scope)
+      else {
+        const reference = await credential.getActiveReference()
+        credential.getActiveReference.mockResolvedValue({
+          ...reference,
+          credentialRef: 'enc://version-2',
+        })
+      }
+      adapter.messages.mockResolvedValue([deleted])
+      await connected()
+      callbacks.message(deleted)
+      expect(memory.snapshot(scope)).toEqual({ conversations: [], messages: [] })
+      callbacks.message(input('new'))
+      expect(memory.snapshot(scope).messages.map((message) => message.text)).toEqual(['new'])
+    },
+  )
+  it('keeps identical upstream message IDs independent for each tenant and merchant', async () => {
+    merchants.findOneBy.mockImplementation(async ({ id }) => ({ ...merchant, id }))
+    for (const context of [
+      scope,
+      { ...scope, merchantId: 'other-merchant' },
+      { ...scope, tenantId: 'other-tenant' },
+    ]) {
+      await service.snapshot(context.tenantId, context.merchantId)
+      await settle()
+      callbacks.message(input('same-upstream-id'))
+      expect(memory.snapshot(context).messages).toHaveLength(1)
+    }
+  })
   it('includes distinct payment states on automatically created conversations from a batch of orders', async () => {
     const other = { ...order, id: 'other-order', platformOrderId: 'another-platform-order' }
     orders.find.mockResolvedValue([order, other])

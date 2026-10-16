@@ -148,6 +148,9 @@ const [Grid, gridApi] = useResourceGrid<MerchantChatApi.Order, SearchValues>({
 });
 onMounted(async () => {
   await gridApi.formApi.setFieldValue('merchantId', props.merchantId);
+  gridApi.formApi.setLatestSubmissionValues(
+    (await gridApi.formApi.getValues()) as SearchValues,
+  );
   await gridApi.query();
 });
 </script>

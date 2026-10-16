@@ -65,7 +65,6 @@ describe('chat live state', () => {
     expect(chatPaymentStatusText('PROCESSING')).toBe('处理中');
     expect(chatPaymentStatusText('UNKNOWN')).toBe('结果未知');
     expect(chatPaymentStatusText(null)).toBe('未创建');
-    expect(chatPaymentStatusText(undefined)).toBe('未提供');
   });
   it('updates payment state independently of merchant status without changing message time', () => {
     const state = snapshot();

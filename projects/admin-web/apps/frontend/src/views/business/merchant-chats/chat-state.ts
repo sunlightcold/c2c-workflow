@@ -2,8 +2,7 @@ import type { MerchantChatApi } from '#/api';
 
 import { businessEnumText } from '../shared/business-ui';
 
-export function chatPaymentStatusText(status: null | string | undefined) {
-  if (status === undefined) return '未提供';
+export function chatPaymentStatusText(status: null | string) {
   return status === null ? '未创建' : businessEnumText(status);
 }
 

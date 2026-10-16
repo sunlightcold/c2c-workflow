@@ -480,6 +480,7 @@ watch(
   },
 );
 onMounted(async () => {
+  const current = generation;
   if (!sockets.socket) sockets.connect();
   socket = sockets.socket ?? undefined;
   socket?.on('merchant-chat.event', eventReceived);
@@ -488,9 +489,11 @@ onMounted(async () => {
   socket?.on('disconnect', disconnected);
   try {
     defaultTenantId = await loadTenantOptions();
+    if (current !== generation) return;
     routeReady = true;
     applyNavigationTarget();
   } catch {
+    if (current !== generation) return;
     error.value = '无法加载所属单位，请稍后刷新页面';
     return;
   }

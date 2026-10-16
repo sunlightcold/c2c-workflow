@@ -171,7 +171,7 @@ describe('Chat memory window', () => {
     const events: string[] = []
     const subscription = store.events.subscribe((event) => events.push(event.type))
     store.disable(scope)
-    expect(events).toEqual(['message'])
+    expect(events).toEqual(['conversation'])
     expect(store.snapshot(scope).messages).toHaveLength(2)
     subscription.unsubscribe()
     expect(store.snapshot(scope).conversations[0].canReply).toBe(false)

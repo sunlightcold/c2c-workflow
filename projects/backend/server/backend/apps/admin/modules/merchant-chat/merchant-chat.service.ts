@@ -51,7 +51,6 @@ interface Session {
   fingerprint: string
   connection?: BinanceChatConnection
   orders: Map<string, ChatOrderContext>
-  seen: Map<string, number>
   initializedOrders: Set<string>
   retryAt: number
   attempts: number
@@ -83,6 +82,7 @@ interface RequestState {
 export class MerchantChatService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly startedAt = Date.now()
   private readonly sessions = new Map<string, Session>()
+  private readonly seen = new Map<string, number>()
   private readonly merchants = new Map<string, ChatMerchant>()
   private readonly requests = new Map<string, RequestState>()
   private refreshing = false
@@ -108,6 +108,7 @@ export class MerchantChatService implements OnApplicationBootstrap, OnModuleDest
     this.destroyed = true
     for (const session of this.sessions.values()) this.stop(session)
     this.sessions.clear()
+    this.seen.clear()
     this.requests.clear()
     this.memory.clear()
   }
@@ -117,6 +118,7 @@ export class MerchantChatService implements OnApplicationBootstrap, OnModuleDest
     this.refreshing = true
     try {
       this.memory.sweep()
+      for (const [key, expiry] of this.seen) if (expiry <= Date.now()) this.seen.delete(key)
       for (const [key, request] of this.requests)
         if (request.expiresAt <= Date.now()) this.requests.delete(key)
       // System enumeration only reads tenant identities; business queries remain tenant scoped.
@@ -555,7 +557,6 @@ export class MerchantChatService implements OnApplicationBootstrap, OnModuleDest
       fingerprint: context.fingerprint,
       credentials,
       orders: new Map(),
-      seen: new Map(),
       initializedOrders: new Set(),
       retryAt: 0,
       attempts: 0,
@@ -652,11 +653,11 @@ export class MerchantChatService implements OnApplicationBootstrap, OnModuleDest
     const order = session.orders.get(input.orderNo)
     if (!order || input.origin === 'SELF') return
     const now = Date.now()
-    for (const [key, expiry] of session.seen) if (expiry <= now) session.seen.delete(key)
-    const key = `${input.orderNo}:${input.sourceMessageId}`
-    if (!input.sourceMessageId || session.seen.has(key)) return
-    session.seen.set(key, now + CHAT_TTL_MS)
-    while (session.seen.size > 20_000) session.seen.delete(session.seen.keys().next().value!)
+    const key = `${this.key(session.scope)}:${input.orderNo}:${input.sourceMessageId}`
+    if (!input.sourceMessageId || (this.seen.get(key) ?? 0) > now) return
+    this.seen.delete(key)
+    this.seen.set(key, now + CHAT_TTL_MS)
+    while (this.seen.size > 1_280_000) this.seen.delete(this.seen.keys().next().value!)
     if (
       (fromHttp && !input.occurredAt) ||
       (input.occurredAt &&

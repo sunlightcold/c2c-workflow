@@ -211,16 +211,7 @@ export class ChatMemoryStore {
       const enabled = connected && orderIds.has(window.conversation.merchantOrderId)
       if (window.conversation.canReply === enabled) continue
       window.conversation.canReply = enabled
-      const last = window.messages.at(-1)
-      if (last)
-        this.publish({
-          ...scope,
-          type: 'message',
-          conversation: { ...window.conversation },
-          message: { ...last },
-        })
-      else
-        this.publish({ ...scope, type: 'conversation', conversation: { ...window.conversation } })
+      this.publish({ ...scope, type: 'conversation', conversation: { ...window.conversation } })
     }
   }
   sweep(now = Date.now()) {
