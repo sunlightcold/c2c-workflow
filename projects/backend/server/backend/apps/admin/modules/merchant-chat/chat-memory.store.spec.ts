@@ -1,5 +1,5 @@
 import { ChatMemoryStore } from './chat-memory.store'
-import { MerchantOrderStatus } from '@admin/database'
+import { MerchantOrderStatus, PaymentOrderStatus } from '@admin/database'
 import { CHAT_TTL_MS, type ChatInbound, type ChatOrderContext } from './chat.types'
 
 describe('Chat memory window', () => {
@@ -14,6 +14,7 @@ describe('Chat memory window', () => {
     asset: 'USDT',
     unitPrice: '7.11',
     status: MerchantOrderStatus.PENDING_PAYMENT,
+    paymentStatus: null,
     paymentMethod: 'ALIPAY',
     platformCreatedAt: new Date('2026-10-16T01:00:00Z'),
     paymentDeadline: null,
@@ -47,6 +48,7 @@ describe('Chat memory window', () => {
       asset: order.asset,
       unitPrice: order.unitPrice,
       status: order.status,
+      paymentStatus: null,
       paymentMethod: order.paymentMethod,
       platformCreatedAt: order.platformCreatedAt.toISOString(),
       paymentDeadline: null,
@@ -54,14 +56,16 @@ describe('Chat memory window', () => {
     const events = jest.fn()
     store.events.subscribe(events)
     jest.advanceTimersByTime(CHAT_TTL_MS - 1000)
-    store.syncOrders(scope, [{ ...order, status: MerchantOrderStatus.COMPLETED }])
+    const paidOrder = { ...order, paymentStatus: PaymentOrderStatus.SUCCESS }
+    store.syncOrders(scope, [paidOrder])
     expect(store.conversation(scope, first.id)).toMatchObject({
       updatedAt: first.updatedAt,
-      order: { status: MerchantOrderStatus.COMPLETED },
+      order: { status: order.status, paymentStatus: PaymentOrderStatus.SUCCESS },
     })
     expect(store.conversation(other, otherConversation.id).order.status).toBe(order.status)
+    expect(store.conversation(other, otherConversation.id).order.paymentStatus).toBeNull()
     expect(events).toHaveBeenCalledTimes(1)
-    store.syncOrders(scope, [{ ...order, status: MerchantOrderStatus.COMPLETED }])
+    store.syncOrders(scope, [paidOrder])
     expect(events).toHaveBeenCalledTimes(1)
     jest.advanceTimersByTime(1001)
     expect(store.snapshot(scope).conversations).toEqual([])

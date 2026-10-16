@@ -1,5 +1,5 @@
 import { HttpException } from '@nestjs/common'
-import type { MerchantOrderEntity } from '@admin/database'
+import type { MerchantOrderEntity, PaymentOrderStatus } from '@admin/database'
 
 export const CHAT_TTL_MS = 2 * 60 * 60 * 1000
 export const CHAT_MAX_IMAGE_BYTES = 10 * 1024 * 1024
@@ -42,7 +42,7 @@ export type ChatOrderContext = Pick<
   | 'paymentMethod'
   | 'platformCreatedAt'
   | 'paymentDeadline'
->
+> & { paymentStatus: PaymentOrderStatus | null }
 export interface ChatOrderSummary {
   fiatAmount: string
   fiatCurrency: string
@@ -50,6 +50,7 @@ export interface ChatOrderSummary {
   assetAmount: string
   unitPrice: string | null
   status: string
+  paymentStatus: PaymentOrderStatus | null
   paymentMethod: string | null
   platformCreatedAt: string
   paymentDeadline: string | null

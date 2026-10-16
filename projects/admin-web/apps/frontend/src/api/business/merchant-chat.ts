@@ -31,6 +31,7 @@ export namespace MerchantChatApi {
     assetAmount: string;
     unitPrice: null | string;
     status: string;
+    paymentStatus?: null | string;
     paymentMethod: null | string;
     platformCreatedAt: string;
     paymentDeadline: null | string;

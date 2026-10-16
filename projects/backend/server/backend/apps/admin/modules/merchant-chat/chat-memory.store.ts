@@ -26,6 +26,7 @@ function orderSummary(order: ChatOrderContext): ChatOrderSummary {
     assetAmount: order.assetAmount,
     unitPrice: order.unitPrice,
     status: order.status,
+    paymentStatus: order.paymentStatus,
     paymentMethod: order.paymentMethod,
     platformCreatedAt: order.platformCreatedAt.toISOString(),
     paymentDeadline: order.paymentDeadline?.toISOString() ?? null,

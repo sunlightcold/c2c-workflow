@@ -1,5 +1,12 @@
 import type { MerchantChatApi } from '#/api';
 
+import { businessEnumText } from '../shared/business-ui';
+
+export function chatPaymentStatusText(status: null | string | undefined) {
+  if (status === undefined) return '未提供';
+  return status === null ? '未创建' : businessEnumText(status);
+}
+
 export function formatChatDecimal(value: string) {
   return value.includes('.')
     ? value.replace(/0+$/, '').replace(/\.$/, '')
@@ -96,17 +103,6 @@ export function applyChatEvent(
   }
   return true;
 }
-export const chatConnectionText: Record<
-  MerchantChatApi.Merchant['status'],
-  string
-> = {
-  CONNECTED: '已连接',
-  CONNECTING: '连接中',
-  DISABLED: '已停用',
-  ERROR: '连接异常',
-  PENDING: '待接入',
-  RECONNECTING: '重连中',
-};
 export const chatSendText: Record<MerchantChatApi.SendStatus, string> = {
   FAILED: '发送失败',
   SENDING: '发送中',

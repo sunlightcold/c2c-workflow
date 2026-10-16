@@ -19,6 +19,8 @@
 
 HTTP JSON 继续使用 `{code,msg,data,timestamp}` 包装；失败的 `data.reasonCode` 为稳定错误码。图片成功响应为二进制，不包装。
 
+会话的 `order.status` 是商家订单状态；新增 `order.paymentStatus` 是关联支付订单的原始状态（`PaymentOrderStatus`），无支付订单时为 `null`。按同单位、同商家、`C2C_BUY` 来源及 `sourceBusinessNo = platformOrderId` 关联，批量查询仅返回状态和来源订单号，不暴露收款信息。首次打开、快照和会话事件均携带该字段；沿用30秒数据库扫描刷新活动与保留的已结束订单，状态变化不延长消息TTL。权限、错误码和接口入参保持不变；先发布后端，再发布前端，无数据库迁移。
+
 文字最多4000字。图片单张 JPEG、PNG、WebP 静态图片，最多10MiB、2500万像素，完整解码验证。图片上传使用内存存储；客户端禁止指定平台订单号、发送身份、平台凭据或附件 URL。
 
 `requestId` 为 UUID v4。在当前实例的2小时窗口内，同一商家、同一请求内容重复提交返回原结果；不同内容或会话复用该 ID 返回 `CHAT_DUPLICATE_MESSAGE`。文字和图片分别返回状态，允许部分成功。`SENT` 表示收到平台相同 uuid 的 self 回显，不表示已读；本地写出不能确认送达，超时或断线返回 `UNKNOWN`，禁止自动重发。

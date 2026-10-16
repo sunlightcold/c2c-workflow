@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyChatEvent,
   chatConversationItems,
+  chatPaymentStatusText,
   formatChatDecimal,
 } from './chat-state';
 
@@ -42,6 +43,7 @@ describe('chat live state', () => {
         asset: 'USDT',
         unitPrice: '7.11',
         status: 'PENDING_PAYMENT',
+        paymentStatus: null,
         paymentMethod: 'ALIPAY',
         platformCreatedAt: '2026-10-16T01:00:00Z',
         paymentDeadline: null,
@@ -57,6 +59,34 @@ describe('chat live state', () => {
       receivedAt: new Date().toISOString(),
       status,
     },
+  });
+  it('distinguishes payment state, no payment order and a legacy response', () => {
+    expect(chatPaymentStatusText('SUCCESS')).toBe('支付成功');
+    expect(chatPaymentStatusText('PROCESSING')).toBe('处理中');
+    expect(chatPaymentStatusText('UNKNOWN')).toBe('结果未知');
+    expect(chatPaymentStatusText(null)).toBe('未创建');
+    expect(chatPaymentStatusText(undefined)).toBe('未提供');
+  });
+  it('updates payment state independently of merchant status without changing message time', () => {
+    const state = snapshot();
+    const initial = event(1);
+    applyChatEvent(state, initial);
+    const conversation = state.conversations[0];
+    if (!conversation) throw new Error('Missing conversation fixture');
+    applyChatEvent(state, {
+      ...initial,
+      sequence: 2,
+      type: 'conversation',
+      message: undefined,
+      conversation: {
+        ...conversation,
+        order: { ...conversation.order, paymentStatus: 'SUCCESS' },
+      },
+    });
+    expect(state.conversations[0]?.order.status).toBe('PENDING_PAYMENT');
+    expect(state.conversations[0]?.order.paymentStatus).toBe('SUCCESS');
+    expect(state.conversations[0]?.updatedAt).toBe(conversation.updatedAt);
+    expect(state.messages).toHaveLength(1);
   });
   it('merges sending state updates, ignores duplicates and rejects a different runtime', () => {
     const state = snapshot();

@@ -3,11 +3,11 @@ import type { MerchantChatApi } from '#/api';
 
 import {
   businessEnumText,
-  businessStateColor,
   formatBusinessTime,
   merchantPlatformText,
 } from '../shared/business-ui';
 import { formatChatDecimal } from './chat-state';
+import ChatOrderStatus from './ChatOrderStatus.vue';
 
 defineProps<{
   conversation: MerchantChatApi.Conversation;
@@ -26,10 +26,7 @@ defineProps<{
         }}</span>
       </div>
       <div class="mt-2">
-        <a-tag :color="businessStateColor(conversation.order.status)">
-          {{ businessEnumText(conversation.order.status) }}
-        </a-tag>
-        <a-tag>买币</a-tag>
+        <ChatOrderStatus :order="conversation.order" />
       </div>
     </div>
     <dl class="space-y-4 text-sm">

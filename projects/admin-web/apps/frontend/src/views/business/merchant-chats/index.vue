@@ -40,21 +40,19 @@ import { confirmResourceAction } from '#/hooks';
 import { useMerchantChatNavigationStore, useSocketStore } from '#/store';
 
 import {
-  businessEnumText,
-  businessStateColor,
   formatBusinessTime,
   merchantPlatformText,
 } from '../shared/business-ui';
 import { useBusinessTenantFilter } from '../shared/use-business-tenant-filter';
 import {
   applyChatEvent,
-  chatConnectionText,
   chatConversationItems,
   chatSendText,
   formatChatDecimal,
 } from './chat-state';
 import ChatImage from './ChatImage.vue';
 import ChatOrderInfo from './ChatOrderInfo.vue';
+import ChatOrderStatus from './ChatOrderStatus.vue';
 import OrderSelectModal from './OrderSelectModal.vue';
 
 const route = useRoute();
@@ -637,26 +635,19 @@ onBeforeUnmount(() => {
                   }}
                 </span>
               </div>
-              <div
-                class="mb-1 flex flex-wrap items-center justify-between gap-1"
-              >
-                <span class="text-sm font-semibold tabular-nums">
+              <div class="mb-1 flex min-w-0 items-center gap-2">
+                <span class="shrink-0 text-sm font-semibold tabular-nums">
                   {{ conversation.order.fiatAmount }}
                   {{ conversation.order.fiatCurrency }}
                 </span>
-                <a-tag
-                  class="!m-0"
-                  :color="businessStateColor(conversation.order.status)"
+                <span
+                  class="text-muted-foreground truncate text-xs"
+                  :title="conversation.preview"
                 >
-                  {{ businessEnumText(conversation.order.status) }}
-                </a-tag>
+                  {{ conversation.preview }}
+                </span>
               </div>
-              <div
-                class="text-muted-foreground truncate text-xs"
-                :title="conversation.preview"
-              >
-                {{ conversation.preview }}
-              </div>
+              <ChatOrderStatus :order="conversation.order" compact />
             </button>
           </div>
         </aside>
@@ -688,19 +679,6 @@ onBeforeUnmount(() => {
                   }}
                 </div>
               </div>
-              <a-tag
-                :color="
-                  selectedMerchant?.status === 'CONNECTED'
-                    ? 'success'
-                    : 'default'
-                "
-              >
-                {{
-                  selectedMerchant
-                    ? chatConnectionText[selectedMerchant.status]
-                    : '未连接'
-                }}
-              </a-tag>
               <a-button
                 class="chat-order-toggle"
                 type="text"
@@ -744,12 +722,7 @@ onBeforeUnmount(() => {
                 {{ formatChatDecimal(selected.order.assetAmount) }}
                 {{ selected.order.asset }}
               </span>
-              <a-tag
-                class="!m-0"
-                :color="businessStateColor(selected.order.status)"
-              >
-                {{ businessEnumText(selected.order.status) }}
-              </a-tag>
+              <ChatOrderStatus :order="selected.order" />
             </div>
             <div
               ref="messagePanel"

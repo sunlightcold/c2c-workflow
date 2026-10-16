@@ -68,7 +68,7 @@ const [Grid, gridApi] = useResourceGrid<MerchantChatApi.Order, SearchValues>({
       },
       {
         fieldName: 'status',
-        label: '订单状态',
+        label: '商家订单状态',
         component: 'Select',
         componentProps: {
           allowClear: true,
@@ -115,7 +115,7 @@ const [Grid, gridApi] = useResourceGrid<MerchantChatApi.Order, SearchValues>({
       { field: 'counterpartyName', title: '对方姓名', width: 120 },
       {
         field: 'status',
-        title: '状态',
+        title: '商家订单状态',
         width: 140,
         formatter: ({ cellValue }) => businessEnumText(cellValue),
       },

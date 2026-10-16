@@ -11,6 +11,8 @@ import {
   MerchantOrderSide,
   MerchantOrderStatus,
   MerchantPlatform,
+  PaymentOrderEntity,
+  PaymentSourceType,
   TenantEntity,
 } from '@admin/database'
 import { MerchantPlatformCredentialService } from '../business/merchant-platform-credential.service'
@@ -30,6 +32,7 @@ import {
   type ChatScope,
   type ChatSnapshot,
   type ChatOrderOption,
+  type ChatOrderContext,
 } from './chat.types'
 
 const terminal = [
@@ -47,7 +50,7 @@ interface Session {
   scope: ChatScope
   fingerprint: string
   connection?: BinanceChatConnection
-  orders: Map<string, MerchantOrderEntity>
+  orders: Map<string, ChatOrderContext>
   seen: Map<string, number>
   initializedOrders: Set<string>
   retryAt: number
@@ -272,6 +275,7 @@ export class MerchantChatService implements OnApplicationBootstrap, OnModuleDest
     await this.order(scope, merchantOrderId)
     const session = await this.ensure(scope)
     const order = await this.order(scope, merchantOrderId)
+    const [orderContext] = await this.withPaymentStatus(scope, [order])
     if (session.stopped) throw new ChatError('CHAT_CONTEXT_UNAVAILABLE', '商家配置已变化')
     const connected = !!session.connection?.ready()
     this.memory.availability(
@@ -279,9 +283,10 @@ export class MerchantChatService implements OnApplicationBootstrap, OnModuleDest
       new Set([...session.orders.values()].map((o) => o.id)),
       connected,
     )
+    this.memory.syncOrders(scope, [orderContext])
     const conversation = this.memory.open(
       scope,
-      order,
+      orderContext,
       connected && session.orders.has(order.platformOrderId),
     )
     return { instanceId: this.memory.instanceId, conversation }
@@ -482,7 +487,6 @@ export class MerchantChatService implements OnApplicationBootstrap, OnModuleDest
       this.sessions.delete(key)
       throw new ChatError('CHAT_ORDER_LIMIT', '当前活动订单超出聊天窗口容量')
     }
-    session.orders = new Map(orders.map((order) => [order.platformOrderId, order]))
     const activeIds = new Set(orders.map((order) => order.id))
     const retainedIds = this.memory.orderIds(scope).filter((id) => !activeIds.has(id))
     const retained = retainedIds.length
@@ -504,9 +508,15 @@ export class MerchantChatService implements OnApplicationBootstrap, OnModuleDest
           },
         })
       : []
+    const contexts = await this.withPaymentStatus(scope, [...orders, ...retained])
     this.requireSessionLoad(token)
     if (session.stopped) throw new ChatError('CHAT_CONTEXT_UNAVAILABLE', '商家配置已变化')
-    this.memory.syncOrders(scope, [...orders, ...retained])
+    session.orders = new Map(
+      contexts
+        .filter((order) => activeIds.has(order.id))
+        .map((order) => [order.platformOrderId, order]),
+    )
+    this.memory.syncOrders(scope, contexts)
     for (const id of session.initializedOrders)
       if (!session.orders.has(id)) session.initializedOrders.delete(id)
     if (session.connection?.ready() && !session.connecting) await this.initializeOrders(session)
@@ -782,6 +792,25 @@ export class MerchantChatService implements OnApplicationBootstrap, OnModuleDest
     })
     if (!order) throw new ChatError('CHAT_ORDER_NOT_FOUND', '订单当前不可聊天', 404)
     return order
+  }
+  private async withPaymentStatus(
+    scope: ChatScope,
+    orders: Omit<ChatOrderContext, 'paymentStatus'>[],
+  ): Promise<ChatOrderContext[]> {
+    if (!orders.length) return []
+    const payments = await this.database.getRepository(PaymentOrderEntity).find({
+      where: {
+        ...scope,
+        sourceType: PaymentSourceType.C2C_BUY,
+        sourceBusinessNo: In(orders.map((order) => order.platformOrderId)),
+      },
+      select: { sourceBusinessNo: true, status: true },
+    })
+    const statuses = new Map(payments.map((payment) => [payment.sourceBusinessNo, payment.status]))
+    return orders.map((order) => ({
+      ...order,
+      paymentStatus: statuses.get(order.platformOrderId) ?? null,
+    }))
   }
   private setMerchant(
     merchant: Pick<MerchantEntity, 'tenantId' | 'id' | 'name' | 'platform'>,

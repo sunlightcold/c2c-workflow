@@ -8,6 +8,9 @@ import {
   MerchantPlatform,
   BusinessStatus,
   MerchantOrderStatus,
+  PaymentOrderEntity,
+  PaymentOrderStatus,
+  PaymentSourceType,
 } from '@admin/database'
 import { CHAT_TTL_MS, type ChatInbound } from './chat.types'
 
@@ -24,6 +27,7 @@ describe('Merchant live chat', () => {
     asset: 'USDT',
     unitPrice: '7.11',
     status: MerchantOrderStatus.PENDING_PAYMENT,
+    paymentStatus: null,
     paymentMethod: 'ALIPAY',
     platformCreatedAt: new Date('2026-10-16T01:00:00Z'),
     paymentDeadline: null,
@@ -37,6 +41,7 @@ describe('Merchant live chat', () => {
   const connection = { ready: jest.fn(), send: jest.fn(), close: jest.fn() }
   const adapter = { messages: jest.fn(), connect: jest.fn(), imageUpload: jest.fn() }
   const orders = { find: jest.fn(), findOneBy: jest.fn() }
+  const payments = { find: jest.fn() }
   const merchant = {
     ...scope,
     id: scope.merchantId,
@@ -75,6 +80,7 @@ describe('Merchant live chat', () => {
     jest.clearAllMocks()
     orders.find.mockResolvedValue([order])
     orders.findOneBy.mockResolvedValue(order)
+    payments.find.mockResolvedValue([])
     merchants.find.mockResolvedValue([merchant])
     merchants.findOneBy.mockResolvedValue(merchant)
     tenants.find.mockResolvedValue([{ id: scope.tenantId }])
@@ -102,9 +108,11 @@ describe('Merchant live chat', () => {
           ? merchants
           : entity === MerchantOrderEntity
             ? orders
-            : entity === TenantEntity
-              ? tenants
-              : {},
+            : entity === PaymentOrderEntity
+              ? payments
+              : entity === TenantEntity
+                ? tenants
+                : {},
     }
     service = new MerchantChatService(
       database as never,
@@ -117,15 +125,94 @@ describe('Merchant live chat', () => {
     )
   })
   afterEach(() => service.onModuleDestroy())
+  it('includes distinct payment states on automatically created conversations from a batch of orders', async () => {
+    const other = { ...order, id: 'other-order', platformOrderId: 'another-platform-order' }
+    orders.find.mockResolvedValue([order, other])
+    payments.find.mockResolvedValue([
+      { sourceBusinessNo: order.platformOrderId, status: PaymentOrderStatus.UNKNOWN },
+      { sourceBusinessNo: other.platformOrderId, status: PaymentOrderStatus.SUCCESS },
+    ])
+    await connected()
+    callbacks.message(input('first'))
+    callbacks.message({ ...input('second'), orderNo: other.platformOrderId })
+    expect(
+      memory.snapshot(scope).conversations.map((conversation) => conversation.order.paymentStatus),
+    ).toEqual([PaymentOrderStatus.UNKNOWN, PaymentOrderStatus.SUCCESS])
+    expect(payments.find).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          sourceBusinessNo: expect.objectContaining({
+            _value: [order.platformOrderId, other.platformOrderId],
+          }),
+        }),
+      }),
+    )
+  })
+  it('reads the actual scoped C2C payment status and publishes payment-only changes without moving the conversation', async () => {
+    payments.find.mockResolvedValue([
+      { sourceBusinessNo: order.platformOrderId, status: PaymentOrderStatus.PROCESSING },
+    ])
+    const opened = await service.openConversation(scope, order.id)
+    expect(opened.conversation.order).toMatchObject({
+      status: MerchantOrderStatus.PENDING_PAYMENT,
+      paymentStatus: PaymentOrderStatus.PROCESSING,
+    })
+    expect(payments.find).toHaveBeenCalledWith({
+      where: {
+        ...scope,
+        sourceType: PaymentSourceType.C2C_BUY,
+        sourceBusinessNo: expect.objectContaining({ _value: [order.platformOrderId] }),
+      },
+      select: { sourceBusinessNo: true, status: true },
+    })
+    const events = jest.fn()
+    memory.events.subscribe(events)
+    payments.find
+      .mockClear()
+      .mockResolvedValue([
+        { sourceBusinessNo: order.platformOrderId, status: PaymentOrderStatus.SUCCESS },
+      ])
+    const snapshot = await service.snapshot(scope.tenantId, scope.merchantId)
+    expect(snapshot.conversations[0]).toMatchObject({
+      updatedAt: opened.conversation.updatedAt,
+      order: {
+        status: MerchantOrderStatus.PENDING_PAYMENT,
+        paymentStatus: PaymentOrderStatus.SUCCESS,
+      },
+    })
+    expect(payments.find).toHaveBeenCalledTimes(1)
+    expect(events).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'conversation',
+        conversation: expect.objectContaining({
+          order: expect.objectContaining({ paymentStatus: PaymentOrderStatus.SUCCESS }),
+        }),
+      }),
+    )
+  })
+  it('keeps unmatched payment orders null rather than inferring payment from the merchant state', async () => {
+    payments.find.mockResolvedValue([
+      { sourceBusinessNo: 'different-platform-order', status: PaymentOrderStatus.SUCCESS },
+    ])
+    const opened = await service.openConversation(scope, order.id)
+    expect(opened.conversation.order.paymentStatus).toBeNull()
+    expect(opened.conversation.order.status).toBe(MerchantOrderStatus.PENDING_PAYMENT)
+  })
   it('refreshes retained completed orders in the same tenant and merchant without fetching chat history again', async () => {
     await connected()
     const opened = await service.openConversation(scope, order.id)
     const completed = { ...order, status: MerchantOrderStatus.COMPLETED }
+    payments.find.mockResolvedValue([
+      { sourceBusinessNo: order.platformOrderId, status: PaymentOrderStatus.SUCCESS },
+    ])
     orders.find.mockImplementation(async ({ select }) => (select ? [completed] : []))
     const snapshot = await service.snapshot(scope.tenantId, scope.merchantId)
     expect(
       snapshot.conversations.find((conversation) => conversation.id === opened.conversation.id),
-    ).toMatchObject({ canReply: false, order: { status: MerchantOrderStatus.COMPLETED } })
+    ).toMatchObject({
+      canReply: false,
+      order: { status: MerchantOrderStatus.COMPLETED, paymentStatus: PaymentOrderStatus.SUCCESS },
+    })
     const retainedQuery = orders.find.mock.calls.find(([query]) => query.select)?.[0]
     expect(retainedQuery.where).toEqual({ ...scope, id: expect.anything() })
     expect(Object.keys(retainedQuery.select)).not.toContain('payeeIdentity')
